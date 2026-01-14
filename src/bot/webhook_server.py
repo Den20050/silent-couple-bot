@@ -219,9 +219,6 @@ async def telegram_webhook(
     # Process update
     try:
         await dp.feed_update(bot, update)
-    finally:
-        # Clear IP from context after processing
-        ip_context.set(None)
     except Exception as e:
         logger.error(
             "Error processing webhook update",
@@ -230,6 +227,9 @@ async def telegram_webhook(
         )
         # Still return 200 to prevent Telegram from retrying
         return JSONResponse(content={"ok": True})
+    finally:
+        # Clear IP from context after processing
+        ip_context.set(None)
 
     return JSONResponse(content={"ok": True})
 
