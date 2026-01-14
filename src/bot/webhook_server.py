@@ -73,6 +73,10 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     set_bot(bot)  # Set global bot instance for services
+    
+    # IMPORTANT: Also set bot in container's BotProvider
+    # This ensures that handlers injected via ContainerMiddleware can access bot
+    container.bot_provider.set_bot(bot)
 
     # Initialize dispatcher
     dp = Dispatcher(storage=storage)
