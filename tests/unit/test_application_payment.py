@@ -56,6 +56,15 @@ def mock_bot_provider():
 
 
 @pytest.fixture
+def mock_currency_rates_service():
+    """Create mock CurrencyRatesService."""
+    service = AsyncMock()
+    # For RUB, service should just return the original RUB price (no conversion).
+    service.calculate_price_in_currency = AsyncMock(side_effect=lambda rub_price, currency_code: rub_price)
+    return service
+
+
+@pytest.fixture
 def mock_settings():
     """Create mock Settings."""
     settings = MagicMock()
@@ -74,6 +83,7 @@ def payment_service(
     mock_payment_service,
     mock_bot_provider,
     mock_settings,
+    mock_currency_rates_service,
 ):
     """Create PaymentApplicationService with mocked dependencies."""
     return PaymentApplicationService(
@@ -83,6 +93,7 @@ def payment_service(
         payment_service=mock_payment_service,
         bot_provider=mock_bot_provider,
         settings=mock_settings,
+        currency_rates_service=mock_currency_rates_service,
     )
 
 

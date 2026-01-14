@@ -441,7 +441,12 @@ class PaymentApplicationService:
             
             # Add disclaimer about possible rate fluctuations for non-RUB currencies
             if currency_code != "RUB":
-                message_text += "\n\n<small>ℹ️ Итоговая сумма может отличаться на ±2% из-за курсовой разницы.</small>"
+                # Telegram HTML parse mode does NOT support <small> tag.
+                # Use supported formatting tags only to avoid TelegramBadRequest:
+                # "can't parse entities: Unsupported start tag".
+                message_text += (
+                    "\n\nℹ️ <i>Итоговая сумма может отличаться на ±2% из-за курсовой разницы.</i>"
+                )
             
             logger.info(
                 "Payment link created",

@@ -79,16 +79,19 @@ async def test_show_settings_success(
     
     # Mock repository
     settings_service._pairs_repo.get_all_by_user_tg_id = AsyncMock(return_value=[mock_pair])
+    settings_service._pairs_repo.get_by_id = AsyncMock(return_value=mock_pair)
     settings_service._pairs_repo.get_my_nickname_for_partner = MagicMock(return_value="Партнёр")
     
     from unittest.mock import patch
     
-    with patch('src.bot.validators.user.validate_user_exists') as mock_validate_user, \
-         patch('src.bot.validators.subscription.validate_subscription_active') as mock_validate_sub:
+    with patch('src.bot.validators.user.validate_user_exists', new_callable=AsyncMock) as mock_validate_user, \
+         patch('src.bot.validators.pair.validate_pair_access', new_callable=AsyncMock) as mock_validate_pair_access, \
+         patch('src.bot.validators.subscription.validate_subscription_active', new_callable=AsyncMock) as mock_validate_sub:
         
         mock_user = MagicMock()
         mock_user.id = 1
         mock_validate_user.return_value = mock_user
+        mock_validate_pair_access.return_value = None
         mock_validate_sub.return_value = None  # No exception means success
         
         # Execute
@@ -100,8 +103,7 @@ async def test_show_settings_success(
         assert reply_markup is not None
         
         # Verify calls
-        mock_subscription_status_service.get_first_active_pair.assert_called_once()
-        mock_subscription_status_service.is_subscription_active.assert_called_once_with(mock_pair)
+        mock_subscription_status_service.is_subscription_active.assert_called_with(mock_pair)
         mock_settings_ui.build_settings_message.assert_called_once()
         mock_settings_ui.build_settings_keyboard.assert_called_once()
 
@@ -166,6 +168,7 @@ async def test_show_settings_subscription_expired(
     
     # Mock repository
     settings_service._pairs_repo.get_all_by_user_tg_id = AsyncMock(return_value=[mock_pair])
+    settings_service._pairs_repo.get_by_id = AsyncMock(return_value=mock_pair)
     
     mock_pay_keyboard = MagicMock()
     mock_pay_keyboard.model_dump.return_value = {"keyboard": [{"text": "Оплатить"}]}
@@ -174,10 +177,13 @@ async def test_show_settings_subscription_expired(
     from unittest.mock import patch, AsyncMock as AsyncMockPatch
     
     with patch('src.bot.validators.user.validate_user_exists', new_callable=AsyncMockPatch) as mock_validate_user, \
+         patch('src.bot.validators.pair.validate_pair_access', new_callable=AsyncMockPatch) as mock_validate_pair_access, \
          patch('src.bot.validators.subscription.validate_subscription_active', new_callable=AsyncMockPatch) as mock_validate_sub:
         
         mock_user = MagicMock()
+        mock_user.id = 1
         mock_validate_user.return_value = mock_user
+        mock_validate_pair_access.return_value = None
         mock_validate_sub.side_effect = SubscriptionExpiredError(
             pair_id=mock_pair.id,
             message_key="SETTINGS_SUBSCRIPTION_EXPIRED",

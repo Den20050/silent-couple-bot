@@ -74,8 +74,22 @@ class CurrencyRatesService:
         try:
             cache_key = f"currency_rate:{currency_code}"
             cached_value = await self.redis.get(cache_key)
-            if cached_value:
-                return float(cached_value.decode())
+            if cached_value is None:
+                return None
+
+            # redis-py can return either `bytes` or `str` depending on client config
+            # (e.g., decode_responses=True). Handle both.
+            if isinstance(cached_value, bytes):
+                cached_text = cached_value.decode()
+            elif isinstance(cached_value, str):
+                cached_text = cached_value
+            else:
+                cached_text = str(cached_value)
+
+            if not cached_text:
+                return None
+
+            return float(cached_text)
         except Exception as e:
             logger.warning(
                 "Failed to get cached rate",
