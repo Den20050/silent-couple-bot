@@ -25,14 +25,15 @@ from src.services.telegram import set_bot
 
 logger = get_logger(__name__)
 
-# Global dispatcher instance
+# Global instances
 dp: Dispatcher | None = None
 bot: Bot | None = None
+redis_storage_client = None  # Store Redis client for RedisStorage globally
 
 
 async def setup_bot() -> tuple[Bot, Dispatcher]:
     """Initialize bot and dispatcher."""
-    global bot, dp, redis_client
+    global bot, dp, redis_client, redis_storage_client
     
     # If bot and dispatcher already initialized, return them
     if bot is not None and dp is not None:
@@ -44,7 +45,8 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
     # Initialize Redis (or use MemoryStorage if Redis unavailable)
     # RedisStorage needs its own Redis client with its own connection pool
     # Create separate client for RedisStorage to avoid connection closure issues
-    redis_storage_client = await create_redis_client()
+    if redis_storage_client is None:
+        redis_storage_client = await create_redis_client()
     # Use container's Redis for rate limiting middleware (it's already initialized)
     redis_client = container.redis
     storage = None
@@ -58,8 +60,7 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
             logger.warning(f"Failed to create RedisStorage: {e}")
             logger.warning("Falling back to MemoryStorage")
             storage = MemoryStorage()
-            await redis_storage_client.aclose()
-            redis_storage_client = None
+            # Don't close redis_storage_client here - keep it for RedisStorage
     else:
         logger.warning("Redis not available, using MemoryStorage")
         logger.warning(
@@ -170,9 +171,15 @@ async def lifespan(app: FastAPI):
     logger.info("Webhook server started")
     yield
     # Shutdown
-    global bot
+    global bot, redis_storage_client
     if bot:
         await bot.session.close()
+    if redis_storage_client:
+        try:
+            await redis_storage_client.aclose()
+        except Exception as e:
+            logger.warning(f"Error closing Redis storage connection: {e}")
+    # Container's Redis is managed by container lifecycle
     logger.info("Webhook server stopped")
 
 
