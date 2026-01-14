@@ -88,6 +88,29 @@ class Settings(BaseSettings):
         default="robokassa.ru",
         description="Домен Робокассы: robokassa.ru (Россия), robokassa.kz (Казахстан), robokassa.com (международный)",
     )
+    robokassa_include_shp_in_signature: bool = Field(
+        default=True,
+        description=(
+            "Включать ли Shp_ параметры в подпись платежа. "
+            "Иногда помогает диагностировать 500 на стороне Robokassa."
+        ),
+    )
+    robokassa_shp_kv_separator: str = Field(
+        default="=",
+        description=(
+            "Разделитель между ключом и значением для Shp_ параметров в подписи. "
+            "Обычно используется '=' (Shp_key=value), но некоторые примеры/кастомные настройки "
+            "могут ожидать ':' (Shp_key:value). Допустимые значения: '=' или ':'."
+        ),
+    )
+
+    @field_validator("robokassa_shp_kv_separator")
+    @classmethod
+    def validate_robokassa_shp_kv_separator(cls, v: str) -> str:
+        """Validate Shp_ key/value separator for Robokassa signature."""
+        if v not in ("=", ":"):
+            raise ValueError("robokassa_shp_kv_separator must be '=' or ':'")
+        return v
 
     # Currency prices for subscriptions (JSON format)
     # Format: {"CURRENCY": {"plan_id": price, ...}, ...}
