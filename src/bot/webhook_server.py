@@ -17,6 +17,7 @@ from src.core.redis_client import create_redis_client, test_redis_connection
 from src.bot.middlewares.database import DatabaseMiddleware
 from src.bot.middlewares.rate_limit import RateLimitMiddleware
 from src.bot.middlewares.timezone import TimezoneMiddleware
+from src.bot.middlewares.ip_injector import IPInjectorMiddleware, ip_context
 from src.services.telegram import set_bot
 
 logger = get_logger(__name__)
@@ -70,11 +71,13 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
     dp.message.middleware(DatabaseMiddleware())
     dp.callback_query.middleware(DatabaseMiddleware())
 
-    # 2. IP extractor (needs FastAPI request, will be set per-request)
-    # Note: IP extractor is added per-request in webhook handler
+    # 2. IP injector (injects IP from context into data dict)
+    dp.message.middleware(IPInjectorMiddleware())
+    dp.callback_query.middleware(IPInjectorMiddleware())
 
-    # 3. Timezone detection (needs session from DatabaseMiddleware)
+    # 3. Timezone detection (needs session from DatabaseMiddleware and IP from data)
     dp.message.middleware(TimezoneMiddleware())
+    dp.callback_query.middleware(TimezoneMiddleware())
 
     # 4. Rate limiting only if Redis is available
     if redis:
@@ -208,18 +211,17 @@ async def telegram_webhook(
         or (request.client.host if request.client else None)
     )
 
-    # Attach IP to update objects for middleware access
+    # Set IP in context for middleware to inject into data dict
+    # This allows handlers and middleware to access IP without modifying frozen Pydantic models
     if ip:
-        if update.message:
-            setattr(update.message, "ip", ip)
-        if update.callback_query:
-            setattr(update.callback_query, "ip", ip)
-        if update.edited_message:
-            setattr(update.edited_message, "ip", ip)
+        ip_context.set(ip)
 
     # Process update
     try:
         await dp.feed_update(bot, update)
+    finally:
+        # Clear IP from context after processing
+        ip_context.set(None)
     except Exception as e:
         logger.error(
             "Error processing webhook update",
