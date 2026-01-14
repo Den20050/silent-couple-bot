@@ -138,8 +138,8 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
         logger.warning(f"Failed to set bot commands/menu button: {e}")
 
     # Test Redis connection (optional)
-    if redis:
-        if await test_redis_connection(redis):
+    if redis_client:
+        if await test_redis_connection(redis_client):
             logger.info("Redis connection verified")
         else:
             logger.warning("Redis connection test failed, but continuing")
