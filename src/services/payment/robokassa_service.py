@@ -88,17 +88,17 @@ class RobokassaService(PaymentProvider):
         # Add Shp_ parameters to signature string
         # CRITICAL FORMAT REQUIREMENTS:
         # - Shp_ parameters MUST be sorted alphabetically by key
-        # - Format: :Shp_key=value (with colon separator between parameters)
+        # - Format: :Shp_key:value (with colon separator between key and value, and between parameters)
         # - NO colon at the end
         # - NO URL-encoding (use raw values)
-        # Example: :Shp_currency=RUB:Shp_is_lifetime=false:Shp_pair_id=2:Shp_period_days=30
+        # Example: :Shp_currency:RUB:Shp_is_lifetime:false:Shp_pair_id:2:Shp_period_days:30
         if shp_params:
             # Sort Shp_ parameters alphabetically by key
             sorted_shp = sorted(shp_params.items())
             # Add each Shp_ parameter to signature string
-            # Format: :Shp_key=value (with colon separator, NO colon at the end)
+            # Format: :Shp_key:value (with colon separator between key and value, NO colon at the end)
             for key, value in sorted_shp:
-                signature_string += f":{key}={value}"
+                signature_string += f":{key}:{value}"
         
         # Log signature string for debugging (without password)
         # Changed to INFO level to see in production logs
