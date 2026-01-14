@@ -53,18 +53,8 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
-    # Bootstrap application (for SSH tunnels, etc.)
-    logger.info("Bootstrapping application...")
-    try:
-        container = asyncio.run(bootstrap())
-        logger.info("Application bootstrapped successfully")
-        # Container will be closed when webhook server stops
-    except Exception as e:
-        logger.warning(f"Bootstrap failed (may be expected): {e}")
-        logger.info("Continuing with webhook server startup...")
-    
-    # Set webhook on startup
-    asyncio.run(setup_webhook_on_startup())
+    # NOTE: Bootstrap and webhook setup are now done in FastAPI lifespan events
+    # This ensures they run in the same event loop as uvicorn
     
     # Get webhook port from settings
     port = settings.webhook_port
@@ -79,6 +69,7 @@ def main():
     )
     
     # Run uvicorn server
+    # Uvicorn will create its own event loop and run lifespan events
     uvicorn.run(
         app,
         host=host,

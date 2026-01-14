@@ -152,6 +152,17 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager for FastAPI app."""
     # Startup
     await setup_bot()
+    
+    # Set webhook URL after bot is initialized
+    from src.bot.webhook_server import set_webhook
+    if settings.webhook_url:
+        logger.info("Setting webhook URL on startup...")
+        success = await set_webhook()
+        if success:
+            logger.info("✅ Webhook set successfully", url=settings.webhook_url)
+        else:
+            logger.error("❌ Failed to set webhook")
+    
     logger.info("Webhook server started")
     yield
     # Shutdown
