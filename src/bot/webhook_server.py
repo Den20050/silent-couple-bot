@@ -42,20 +42,24 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
     container: Container = await bootstrap()
     
     # Initialize Redis (or use MemoryStorage if Redis unavailable)
-    # RedisStorage manages its own connection pool, so we can reuse container's Redis
-    # Store Redis client globally for rate limiting middleware
+    # RedisStorage needs its own Redis client with its own connection pool
+    # Create separate client for RedisStorage to avoid connection closure issues
+    redis_storage_client = await create_redis_client()
+    # Use container's Redis for rate limiting middleware (it's already initialized)
     redis_client = container.redis
     storage = None
 
-    if redis_client:
+    if redis_storage_client:
         try:
-            # RedisStorage will create its own connection pool from the Redis client
-            storage = RedisStorage(redis=redis_client)
+            # RedisStorage will manage its own connection pool
+            storage = RedisStorage(redis=redis_storage_client)
             logger.info("Using Redis storage")
         except Exception as e:
             logger.warning(f"Failed to create RedisStorage: {e}")
             logger.warning("Falling back to MemoryStorage")
             storage = MemoryStorage()
+            await redis_storage_client.aclose()
+            redis_storage_client = None
     else:
         logger.warning("Redis not available, using MemoryStorage")
         logger.warning(
