@@ -515,7 +515,7 @@ class Messages:
     PAY_INVALID_TARIFF = "❌ Неверный тариф. Выберите тариф из списка."
     PAY_CREATE_PAYMENT_MESSAGE = (
         "💳 Оплата подписки: {plan_name}\n\n"
-        "Сумма: {price} ₽\n"
+        "Сумма: {price} {symbol}\n"
         "Период: {period_text}\n\n"
         "Нажмите на кнопку ниже для перехода на страницу оплаты."
     )

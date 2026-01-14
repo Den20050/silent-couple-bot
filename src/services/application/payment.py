@@ -436,6 +436,7 @@ class PaymentApplicationService:
                 "PAY_CREATE_PAYMENT_MESSAGE",
                 plan_name=plan_name,
                 price=price_str,
+                symbol=currency_info["symbol"],
                 period_text=period_text,
             )
             
