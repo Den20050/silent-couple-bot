@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from src.core.config import settings
 from src.core.logger import get_logger
 from src.core.redis_client import create_redis_client, test_redis_connection
-from src.core.bootstrap import bootstrap_application
+from src.core.bootstrap import bootstrap
 from src.core.di.container import Container
 from src.bot.middlewares.container import ContainerMiddleware
 from src.bot.middlewares.database import DatabaseMiddleware
@@ -39,7 +39,7 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
         return bot, dp
 
     # Bootstrap application to get container with all dependencies
-    container: Container = bootstrap_application()
+    container: Container = await bootstrap()
     
     # Initialize Redis (or use MemoryStorage if Redis unavailable)
     # Create separate Redis client for RedisStorage (it manages its own connection)
