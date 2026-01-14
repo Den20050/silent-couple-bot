@@ -29,26 +29,29 @@ bot: Bot | None = None
 
 async def setup_bot() -> tuple[Bot, Dispatcher]:
     """Initialize bot and dispatcher."""
-    global bot, dp
+    global bot, dp, redis_client
     
     # If bot and dispatcher already initialized, return them
     if bot is not None and dp is not None:
         return bot, dp
 
     # Initialize Redis (or use MemoryStorage if Redis unavailable)
-    redis = await create_redis_client()
+    # Store Redis client globally to prevent connection closure
+    redis_client = await create_redis_client()
     storage = None
 
-    if redis:
+    if redis_client:
         try:
-            storage = RedisStorage(redis=redis)
+            storage = RedisStorage(redis=redis_client)
             logger.info("Using Redis storage")
         except Exception as e:
             logger.warning(f"Failed to create RedisStorage: {e}")
             logger.warning("Falling back to MemoryStorage")
             storage = MemoryStorage()
-            await redis.aclose()
-            redis = None
+            # Don't close redis_client here - keep it for rate limiting middleware
+        else:
+            # Redis storage created successfully, redis_client is stored globally
+            pass
     else:
         logger.warning("Redis not available, using MemoryStorage")
         logger.warning(
@@ -80,8 +83,8 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
     dp.callback_query.middleware(TimezoneMiddleware())
 
     # 4. Rate limiting only if Redis is available
-    if redis:
-        dp.message.middleware(RateLimitMiddleware(redis))
+    if redis_client:
+        dp.message.middleware(RateLimitMiddleware(redis_client))
     else:
         logger.warning("Rate limiting disabled (Redis not available)")
 
