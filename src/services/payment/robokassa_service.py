@@ -43,6 +43,7 @@ class RobokassaService(PaymentProvider):
         password: str,
         currency: str = "RUB",
         shp_params: Optional[dict] = None,
+        shp_kv_separator: str = "=",
     ) -> str:
         """Generate Robokassa payment signature (MD5).
         
@@ -85,20 +86,22 @@ class RobokassaService(PaymentProvider):
             # For RUB, no currency parameter in signature
             signature_string = f"{merchant_login}:{out_sum}:{inv_id}:{password}"
         
-        # Add Shp_ parameters to signature string
+        # Add Shp_ parameters to signature string (optional)
         # CRITICAL FORMAT REQUIREMENTS:
         # - Shp_ parameters MUST be sorted alphabetically by key
-        # - Format: :Shp_key:value (with colon separator between key and value, and between parameters)
-        # - NO colon at the end
+        # - Parameters are appended using ':' as a separator between parameters
+        # - Key/value separator is configurable:
+        #   - Standard: Shp_key=value
+        #   - Alternative: Shp_key:value
+        # - NO trailing ':' at the end
         # - NO URL-encoding (use raw values)
-        # Example: :Shp_currency:RUB:Shp_is_lifetime:false:Shp_pair_id:2:Shp_period_days:30
         if shp_params:
             # Sort Shp_ parameters alphabetically by key
             sorted_shp = sorted(shp_params.items())
             # Add each Shp_ parameter to signature string
-            # Format: :Shp_key:value (with colon separator between key and value, NO colon at the end)
+            # Format: :Shp_key{sep}value (NO trailing ':')
             for key, value in sorted_shp:
-                signature_string += f":{key}:{value}"
+                signature_string += f":{key}{shp_kv_separator}{value}"
         
         # Log signature string for debugging (without password)
         # Changed to INFO level to see in production logs
@@ -334,6 +337,8 @@ class RobokassaService(PaymentProvider):
                 currency=currency,
                 is_production=self.settings.robokassa_is_production,
                 shp_params=shp_params,
+                include_shp_in_signature=self.settings.robokassa_include_shp_in_signature,
+                shp_kv_separator=self.settings.robokassa_shp_kv_separator,
                 signature_format="MD5 (Robokassa standard)",
             )
             
@@ -365,7 +370,10 @@ class RobokassaService(PaymentProvider):
                 inv_id=inv_id,
                 password=password_1,  # Password #1 for payment (stripped)
                 currency=currency,
-                shp_params=shp_params,  # Shp_ parameters included in signature (sorted alphabetically)
+                shp_params=(
+                    shp_params if self.settings.robokassa_include_shp_in_signature else None
+                ),
+                shp_kv_separator=self.settings.robokassa_shp_kv_separator,
             )
             
             logger.info(
