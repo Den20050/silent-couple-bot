@@ -3,7 +3,7 @@
 from datetime import date, timedelta
 
 from aiogram import Router
-from fastapi import APIRouter, Request, HTTPException, Form
+from fastapi import APIRouter, Request, HTTPException, Form, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,11 +19,18 @@ from src.db.repositories.users import UsersRepository
 from src.db.repositories.daily_state import DailyStateRepository
 from src.services.payment import PaymentService
 from src.services.telegram import send_message_with_retry
+from src.db.base import async_session_maker
 
 logger = get_logger(__name__)
 
 # FastAPI router for webhook
 webhook_router = APIRouter()
+
+
+async def get_db_session() -> AsyncSession:
+    """Get database session for FastAPI dependency injection."""
+    async with async_session_maker() as session:
+        yield session
 
 
 # =============================================================================
@@ -150,7 +157,7 @@ webhook_router = APIRouter()
 @webhook_router.post("/webhook/robokassa")
 async def robokassa_webhook(
     request: Request,
-    session: AsyncSession,
+    session: AsyncSession = Depends(get_db_session),
     OutSum: str = Form(...),
     InvId: str = Form(...),
     SignatureValue: str = Form(...),
