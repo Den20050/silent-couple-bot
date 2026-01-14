@@ -29,6 +29,10 @@ bot: Bot | None = None
 async def setup_bot() -> tuple[Bot, Dispatcher]:
     """Initialize bot and dispatcher."""
     global bot, dp
+    
+    # If bot and dispatcher already initialized, return them
+    if bot is not None and dp is not None:
+        return bot, dp
 
     # Initialize Redis (or use MemoryStorage if Redis unavailable)
     redis = await create_redis_client()

@@ -28,6 +28,12 @@ def register_routers(dp: Dispatcher) -> None:
     Args:
         dp: Dispatcher instance
     """
+    # Check if routers are already registered to avoid double registration
+    # This can happen if setup_bot() is called multiple times
+    if hasattr(dp, '_routers_registered'):
+        logger.debug("Routers already registered, skipping")
+        return
+    
     # 1. Commands (e.g., /create_pair) - register FIRST
     dp.include_router(admin_router)
     dp.include_router(menu_router)
@@ -47,6 +53,9 @@ def register_routers(dp: Dispatcher) -> None:
     dp.include_router(delete_router)
     dp.include_router(link_router)
     dp.include_router(callbacks_router)
+    
+    # Mark routers as registered to prevent double registration
+    dp._routers_registered = True
     
     logger.info("Routers registered", router_count=9)
 
