@@ -1,0 +1,56 @@
+Финальная правка в W5 (Callback)
+Вместо:
+JavaScript
+Copy
+await telegram.editMessageText({
+  chat_id: partner_id,
+  text: "Ваш партнёр уже отправил пожелание"
+});
+Используем:
+JavaScript
+Copy
+const INVISIBLE = "\u200B"; // Zero-Width Space
+
+await telegram.editMessageText({
+  chat_id: partner_id,
+  message_id: message_id,
+  text: INVISIBLE,
+  parse_mode: "HTML"
+});
+Что получается в чате
+Table
+Copy
+До нажатия	После нажатия (партнёр)
+Хотите отправить...
+[Отправить в ответ]	(пустота, ничего не видно)
+Визуально — сообщение исчезает, но в DOM остаётся 1 символ (невидимый). Telegram не показывает "Удалённое сообщение" и не схлопывает чат.
+Дополнительно: проверка на iOS/Android
+iOS: невидимый символ отображается как пустая строка (идеально)
+Android: тоже пустота, без артефактов
+Desktop: ничего не видно
+Тестовая команда (проверьте сами):
+bash
+Copy
+curl -X POST https://api.telegram.org/bot<token>/sendMessage \
+  -d 'chat_id=your_id' \
+  -d 'text=%E2%80%8B'
+Если пришёл пустое сообщение (видите только время) — значит работает.
+Итоговый код W5 (фрагмент)
+JavaScript
+Copy
+// Для партнёра, который не успел первым
+await telegram.editMessageText({
+  chat_id: partner_id,
+  message_id: original_message_id,
+  text: "\u200B", // Невидимый символ
+  parse_mode: "HTML"
+});
+
+// Для инициатора (галочка)
+await telegram.editMessageText({
+  chat_id: initiator_id,
+  message_id: original_message_id,
+  text: "✅ Вы отправили пожелание",
+  parse_mode: "HTML"
+});
+Теперь чат остаётся чистым, без "третьего лица", с естественным UX.

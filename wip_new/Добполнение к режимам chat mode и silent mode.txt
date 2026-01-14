@@ -1,0 +1,125 @@
+Тема: добавить в Telegram-бота «Silent Couple Bot» выбор места доставки картинок «Доброе утро / Спокойной ночи» — либо в привычный чат с ботом, либо напрямую в личный диалог пары (A↔B). Обратной совместимости нет, код пишем «с нуля» под новую схему.
+1. Что уже есть
+aiogram 3.x, PostgreSQL, Alembic, структура проекта ниже
+таблица pairs (id, uid_a, uid_b, mode, status, …)
+воркеры morning_sender, evening_sender — рассылают картинки в user.id (личка с ботом)
+inline-кнопка «Отправить в ответ» живёт в чате с ботом, callback приходит туда же
+Copy
+src/
+├── bot/
+│   ├── handlers/
+│   │   ├── callbacks.py   (inline-кнопки)
+│   │   ├── commands.py    (/start /pay /settings …)
+│   │   └── messages.py    (тексты)
+│   └── middleware/
+├── core/
+│   ├── config.py
+│   ├── db.py
+│   └── models/
+│       ├── pair.py
+│       └── user.py
+├── workers/
+│   ├── morning_sender.py
+│   └── evening_sender.py
+└── alembic/
+2. Цель одной строкой
+Дать паре один раз выбрать:
+➜ «Получать пожелания в чате с ботом» (bot_dm)
+➜ «Получать пожелания в нашем личном чате» (pair_dm)
+Если выбран pair_dm:
+бот один раз получает chat_id их диалога и больше все картинки шлёт туда;
+кнопка «Отправить в ответ» остаётся только в личке с ботом;
+бот никогда не сохраняет текст сообщений пары.
+3. Таблицы и миграция
+Добавь поля через Alembic-миграцию:
+Python
+Copy
+def upgrade():
+    op.add_column('pairs',
+        sa.Column('delivery_chat', sa.Enum('bot_dm', 'pair_dm', name='deliverychat'), nullable=False, server_default='bot_dm'))
+    op.add_column('pairs',
+        sa.Column('private_chat_id', sa.BigInteger(), nullable=True))
+Обнови модель Pair:
+Python
+Copy
+class Pair(Base):
+    ...
+    delivery_chat: Mapped[DeliveryChat] = mapped_column(default=DeliveryChat.BOT_DM)
+    private_chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+4. UI-выбор при создании пары
+Шаг 4 онбординга (после выбора Chat/Silent-mode) добавляем ещё один экран:
+Текст:
+«Где удобнее получать пожелания? 💌»
+➜ [В чате с ботом] (callback: choose_delivery:bot_dm)
+➜ [В нашем личном чате] (callback: choose_delivery:pair_dm)
+Если нажали pair_dm → сразу шлём обоим в их личный чат короткое сообщение-якорь:
+Copy
+Нажмите ▶️, чтобы пожелания приходили сюда
+[▶️ Подключить чат]  →  callback: `anchor_pair_chat`
+callback приходит из их личного чата → ловим message.chat.id → сохраняем в pair.private_chat_id
+сразу удаляем это сообщение (deleteMessage)
+редактируем кнопку у второго пользователя на «✅ Чат подключён»
+5. Логика отправки картинок
+В morning_sender.py / evening_sender.py замени строку:
+Python
+Copy
+# старый вариант
+await bot.send_photo(chat_id=recipient.id, ...)
+
+# новый вариант
+target_chat = (
+    pair.private_chat_id
+    if pair.delivery_chat == DeliveryChat.PAIR_DM and pair.private_chat_id
+    else recipient.id
+)
+await bot.send_photo(chat_id=target_chat, ...)
+Подпись к картинке для pair_dm добавляем имя отправителя:
+Python
+Copy
+if pair.delivery_chat == DeliveryChat.PAIR_DM:
+    caption += f"\n— от {sender.first_name}"
+Кнопка «Отправить в ответ» не прикрепляется к сообщению в pair_dm — она остаётся в чате с ботом.
+6. Обработка callback «Отправить в ответ»
+Ничего не меняется: callback приходит из лички с ботом, бот шлёт ответную картинку туда же, куда пришла первая:
+Python
+Copy
+# внутри `send_response()`
+target_chat = (
+    pair.private_chat_id
+    if pair.delivery_chat == DeliveryChat.PAIR_DM and pair.private_chat_id
+    else initiator.id
+)
+await bot.send_photo(chat_id=target_chat, ...)
+7. Тексты сообщений
+Добавь в Messages (src/core/messages.py):
+Python
+Copy
+DELIVERY_CHOICE_TITLE = (
+    "Где удобнее получать пожелания? 💌\n"
+    "Выбор можно изменить позже в /settings"
+)
+DELIVERY_BOT_DM = "В чате с ботом"
+DELIVERY_PAIR_DM = "В нашем личном чате"
+
+ANCHOR_MESSAGE = (
+    "Нажмите ▶️, чтобы пожелания приходили сюда"
+)
+ANCHOR_BTN = "▶️ Подключить чат"
+8. Privacy & GDPR
+Добавь в PRIVACY.md:
+Если вы выберете «В нашем личном чате», бот один раз пришлёт туда картинку и не сохраняет текст сообщений участников. Бот видит только свои собственные сообщения.
+9. Что не делаем
+Не добавляем бота в участники чата
+Не парсим чужие сообщения
+Не делаем админ-прав
+Не храним историю переписки
+10. Тест-чек-лист для Cursor
+[ ] Миграция создаёт / откатывает поля
+[ ] Модель Pair содержит новые поля
+[ ] При создании пары показывается экран выбора delivery-чата
+[ ] При выборе pair_dm оба получают anchor-сообщение, бот сохраняет private_chat_id и удаляет сообщение
+[ ] morning_sender / evening_sender шлют картинку в private_chat_id, если он задан
+[ ] Кнопка «Отправить в ответ» всегда в чате с ботом, callback работает
+[ ] Ответная картинка летит туда же, куда пришла первая
+[ ] В pair_dm подпись содержит имя отправителя
+[ ] Команда /settings позволяет переключить обратно (не обязательно в MVP, но заготовь placeholder)

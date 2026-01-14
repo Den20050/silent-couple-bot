@@ -1,0 +1,133 @@
+1. Структура проекта и организация кода
+Принято:
+Copy
+src/
+  bot/          # handlers, middlewares, filters
+  worker/       # arq cron jobs (morning, evening, cleanup, dunning)
+  mini_app/     # FastAPI routes + static
+  db/           # SQLAlchemy models, **repositories (DAL)**, Alembic
+  services/     # business logic (image, payment, telegram)
+  core/         # pydantic-settings, constants, logger
+Решения:
+Repository-pattern (тонкий DAL) — да:
+repos/daily_state.py, repos/user_demo.py, repos/subscription.py
+Плюсы: тестируемость, единое место SQL, скрываем ORM от handlers.
+Unit of Work — нет, транзакции ведёт FastAPI-сервис или arq-job.
+Слой services вызывает репозитории, не вызывает SQLAlchemy напрямую.
+2. База данных
+2.1 Таблицы
+Table
+Copy
+Таблица	Поля (итогово)
+users	tg_id bigint PK, username text, utc_offset int, consent bool, consent_dt timestamptz, payer_id bigint
+pairs	id bigserial PK, uid_a bigint, uid_b bigint, mode text CHECK(silent,chat), common_chat_id bigint, status text CHECK(trial,active,past_due), payer_id bigint
+daily_state	pair_id bigint PK, day date PK, morning_initiator bigint, morning_file_id text, evening_initiator bigint, evening_file_id text
+subscriptions	id bigserial PK, pair_id bigint, payer_id bigint, yoo_id text UNIQUE, status text, period_end date, created_at timestamptz
+user_demo	tg_id bigint PK
+2.2 pics_pool vs MinIO
+Картинки только в MinIO (morning/*.jpg, evening/*.jpg)
+В БД храним только file_id (Telegram file_id) — не URL, не бинарник
+Уникальность проверяем по daily_state за 30 дней (без pic_ledger)
+2.3 Индексы (критичны)
+sql
+Copy
+-- daily_state
+CREATE INDEX idx_daily_state_day ON daily_state(day);
+-- pairs
+CREATE INDEX idx_pairs_status_mode ON pairs(status, mode);
+CREATE INDEX idx_pairs_common_chat ON pairs(common_chat_id);
+-- subscriptions
+CREATE INDEX idx_subscriptions_period ON subscriptions(period_end, status);
+3. Оплата и статусы
+3.1 Логика «один платит → оба active»
+Webhook YooKassa → успех →
+UPDATE pairs SET status='active', period_end=now()+30d WHERE id=$pair_id
++ notify both users «✅ Подписка активна до …»
+3.2 Повторные платежи
+Продлеваем period_end (не создаём новую строку)
+Idempotency-key в YooKassa → защита от дублей
+3.3 Trial
+Да, 7 дней без карты (по умолчанию pairs.status='trial')
+По истечении cron переводит в past_due и шлёт /pay кнопку
+4. Режимы работы
+4.1 Выбор режима
+При /start — inline-кнопки:
+[💬 Часто общаемся] → mode='chat'
+[💔 Редко] → mode='silent'
+Поменять потом — нельзя (минимализм)
+4.2 Chat Mode / common_chat_id
+Только через команду /link (бот должен увидеть себя в чате)
+Автоматически не определяем (меньше прав, меньше кода)
+5. Расписание и часовые пояса
+5.1 Определение часового пояса
+Автоматически по message.date (UTC) vs time() сервера → вычисляем offset
+Команда /tz есть, но скрыта (используется редко)
+5.2 Окно отправки
+Random ±30 минут от центра:
+07:30 ±30 мин → 07:00-08:00
+21:30 ±30 мин → 21:00-22:00
+Cron worker запускается каждые 30 мин → 2 окна покрыты
+6. Картинки
+6.1 Источник
+Используем существующие morning/*.jpg, evening/*.jpg (500-1000 шт)
+6.2 Загрузка в MinIO
+Скрипт scripts/load_images.py → Telegram Upload → получаем file_id → сохраняем в pics_pool
+6.3 Уникальность
+Проверка по daily_state за 30 дней:
+sql
+Copy
+SELECT DISTINCT morning_file_id
+FROM daily_state
+WHERE pair_id = $pair AND day > CURRENT_DATE - 30
+Если картинок не осталось → сброс списка (начинаем сначала)
+7. Mini App
+7.1 Верификация initData
+Обязательно (как в 2.2) → FastAPI middleware проверяет HMAC-SHA256
+7.2 Отправка в общий чат
+Через Bot API sendPhoto (POST из Mini App на бот-сервер):
+http
+Copy
+POST /mini-app/send
+Body: initData=...&file_id=...&chat_id=...
+Mini App НЕ имеет токена бота → запрос идёт на наш FastAPI, мы шлём картинку
+8. Мониторинг и метрики
+8.1 Prometheus-метрики (critical)
+Table
+Copy
+Метрика	Тип	Альерт
+morning_sent_total	Counter	—
+morning_latency_seconds	Histogram	>500 ms
+arq_queue_depth	Gauge	>1000
+circuit_breaker_open	Gauge	==1
+8.2 Логи
+Stdout в JSON (structlog) → Loki через Promtail
+Достаточно для MVP, Loki добавляем позже
+9. Тестирование
+9.1 Unit-тесты
+Обязательно для services/ и repos/
+Покрытие ≥70 % бизнес-правил (demo, payment, image unique)
+9.2 Интеграционные
+Мокаем Telegram API (aiogram test-client)
+Полный flow: /start → демо → оплата → утренняя картинка
+10. Деплой и инфраструктура
+10.1 Порядок
+Local → docker-compose.yml (SQLite, single Redis)
+CI/CD → GitHub Actions (test + build image)
+Prod → Terraform (VPS, DNS, Cloudflare) → docker-compose.prod.yml
+10.2 Terraform
+Сразу — state в S3, 2 файла: main.tf, variables.tf
+Создаёт: VPS, DNS A-record, Cloudflare zone, firewall
+11. Безопасность
+11.1 Rate-limiting
+Cloudflare — 100 req/s/IP (WAF)
+Bot middleware — 50 msg/s per user (Redis-backed)
+11.2 Спам/флуд
+1 сообщение в 2 секунды per user (храним в Redis TTL)
+Ban на 1 час при >20 сообщений/мин
+12. Обработка ошибок
+12.1 Circuit breaker (YooKassa)
+Да, как в 2.2: 3 ошибки за 60 сек → 60 сек open
+Реализация: middlewares/circuit.py, храним в PostgreSQL
+12.2 Telegram API retry
+3 попытки, экспоненциальная задержка (1s, 2s, 4s)
+Логируем и отправляем в dead-letter (arq позволяет)
