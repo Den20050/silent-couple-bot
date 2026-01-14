@@ -42,13 +42,30 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
     # Bootstrap application to get container with all dependencies
     container: Container = await bootstrap()
     
-    # TEMPORARY: Use MemoryStorage to test if Redis is the problem
-    # TODO: Fix Redis connection issue and switch back to RedisStorage
-    logger.warning("TEMPORARY: Using MemoryStorage instead of RedisStorage for testing")
-    storage = MemoryStorage()
-    
+    # Initialize Redis storage
+    # RedisStorage needs its own Redis client with its own connection pool
+    # Create separate client for RedisStorage to avoid connection closure issues
+    if redis_storage_client is None:
+        redis_storage_client = await create_redis_client()
     # Use container's Redis for rate limiting middleware (it's already initialized)
     redis_client = container.redis
+    storage = None
+
+    if redis_storage_client:
+        try:
+            # RedisStorage will manage its own connection pool
+            storage = RedisStorage(redis=redis_storage_client)
+            logger.info("Using Redis storage")
+        except Exception as e:
+            logger.warning(f"Failed to create RedisStorage: {e}")
+            logger.warning("Falling back to MemoryStorage")
+            storage = MemoryStorage()
+    else:
+        logger.warning("Redis not available, using MemoryStorage")
+        logger.warning(
+            "Note: FSM state will be lost on restart. For production, use Redis."
+        )
+        storage = MemoryStorage()
 
     # Initialize bot
     bot = Bot(
@@ -78,13 +95,12 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
     dp.message.middleware(TimezoneMiddleware())
     dp.callback_query.middleware(TimezoneMiddleware())
 
-    # 4. Rate limiting - TEMPORARILY DISABLED due to Redis connection issues
-    # TODO: Fix Redis connection and re-enable rate limiting
-    logger.warning("TEMPORARY: Rate limiting disabled due to Redis connection issues")
-    # if redis_client:
-    #     dp.message.middleware(RateLimitMiddleware(redis_client))
-    # else:
-    #     logger.warning("Rate limiting disabled (Redis not available)")
+    # 4. Rate limiting only if Redis is available
+    # Use container's Redis client (it's already initialized and managed by container)
+    if redis_client:
+        dp.message.middleware(RateLimitMiddleware(redis_client))
+    else:
+        logger.warning("Rate limiting disabled (Redis not available)")
 
     # Register routers using the same order as router_registry
     from src.bot.bootstrap.router_registry import register_routers
