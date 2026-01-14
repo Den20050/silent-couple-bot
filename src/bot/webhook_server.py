@@ -185,7 +185,10 @@ async def telegram_webhook(
     """Handle Telegram webhook."""
     global bot, dp
 
+    logger.info("Webhook request received", path=settings.webhook_path)
+
     if not bot or not dp:
+        logger.error("Bot or dispatcher not initialized")
         raise HTTPException(status_code=503, detail="Bot not initialized")
 
     # Verify secret token if configured
@@ -201,8 +204,14 @@ async def telegram_webhook(
     try:
         update_data = await request.json()
         update = Update(**update_data)
+        logger.info(
+            "Webhook update parsed",
+            update_id=update.update_id,
+            has_message=update.message is not None,
+            has_callback_query=update.callback_query is not None,
+        )
     except Exception as e:
-        logger.error("Failed to parse webhook update", error=str(e))
+        logger.error("Failed to parse webhook update", error=str(e), exc_info=True)
         raise HTTPException(status_code=400, detail="Invalid update data")
 
     # Extract IP from request headers
@@ -218,13 +227,17 @@ async def telegram_webhook(
     # This allows handlers and middleware to access IP without modifying frozen Pydantic models
     if ip:
         ip_context.set(ip)
+        logger.debug("IP set in context", ip=ip)
 
     # Process update
     try:
+        logger.debug("Processing update", update_id=update.update_id)
         await dp.feed_update(bot, update)
+        logger.info("Update processed successfully", update_id=update.update_id)
     except Exception as e:
         logger.error(
             "Error processing webhook update",
+            update_id=update.update_id,
             error=str(e),
             exc_info=True,
         )
