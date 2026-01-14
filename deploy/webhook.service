@@ -5,7 +5,7 @@ After=network.target postgresql.service redis.service
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/root/Silent-Couple-Bot
+WorkingDirectory=/root/silent-couple-bot
 Environment="PATH=/usr/local/bin:/usr/bin:/bin"
 Environment="PYTHONUNBUFFERED=1"
 ExecStart=/usr/bin/python3 -m src.entrypoints.webhook

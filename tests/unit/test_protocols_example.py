@@ -65,7 +65,10 @@ class MockMessenger:
         save_message: bool = True,
     ) -> Message:
         """Mock send_message."""
-        message = MagicMock(spec=Message)
+        # Avoid spec=Message here: aiogram Message fields are runtime (pydantic),
+        # and strict spec can break attribute access in tests.
+        message = MagicMock()
+        message.chat = MagicMock(spec=Chat)
         message.chat.id = chat_id
         message.text = text
         message.message_id = len(self.sent_messages) + 1
@@ -86,7 +89,8 @@ class MockMessenger:
         save_message: bool = True,
     ) -> Message:
         """Mock send_photo."""
-        message = MagicMock(spec=Message)
+        message = MagicMock()
+        message.chat = MagicMock(spec=Chat)
         message.chat.id = chat_id
         message.photo = [MagicMock(file_id=photo)]
         message.caption = caption
@@ -107,7 +111,8 @@ class MockMessenger:
         reply_markup: Optional[dict] = None,
     ) -> Optional[Message]:
         """Mock edit_message."""
-        message = MagicMock(spec=Message)
+        message = MagicMock()
+        message.chat = MagicMock(spec=Chat)
         message.chat.id = chat_id
         message.message_id = message_id
         message.text = text
