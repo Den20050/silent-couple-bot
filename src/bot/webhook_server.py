@@ -78,11 +78,13 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
     dp.message.middleware(TimezoneMiddleware())
     dp.callback_query.middleware(TimezoneMiddleware())
 
-    # 4. Rate limiting only if Redis is available
-    if redis_client:
-        dp.message.middleware(RateLimitMiddleware(redis_client))
-    else:
-        logger.warning("Rate limiting disabled (Redis not available)")
+    # 4. Rate limiting - TEMPORARILY DISABLED due to Redis connection issues
+    # TODO: Fix Redis connection and re-enable rate limiting
+    logger.warning("TEMPORARY: Rate limiting disabled due to Redis connection issues")
+    # if redis_client:
+    #     dp.message.middleware(RateLimitMiddleware(redis_client))
+    # else:
+    #     logger.warning("Rate limiting disabled (Redis not available)")
 
     # Register routers using the same order as router_registry
     from src.bot.bootstrap.router_registry import register_routers
