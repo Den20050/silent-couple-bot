@@ -76,19 +76,53 @@ git commit -m "Initial commit: Silent Couple Bot"
 
 ## Шаг 7: Добавление remote репозитория
 
-**Вариант A: Если вы используете HTTPS (рекомендуется для начала)**
+**Вариант A: HTTPS (нужен Personal Access Token)**
 
 ```powershell
 # Замените YOUR_USERNAME на ваш GitHub username
 git remote add origin https://github.com/YOUR_USERNAME/silent-couple-bot.git
 ```
 
-**Вариант B: Если вы используете SSH**
+**Вариант B: SSH (рекомендуется, не нужен токен!)**
+
+Если у вас уже настроен SSH ключ для GitHub:
 
 ```powershell
 # Замените YOUR_USERNAME на ваш GitHub username
 git remote add origin git@github.com:YOUR_USERNAME/silent-couple-bot.git
 ```
+
+**Как настроить SSH ключ (если еще не настроен):**
+
+1. Проверьте, есть ли уже SSH ключ:
+   ```powershell
+   ls ~/.ssh/id_*.pub
+   ```
+
+2. Если ключа нет, создайте его:
+   ```powershell
+   ssh-keygen -t ed25519 -C "your.email@example.com"
+   # Нажмите Enter для всех вопросов (или укажите пароль)
+   ```
+
+3. Скопируйте публичный ключ:
+   ```powershell
+   cat ~/.ssh/id_ed25519.pub
+   # Или в Windows:
+   type $env:USERPROFILE\.ssh\id_ed25519.pub
+   ```
+
+4. Добавьте ключ в GitHub:
+   - Откройте: https://github.com/settings/keys
+   - Нажмите **"New SSH key"**
+   - Вставьте скопированный ключ
+   - Сохраните
+
+5. Проверьте подключение:
+   ```powershell
+   ssh -T git@github.com
+   ```
+   Должно вывести: "Hi YOUR_USERNAME! You've successfully authenticated..."
 
 **Как узнать ваш GitHub username:**
 - Зайдите на GitHub.com
@@ -109,20 +143,40 @@ git branch -M main
 git push -u origin main
 ```
 
-Если используете HTTPS, Git попросит ввести:
+**Если используете HTTPS:**
+Git попросит ввести:
 - **Username**: ваш GitHub username
 - **Password**: используйте Personal Access Token (не обычный пароль!)
 
-### Как создать Personal Access Token (если нужно):
+**Если используете SSH:**
+Просто введите пароль от SSH ключа (если вы его задавали), или push пройдет автоматически.
+
+### Как создать Personal Access Token (только для HTTPS):
+
+**Способ 1: Прямая ссылка (самый простой)**
+
+1. Откройте в браузере: https://github.com/settings/tokens
+2. Нажмите **"Generate new token"** (или "Generate new token (classic)")
+3. Введите название токена (например, "Silent Couple Bot")
+4. Выберите срок действия (например, "90 days" или "No expiration")
+5. Отметьте права доступа: **`repo`** (полный доступ к репозиториям)
+6. Нажмите **"Generate token"** внизу страницы
+7. **ВАЖНО:** Скопируйте токен сразу! Он показывается только один раз!
+8. Используйте этот токен как пароль при `git push`
+
+**Способ 2: Через меню GitHub**
 
 1. Зайдите на GitHub.com
-2. Нажмите на ваш аватар → Settings
-3. В левом меню: Developer settings
-4. Personal access tokens → Tokens (classic)
-5. Generate new token (classic)
-6. Выберите срок действия и права доступа (минимум `repo`)
-7. Скопируйте токен (он показывается только один раз!)
-8. Используйте этот токен как пароль при `git push`
+2. Нажмите на ваш аватар (правый верхний угол) → **Settings**
+3. В левом меню прокрутите вниз до раздела **"Developer settings"**
+4. Нажмите **"Personal access tokens"** → **"Tokens (classic)"**
+5. Нажмите **"Generate new token (classic)"**
+6. Выберите срок и права (`repo`)
+7. Скопируйте токен
+
+**Альтернатива: Используйте SSH вместо HTTPS (не нужен токен!)**
+
+Если не хотите создавать токен, используйте SSH (см. раздел ниже)
 
 ## Шаг 10: Проверка
 
