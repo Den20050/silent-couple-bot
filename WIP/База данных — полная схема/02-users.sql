@@ -1,0 +1,5 @@
+-- Создание роли для репликации
+CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD '${DB_REPLICA_PASSWORD}';
+GRANT CONNECT ON DATABASE n8n TO replicator;
+GRANT USAGE ON SCHEMA public TO replicator;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO replicator;

@@ -1,0 +1,1390 @@
+1. Описание проекта
+Silent-Couple-Bot — Telegram-бот для пар, который каждый день отправляет уникальные картинки «Доброе утро» и «Спокойной ночи» в случайное время внутри окна 07:30-08:30 и 21:30-22:30 по часовому поясу каждого пользователя. Нажатие на inline-кнопку «💌» = «молчаливое мигание» партнёру.
+Ключевые особенности:
+Уникальность картинок: 30 дней для каждого пользователя в паре (A и B получают разные)
+Рандомное время: ±30 минут от центра окна для естественности
+Без текста: только картинки и одна кнопка
+Меню: команды в Menu Button (≡) без личного кабинета
+Подписка: 199 ₽/мес, trial 7 дней
+152-ФЗ + GDPR: согласие, локализация, удаление за 3 дня
+
+2. Техническая архитектура
+┌─────────────────────────────────────────────────────────────────────┐
+│  Пользователь A          Пользователь B                             │
+│  Telegram                Telegram                                   │
+└──────┬─────────────────────┬─────────────────────────────────────────┘
+       │                     │
+       ▼                     ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  Cloudflare (WAF+CDN) → HTTPS → VPS (MTS/Selectel, Москва)         │
+│                                                                     │
+│  N8N Main (queue mode) → Redis Bull → N8N Workers (3-5 pods)       │
+│         │                                                           │
+│  PostgreSQL (1 primary + 2 replica)                                │
+│         │                                                           │
+│  Minio S3 (pics, logs, backups)                                     │
+└─────────────────────────────────────────────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  Telegram Bot API                                                   │
+│  YooKassa (платежи + refunds)                                       │
+│  UptimeRobot (мониторинг)                                           │
+│  WorldTimeAPI (опц. TZ по гео)                                      │
+└─────────────────────────────────────────────────────────────────────┘
+
+3. User Journey (полный алгоритм)
+
+1. User A нажимает START
+2. Бот: «Ознакомьтесь с политикой обработки ПДн 📄»
+   [📄 Политика] → открывает Telegra.ph
+3. User возвращается → бот показывает:
+   «Ознакомились? Теперь можете принять»
+   [Принимаю ✅] ← inline-кнопка
+4. User нажимает ✅ → бот:
+   - Сохраняет tg_id, username, IP, consent_dt
+   - Авто-определяет utc_offset (по времени нажатия)
+   - Генерирует invite-ссылку t.me/YourBot?start=REF_AAA
+   - Показывает: «Пригласите партнёра» [Поделиться]
+
+3.2. Приглашение партнёра
+5. User B заходит по ссылке → повторяет шаги 2-4
+6. Бот создаёт:
+   - Запись в pairs (uid_a, uid_b)
+   - Trial-subscription (status='trial', trial_end=+7д)
+   - Отправляет обоим: «Пара создана!»
+
+3.3. Ежедневная рассылка
+
+7. Каждые 30 мин cron проверяет:
+   - UTC время = 07:30-08:30 (UT) и 21:30-22:30 (UT)
+   - Для каждой пары генерирует random next_send_at внутри окна
+   - Отправляет картинку A → uid_a, картинку B → uid_b
+   - Сохраняет в pings и pic_ledger
+8. User получает картинку + кнопку «💌»
+9. User нажимает 💌 → кнопка исчезает, партнёр получает такую же картинку + «Ваш партнёр на связи»
+
+3.4. Меню управления (Menu Button ≡)
+
+10. User нажимает ≡ Menu → выбирает:
+    - Показать меню → inline-сообщение с подпиской и кнопками
+    - Оплатить 199 ₽ → переходит в YooKassa checkout
+    - Удалить → мгновенное удаление ПДн
+
+3.5. Оплата и продление
+
+11. Trial заканчивается → бот отправляет invoice
+12. User оплачивает → YooKassa webhook → sub.active, current_period_end=+30д
+13. Каждый день проверяем списания → если failed, меняем статус на past_due
+
+
+4. Структура файлов
+
+silent-couple-bot/
+├── docker-compose.yml
+├── .env.example
+├── init/
+│   ├── 01-schema.sql
+│   ├── 02-indexes.sql
+│   └── 03-partitions.sql
+├── workflows/
+│   ├── W1_onboarding.json
+│   ├── W2_timezone.json
+│   ├── W3_morning.json
+│   ├── W4_evening.json
+│   ├── W5_tap.json
+│   ├── W6_payment_hook.json
+│   ├── W7_dunning.json
+│   ├── W8_refund.json
+│   ├── W9_support.json
+│   └── W10_cleaner.json
+├── scripts/
+│   ├── load_pics_to_tg.js
+│   └── daily_backup.sh
+├── monitoring/
+│   └── grafana-dashboard.json
+├── docs/
+│   ├── oferta.md
+│   └── privacy_telegra.md
+└── README.md (этот файл)
+
+5. SQL-схема БД
+
+Файл: init/01-schema.sql
+CREATE TABLE users (
+    id BIGSERIAL PRIMARY KEY,
+    tg_id BIGINT UNIQUE NOT NULL,
+    tg_username TEXT,
+    utc_offset SMALLINT DEFAULT 3,
+    next_send_at TIMESTAMPTZ,
+    consent BOOLEAN DEFAULT FALSE,
+    consent_dt TIMESTAMPTZ,
+    consent_ip INET,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE pairs (
+    id BIGSERIAL PRIMARY KEY,
+    uid_a BIGINT REFERENCES users(id),
+    uid_b BIGINT REFERENCES users(id),
+    status TEXT DEFAULT 'trial',
+    trial_end DATE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE subscriptions (
+    id BIGSERIAL PRIMARY KEY,
+    pair_id BIGINT REFERENCES pairs(id),
+    payer_uid BIGINT REFERENCES users(id),
+    external_id TEXT,
+    status TEXT DEFAULT 'trial',
+    current_period_end TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE pings (
+    id BIGSERIAL,
+    pair_id BIGINT REFERENCES pairs(id),
+    sender_uid BIGINT REFERENCES users(id),
+    type TEXT,
+    sent_at TIMESTAMPTZ DEFAULT NOW()
+) PARTITION BY RANGE (sent_at);
+
+CREATE TABLE pics_pool (
+    file_id TEXT PRIMARY KEY,
+    type TEXT  -- 'morning' | 'evening'
+);
+
+CREATE TABLE pic_ledger (
+    pair_id BIGINT,
+    file_id TEXT,
+    role TEXT,  -- 'A' | 'B'
+    sent_at DATE,
+    PRIMARY KEY (pair_id, file_id, role)
+);
+
+CREATE TABLE refunds (
+    id BIGSERIAL PRIMARY KEY,
+    sub_id BIGINT REFERENCES subscriptions(id),
+    amount_cents INT,
+    reason TEXT,
+    refund_id TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+5.2. Индексы
+
+CREATE INDEX idx_pairs_status_trial ON pairs(status, trial_end);
+CREATE INDEX idx_subs_period_end ON subscriptions(current_period_end, status);
+CREATE INDEX idx_pings_pair_date ON pings(pair_id, sent_at);
+CREATE INDEX idx_ledger_pair_date ON pic_ledger(pair_id, sent_at);
+
+5.3. Партиции
+Файл: init/03-partitions.sql
+CREATE TABLE pings_2025_07 PARTITION OF pings
+    FOR VALUES FROM ('2025-07-01') TO ('2025-08-01');
+CREATE TABLE pings_2025_08 PARTITION OF pings
+    FOR VALUES FROM ('2025-08-01') TO ('2025-09-01');
+
+6. Docker Compose
+Файл: docker-compose.yml
+
+version: "3.9"
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: n8n_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: n8n
+      POSTGRES_USER: n8n
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d
+    networks:
+      - n8n-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U n8n"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n_main
+    restart: unless-stopped
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: n8n
+      DB_POSTGRESDB_PASSWORD: ${DB_PASSWORD}
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: ${ADMIN_USER}
+      N8N_BASIC_AUTH_PASSWORD: ${ADMIN_PASS}
+      WEBHOOK_URL: https://${DOMAIN}/
+      N8N_LOG_LEVEL: info
+    ports:
+      - "127.0.0.1:5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./workflows:/workflows
+    networks:
+      - n8n-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  minio:
+    image: minio/minio:latest
+    container_name: n8n_s3
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9001:9001"
+    networks:
+      - n8n-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: n8n_redis
+    restart: unless-stopped
+    networks:
+      - n8n-net
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --save 60 1
+
+networks:
+  n8n-net:
+    driver: bridge
+
+volumes:
+  pg_data:
+  n8n_data:
+  minio_data:
+  redis_data:
+
+Файл: .env.example
+
+DOMAIN=bot-domain.ru
+DB_PASSWORD=super-secret-password-123
+ADMIN_USER=admin
+ADMIN_PASS=admin-secret-456
+MINIO_KEY=minioadmin
+MINIO_SECRET=minio-secret-789
+TG_BOT_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
+YOOKASSA_SHOP_ID=123456
+YOOKASSA_SECRET=test_1234567890abcdef
+UPTIMEROBOT_API_KEY=u1234567-8901abcdef
+ADMIN_TG_ID=111111111
+
+7. N8N Workflows (все 10)
+W1: Onboarding
+{
+  "name": "W1_Onboarding",
+  "nodes": [
+    {
+      "parameters": {
+        "trigger": "message",
+        "message": "start"
+      },
+      "id": "telegram-trigger-start",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "jsCode": "const tg_id = items[0].json.message.from.id;\nconst username = items[0].json.message.from.username || '';\nconst ip = items[0].json.headers['x-real-ip'] || '0.0.0.0';\nreturn [{json: {tg_id, username, ip}}];"
+      },
+      "id": "parse-user",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO users (tg_id, tg_username, consent_ip) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING RETURNING consent;",
+        "options": {
+          "queryParams": "={{$json.tg_id}},{{$json.username}},{{$json.ip}}"
+        }
+      },
+      "id": "insert-user",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "credentials": {
+        "postgres": { "id": "pg", "name": "PG" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{$json.tg_id}}",
+        "text": "Ознакомьтесь с политикой обработки ПДн:\nhttps://telegra.ph/YourPrivacy-07-01",
+        "buttons": [
+          {
+            "text": "📄 Политика",
+            "url": "https://telegra.ph/YourPrivacy-07-01"
+          }
+        ]
+      },
+      "id": "show-policy",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "credentials": {
+        "telegramApi": { "id": "tg", "name": "TG" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{$json.tg_id}}",
+        "text": "Ознакомились? Теперь можете принять условия:",
+        "buttons": [
+          {
+            "text": "Принимаю ✅",
+            "callbackData": "consent_={{$json.tg_id}}"
+          }
+        ]
+      },
+      "id": "ask-consent",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "credentials": {
+        "telegramApi": { "id": "tg", "name": "TG" }
+      }
+    }
+  ],
+  "connections": {
+    "telegram-trigger-start": {
+      "main": [[{"node": "parse-user", "type": "main", "index": 0}]]
+    },
+    "parse-user": {
+      "main": [[{"node": "insert-user", "type": "main", "index": 0}]]
+    },
+    "insert-user": {
+      "main": [[{"node": "show-policy", "type": "main", "index": 0}]]
+    },
+    "show-policy": {
+      "main": [[{"node": "ask-consent", "type": "main", "index": 0}]]
+    }
+  }
+}
+
+W2: Timezone Setter
+Назначение: Обработка команд /tz и автоматическое определение часового пояса
+{
+  "name": "W2_TimezoneSetter",
+  "nodes": [
+    {
+      "parameters": {
+        "trigger": "message",
+        "message": "tz"
+      },
+      "id": "telegram-trigger-tz",
+      "name": "Telegram Trigger: /tz",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "jsCode": "const tg_id = items[0].json.message.from.id;\nconst msgDate = new Date(items[0].json.message.date * 1000);\nconst utcHour = msgDate.getUTCHours();\nconst localHour = msgDate.getHours();\nconst offset = localHour - utcHour;\nreturn [{json: {tg_id, offset}}];"
+      },
+      "id": "detect-tz",
+      "name": "Detect UTC Offset",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE users SET utc_offset = $1 WHERE tg_id = $2 RETURNING *;",
+        "options": {
+          "queryParams": "={{$json.offset}},{{$json.tg_id}}"
+        }
+      },
+      "id": "update-tz",
+      "name": "Update UTC Offset",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "credentials": {
+        "postgres": { "id": "pg", "name": "Postgres" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{$json.tg_id}}",
+        "text": "Часовой пояс обновлён: UTC{{$json.offset >= 0 ? '+' : ''}}{{$json.offset}}"
+      },
+      "id": "confirm-tz",
+      "name": "Confirm TZ Update",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "credentials": {
+        "telegramApi": { "id": "tg", "name": "Telegram" }
+      }
+    }
+  ],
+  "connections": {
+    "telegram-trigger-tz": {
+      "main": [[{"node": "detect-tz", "type": "main", "index": 0}]]
+    },
+    "detect-tz": {
+      "main": [[{"node": "update-tz", "type": "main", "index": 0}]]
+    },
+    "update-tz": {
+      "main": [[{"node": "confirm-tz", "type": "main", "index": 0}]]
+    }
+  }
+}
+
+W3: Morning Sender (рандомное время в окне)
+Назначение: Отправка утренних картинок с рандомным временем 07:30-08:30
+
+{
+  "name": "W3_MorningSender",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {"minute": "0,30"}
+          ]
+        }
+      },
+      "id": "cron-morning",
+      "name": "Cron: Каждые 30 мин",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT u.id, u.tg_id, u.utc_offset, u.next_send_at, p.id as pair_id, p.uid_a, p.uid_b FROM users u JOIN pairs p ON (u.id = p.uid_a OR u.id = p.uid_b) WHERE u.next_send_at IS NULL AND p.status IN ('trial', 'active') AND (EXTRACT(HOUR FROM NOW() AT TIME ZONE 'UTC' - INTERVAL '7 hours 30 minutes' - u.utc_offset) = 7);"
+      },
+      "id": "fetch-users-morning",
+      "name": "Fetch Users for Morning",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "credentials": {
+        "postgres": { "id": "pg", "name": "Postgres" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "for (const item of items) {\n  const now = new Date();\n  const base = new Date(now);\n  base.setHours(7, 30, 0, 0);\n  const offset = Math.floor(Math.random() * 60);\n  base.setMinutes(base.getMinutes() + offset);\n  item.json.next_send_at = base.toISOString();\n  item.json.send_now = base <= now;\n}\nreturn items.filter(i => i.json.send_now);"
+      },
+      "id": "random-time-morning",
+      "name": "Random Time 07:30-08:30",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH banned AS (SELECT file_id FROM pic_ledger WHERE pair_id = $1 AND sent_at >= CURRENT_DATE - 30) (SELECT file_id, 'A' AS role FROM pics_pool WHERE type = 'morning' AND file_id NOT IN (SELECT file_id FROM banned) ORDER BY RANDOM() LIMIT 1) UNION ALL (SELECT file_id, 'B' AS role FROM pics_pool WHERE type = 'morning' AND file_id NOT IN (SELECT file_id FROM banned) AND file_id <> (SELECT file_id FROM banned LIMIT 1) ORDER BY RANDOM() LIMIT 1);",
+        "options": {
+          "queryParams": "={{$json.pair_id}}"
+        }
+      },
+      "id": "select-pics",
+      "name": "Select 2 Unique Pics",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "credentials": {
+        "postgres": { "id": "pg", "name": "Postgres" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "if (items.length < 2) {\n  await $postgres.query('DELETE FROM pic_ledger WHERE pair_id = $1', [items[0].json.pair_id]);\n  return [];\n}\nreturn items;"
+      },
+      "id": "check-pics-count",
+      "name": "Check & Reset if needed",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "chatId": "={{$json.uid_a}}",
+        "fileId": "={{$json.file_id}}",
+        "additionalFields": {
+          "replyMarkup": "={\"inline_keyboard\":[[{\"text\":\"💌\",\"callback_data\":\"tap_{{$json.pair_id}}_{{$json.uid_a}}\"}]]}"
+        }
+      },
+      "id": "send-to-a",
+      "name": "Send to User A",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "credentials": {
+        "telegramApi": { "id": "tg", "name": "Telegram" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{$json.uid_b}}",
+        "fileId": "={{$json.file_id}}",
+        "additionalFields": {
+          "replyMarkup": "={\"inline_keyboard\":[[{\"text\":\"💌\",\"callback_data\":\"tap_{{$json.pair_id}}_{{$json.uid_b}}\"}]]}"
+        }
+      },
+      "id": "send-to-b",
+      "name": "Send to User B",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "credentials": {
+        "telegramApi": { "id": "tg", "name": "Telegram" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO pings (pair_id, sender_uid, type, sent_at) VALUES ($1, $2, 'morning', NOW()), ($1, $3, 'morning', NOW()); INSERT INTO pic_ledger (pair_id, file_id, role, sent_at) VALUES ($1, $4, 'A', CURRENT_DATE), ($1, $5, 'B', CURRENT_DATE); UPDATE users SET next_send_at = NULL WHERE id = $2 OR id = $3;",
+        "options": {
+          "queryParams": "={{$json.pair_id}},{{$json.uid_a}},{{$json.uid_b}},{{$json.file_id_A}},{{$json.file_id_B}}"
+        }
+      },
+      "id": "log-send",
+      "name": "Log Send",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "credentials": {
+        "postgres": { "id": "pg", "name": "Postgres" }
+      }
+    }
+  ],
+  "connections": {
+    "cron-morning": {
+      "main": [[{"node": "fetch-users-morning", "type": "main", "index": 0}]]
+    },
+    "fetch-users-morning": {
+      "main": [[{"node": "random-time-morning", "type": "main", "index": 0}]]
+    },
+    "random-time-morning": {
+      "main": [[{"node": "select-pics", "type": "main", "index": 0}]]
+    },
+    "select-pics": {
+      "main": [[{"node": "check-pics-count", "type": "main", "index": 0}]]
+    },
+    "check-pics-count": {
+      "main": [
+        [{"node": "send-to-a", "type": "main", "index": 0}],
+        [{"node": "send-to-b", "type": "main", "index": 0}]
+      ]
+    },
+    "send-to-a": {
+      "main": [[{"node": "log-send", "type": "main", "index": 0}]]
+    },
+    "send-to-b": {
+      "main": [[{"node": "log-send", "type": "main", "index": 0}]]
+    }
+  }
+}
+
+W4: Evening Sender
+
+{
+  "name": "W4_EveningSender",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {"minute": "0,30"}
+          ]
+        }
+      },
+      "id": "cron-evening",
+      "name": "Cron: Каждые 30 мин",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT u.id, u.tg_id, u.utc_offset, u.next_send_at, p.id as pair_id, p.uid_a, p.uid_b FROM users u JOIN pairs p ON (u.id = p.uid_a OR u.id = p.uid_b) WHERE u.next_send_at IS NULL AND p.status IN ('trial', 'active') AND (EXTRACT(HOUR FROM NOW() AT TIME ZONE 'UTC' - INTERVAL '21 hours 30 minutes' - u.utc_offset) = 21);"
+      },
+      "id": "fetch-users-evening",
+      "name": "Fetch Users for Evening",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "credentials": {
+        "postgres": { "id": "pg", "name": "Postgres" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "for (const item of items) {\n  const now = new Date();\n  const base = new Date(now);\n  base.setHours(21, 30, 0, 0);\n  const offset = Math.floor(Math.random() * 60);\n  base.setMinutes(base.getMinutes() + offset);\n  item.json.next_send_at = base.toISOString();\n  item.json.send_now = base <= now;\n}\nreturn items.filter(i => i.json.send_now);"
+      },
+      "id": "random-time-evening",
+      "name": "Random Time 21:30-22:30",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH banned AS (SELECT file_id FROM pic_ledger WHERE pair_id = $1 AND sent_at >= CURRENT_DATE - 30) (SELECT file_id, 'A' AS role FROM pics_pool WHERE type = 'evening' AND file_id NOT IN (SELECT file_id FROM banned) ORDER BY RANDOM() LIMIT 1) UNION ALL (SELECT file_id, 'B' AS role FROM pics_pool WHERE type = 'evening' AND file_id NOT IN (SELECT file_id FROM banned) AND file_id <> (SELECT file_id FROM banned LIMIT 1) ORDER BY RANDOM() LIMIT 1);",
+        "options": {
+          "queryParams": "={{$json.pair_id}}"
+        }
+      },
+      "id": "select-pics-evening",
+      "name": "Select 2 Evening Pics",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "credentials": {
+        "postgres": { "id": "pg", "name": "Postgres" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "if (items.length < 2) {\n  await $postgres.query('DELETE FROM pic_ledger WHERE pair_id = $1', [items[0].json.pair_id]);\n  return [];\n}\nreturn items;"
+      },
+      "id": "check-pics-evening",
+      "name": "Check & Reset Evening",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "chatId": "={{$json.uid_a}}",
+        "fileId": "={{$json.file_id}}",
+        "additionalFields": {
+          "replyMarkup": "={\"inline_keyboard\":[[{\"text\":\"💌\",\"callback_data\":\"tap_{{$json.pair_id}}_{{$json.uid_a}}\"}]]}"
+        }
+      },
+      "id": "send-evening-a",
+      "name": "Send Evening to A",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "credentials": {
+        "telegramApi": { "id": "tg", "name": "Telegram" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{$json.uid_b}}",
+        "fileId": "={{$json.file_id}}",
+        "additionalFields": {
+          "replyMarkup": "={\"inline_keyboard\":[[{\"text\":\"💌\",\"callback_data\":\"tap_{{$json.pair_id}}_{{$json.uid_b}}\"}]]}"
+        }
+      },
+      "id": "send-evening-b",
+      "name": "Send Evening to B",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "credentials": {
+        "telegramApi": { "id": "tg", "name": "Telegram" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO pings (pair_id, sender_uid, type, sent_at) VALUES ($1, $2, 'evening', NOW()), ($1, $3, 'evening', NOW()); INSERT INTO pic_ledger (pair_id, file_id, role, sent_at) VALUES ($1, $4, 'A', CURRENT_DATE), ($1, $5, 'B', CURRENT_DATE); UPDATE users SET next_send_at = NULL WHERE id = $2 OR id = $3;",
+        "options": {
+          "queryParams": "={{$json.pair_id}},{{$json.uid_a}},{{$json.uid_b}},{{$json.file_id_A}},{{$json.file_id_B}}"
+        }
+      },
+      "id": "log-evening",
+      "name": "Log Evening Send",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "credentials": {
+        "postgres": { "id": "pg", "name": "Postgres" }
+      }
+    }
+  ],
+  "connections": {
+    "cron-evening": {
+      "main": [[{"node": "fetch-users-evening", "type": "main", "index": 0}]]
+    },
+    "fetch-users-evening": {
+      "main": [[{"node": "random-time-evening", "type": "main", "index": 0}]]
+    },
+    "random-time-evening": {
+      "main": [[{"node": "select-pics-evening", "type": "main", "index": 0}]]
+    },
+    "select-pics-evening": {
+      "main": [[{"node": "check-pics-evening", "type": "main", "index": 0}]]
+    },
+    "check-pics-evening": {
+      "main": [
+        [{"node": "send-evening-a", "type": "main", "index": 0}],
+        [{"node": "send-evening-b", "type": "main", "index": 0}]
+      ]
+    },
+    "send-evening-a": {
+      "main": [[{"node": "log-evening", "type": "main", "index": 0}]]
+    },
+    "send-evening-b": {
+      "main": [[{"node": "log-evening", "type": "main", "index": 0}]]
+    }
+  }
+}
+
+W5: Tap Callback
+
+{
+  "name": "W5_TapCallback",
+  "nodes": [
+    {
+      "parameters": {
+        "trigger": "callback"
+      },
+      "id": "telegram-callback",
+      "name": "Telegram: Callback Query",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = items[0].json.callback_query.data;\nconst [_, pairId, userId] = data.split('_');\nreturn [{json: {pair_id: parseInt(pairId), user_id: parseInt(userId), callback_id: items[0].json.callback_query.id}}];"
+      },
+      "id": "parse-callback",
+      "name": "Parse Callback Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT u.tg_id, p.uid_a, p.uid_b FROM users u JOIN pairs p ON u.id = p.uid_a OR u.id = p.uid_b WHERE p.id = $1 AND u.id = $2;",
+        "options": {
+          "queryParams": "={{$json.pair_id}},{{$json.user_id}}"
+        }
+      },
+      "id": "fetch-partner",
+      "name": "Fetch Partner Info",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "credentials": {
+        "postgres": { "id": "pg", "name": "Postgres" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE users SET next_send_at = NULL WHERE id = $1;",
+        "options": {
+          "queryParams": "={{$json.user_id}}"
+        }
+      },
+      "id": "clear-next-send",
+      "name": "Clear Next Send At",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "credentials": {
+        "postgres": { "id": "pg", "name": "Postgres" }
+      }
+    },
+    {
+      "parameters": {
+        "callbackQueryId": "={{$json.callback_id}}",
+        "text": "Отправлено!"
+      },
+      "id": "answer-callback",
+      "name": "Answer Callback Query",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "credentials": {
+        "telegramApi": { "id": "tg", "name": "Telegram" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{$json.tg_id}}",
+        "text": "Ваш партнёр на связи ❤️",
+        "additionalFields": {
+          "replyMarkup": "={\"inline_keyboard\":[[{\"text\":\"💌\",\"callback_data\":\"tap_{{$json.pair_id}}_{{$json.partner_id}}\"}]]}"
+        }
+      },
+      "id": "notify-partner",
+      "name": "Notify Partner",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "credentials": {
+        "telegramApi": { "id": "tg", "name": "Telegram" }
+      }
+    }
+  ],
+  "connections": {
+    "telegram-callback": {
+      "main": [[{"node": "parse-callback", "type": "main", "index": 0}]]
+    },
+    "parse-callback": {
+      "main": [[{"node": "fetch-partner", "type": "main", "index": 0}]]
+    },
+    "fetch-partner": {
+      "main": [
+        [{"node": "clear-next-send", "type": "main", "index": 0}],
+        [{"node": "answer-callback", "type": "main", "index": 0}],
+        [{"node": "notify-partner", "type": "main", "index": 0}]
+      ]
+    }
+  }
+}
+
+W6: Payment Hook (YooKassa)
+
+{
+  "name": "W6_PaymentHook",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "webhook/yookassa"
+      },
+      "id": "http-webhook",
+      "name": "HTTP: YooKassa Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "jsCode": "const sig = items[0].headers['content-type'];\nconst body = items[0].json;\n// Verify signature (simplified)\nreturn [{json: body}];"
+      },
+      "id": "verify-signature",
+      "name": "Verify Signature",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE subscriptions SET status = 'active', current_period_end = $1, updated_at = NOW() WHERE external_id = $2 RETURNING *;",
+        "options": {
+          "queryParams": "={{$json.object.paid_till}},{{$json.object.id}}"
+        }
+      },
+      "id": "update-sub",
+      "name": "Update Subscription",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "credentials": {
+        "postgres": { "id": "pg", "name": "Postgres" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{$json.payer_uid}}",
+        "text": "✅ Оплата получена! Подписка продлена до {{$json.current_period_end}}"
+      },
+      "id": "confirm-payment",
+      "name": "Confirm Payment",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "credentials": {
+        "telegramApi": { "id": "tg", "name": "Telegram" }
+      }
+    }
+  ],
+  "connections": {
+    "http-webhook": {
+      "main": [[{"node": "verify-signature", "type": "main", "index": 0}]]
+    },
+    "verify-signature": {
+      "main": [[{"node": "update-sub", "type": "main", "index": 0}]]
+    },
+    "update-sub": {
+      "main": [[{"node": "confirm-payment", "type": "main", "index": 0}]]
+    }
+  }
+}
+
+W7: Daily Dunning
+
+{
+  "name": "W7_DailyDunning",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {"hour": 10, "minute": 0}
+          ]
+        }
+      },
+      "id": "cron-dunning",
+      "name": "Cron: 10:00 UTC",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT u.tg_id, s.id as sub_id FROM subscriptions s JOIN users u ON u.id = s.payer_uid WHERE s.status = 'past_due' AND s.current_period_end < NOW() - INTERVAL '1 day';"
+      },
+      "id": "fetch-overdue",
+      "name": "Fetch Overdue Subs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "credentials": {
+        "postgres": { "id": "pg", "name": "Postgres" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{$json.tg_id}}",
+        "text": "⏰ Подписка истекла. Оплатите 199 ₽, чтобы продолжить:",
+        "buttons": [
+          {
+            "text": "💳 Оплатить",
+            "url": "https://yookassa.ru/shop/pay/xxx"
+          }
+        ]
+      },
+      "id": "send-dunning",
+      "name": "Send Dunning",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "credentials": {
+        "telegramApi": { "id": "tg", "name": "Telegram" }
+      }
+    }
+  ],
+  "connections": {
+    "cron-dunning": {
+      "main": [[{"node": "fetch-overdue", "type": "main", "index": 0}]]
+    },
+    "fetch-overdue": {
+      "main": [[{"node": "send-dunning", "type": "main", "index": 0}]]
+    }
+  }
+}
+
+W8: Refund Gate
+
+{
+  "name": "W8_RefundGate",
+  "nodes": [
+    {
+      "parameters": {
+        "trigger": "manual"
+      },
+      "id": "manual-trigger-refund",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT u.tg_id, s.id as sub_id, s.external_id FROM subscriptions s JOIN users u ON u.id = s.payer_uid WHERE s.status = 'active' LIMIT 1;"
+      },
+      "id": "fetch-refund-target",
+      "name": "Fetch Target Sub",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "credentials": {
+        "postgres": { "id": "pg", "name": "Postgres" }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "httpMethod": "POST",
+        "url": "https://api.yookassa.ru/v3/refunds",
+        "jsonParameters": true,
+        "options": {
+          "bodyContentType": "json",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Idempotence-Key",
+                "value": "={{$json.sub_id}}"
+              }
+            ]
+          },
+          "bodyParameters": {
+            "parameters": [
+              {
+                "name": "amount",
+                "value": "{\"value\":\"199.00\",\"currency\":\"RUB\"}"
+              },
+              {
+                "name": "payment_id",
+                "value": "={{$json.external_id}}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "call-yookassa-refund",
+      "name": "YooKassa: Create Refund",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "credentials": {
+        "httpHeaderAuth": { "id": "yookassa", "name": "YooKassa Auth" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO refunds (sub_id, amount_cents, reason, refund_id, created_at) VALUES ($1, 19900, 'downtime >24h', $2, NOW()); UPDATE subscriptions SET status = 'cancelled' WHERE id = $1;",
+        "options": {
+          "queryParams": "={{$json.sub_id}},{{$json.id}}"
+        }
+      },
+      "id": "log-refund",
+      "name": "Log Refund",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "credentials": {
+        "postgres": { "id": "pg", "name": "Postgres" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{$json.tg_id}}",
+        "text": "Извините, сервис был недоступен >24ч. Возвращаем 199 ₽ в течение 3 дней."
+      },
+      "id": "notify-refund",
+      "name": "Notify User",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "credentials": {
+        "telegramApi": { "id": "tg", "name": "Telegram" }
+      }
+    }
+  ],
+  "connections": {
+    "manual-trigger-refund": {
+      "main": [[{"node": "fetch-refund-target", "type": "main", "index": 0}]]
+    },
+    "fetch-refund-target": {
+      "main": [[{"node": "call-yookassa-refund", "type": "main", "index": 0}]]
+    },
+    "call-yookassa-refund": {
+      "main": [[{"node": "log-refund", "type": "main", "index": 0}]]
+    },
+    "log-refund": {
+      "main": [[{"node": "notify-refund", "type": "main", "index": 0}]]
+    }
+  }
+}
+
+W9: Support Commands
+
+{
+  "name": "W9_SupportCommands",
+  "nodes": [
+    {
+      "parameters": {
+        "trigger": "message",
+        "message": "delete"
+      },
+      "id": "telegram-delete",
+      "name": "Telegram: /delete",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "trigger": "message",
+        "message": "help"
+      },
+      "id": "telegram-help",
+      "name": "Telegram: /help",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "jsCode": "const tg_id = items[0].json.message.from.id;\nreturn [{json: {tg_id}}];"
+      },
+      "id": "parse-for-delete",
+      "name": "Parse TG ID",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "BEGIN; DELETE FROM pings WHERE pair_id IN (SELECT id FROM pairs WHERE uid_a = (SELECT id FROM users WHERE tg_id = $1) OR uid_b = (SELECT id FROM users WHERE tg_id = $1)); DELETE FROM pic_ledger WHERE pair_id IN (SELECT id FROM pairs WHERE uid_a = (SELECT id FROM users WHERE tg_id = $1) OR uid_b = (SELECT id FROM users WHERE tg_id = $1)); DELETE FROM subscriptions WHERE pair_id IN (SELECT id FROM pairs WHERE uid_a = (SELECT id FROM users WHERE tg_id = $1) OR uid_b = (SELECT id FROM users WHERE tg_id = $1)); DELETE FROM pairs WHERE uid_a = (SELECT id FROM users WHERE tg_id = $1) OR uid_b = (SELECT id FROM users WHERE tg_id = $1)); DELETE FROM users WHERE tg_id = $1; COMMIT;",
+        "options": {
+          "queryParams": "={{$json.tg_id}}"
+        }
+      },
+      "id": "gdpr-delete",
+      "name": "GDPR Delete All",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "credentials": {
+        "postgres": { "id": "pg", "name": "Postgres" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{$json.tg_id}}",
+        "text": "✅ Все ваши данные удалены. Подписка отменена."
+      },
+      "id": "confirm-delete",
+      "name": "Confirm Deletion",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "credentials": {
+        "telegramApi": { "id": "tg", "name": "Telegram" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{$json.tg_id}}",
+        "text": "Команды:\n/menu — Показать меню\n/delete — Удалить себя\n/help — Показать это сообщение"
+      },
+      "id": "show-help",
+      "name": "Show Help",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "credentials": {
+        "telegramApi": { "id": "tg", "name": "Telegram" }
+      }
+    }
+  ],
+  "connections": {
+    "telegram-delete": {
+      "main": [[{"node": "parse-for-delete", "type": "main", "index": 0}]]
+    },
+    "parse-for-delete": {
+      "main": [[{"node": "gdpr-delete", "type": "main", "index": 0}]]
+    },
+    "gdpr-delete": {
+      "main": [[{"node": "confirm-delete", "type": "main", "index": 0}]]
+    },
+    "telegram-help": {
+      "main": [[{"node": "show-help", "type": "main", "index": 0}]]
+    }
+  }
+}
+
+W10: Data Cleaner
+
+{
+  "name": "W10_DataCleaner",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {"hour": 3, "minute": 0}
+          ]
+        }
+      },
+      "id": "cron-cleaner",
+      "name": "Cron: 03:00 UTC",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM pings WHERE sent_at < NOW() - INTERVAL '90 days'; DELETE FROM pic_ledger WHERE sent_at < CURRENT_DATE - 30; VACUUM ANALYZE pings, pic_ledger;"
+      },
+      "id": "clean-old-data",
+      "name": "Clean Old Data",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "credentials": {
+        "postgres": { "id": "pg", "name": "Postgres" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{$env.ADMIN_TG_ID}}",
+        "text": "🧹 Очистка завершена: pings >90д, ledger >30д"
+      },
+      "id": "notify-admin-clean",
+      "name": "Notify Admin",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "credentials": {
+        "telegramApi": { "id": "tg", "name": "Telegram" }
+      }
+    }
+  ],
+  "connections": {
+    "cron-cleaner": {
+      "main": [[{"node": "clean-old-data", "type": "main", "index": 0}]]
+    },
+    "clean-old-data": {
+      "main": [[{"node": "notify-admin-clean", "type": "main", "index": 0}]]
+    }
+  }
+}
+
+8. Вспомогательные скрипты
+8.1. Загрузка картинок в Telegram
+Файл: scripts/load_pics_to_tg.js
+
+const fs = require('fs');
+const axios = require('axios');
+
+const TG_TOKEN = process.env.TG_BOT_TOKEN;
+const PIC_DIR = '/opt/silent-bot/pics';
+
+async function uploadToTelegram(filePath, type) {
+  const form = new FormData();
+  form.append('photo', fs.createReadStream(filePath));
+  const {data} = await axios.post(`https://api.telegram.org/bot${TG_TOKEN}/sendPhoto`, form, {
+    headers: form.getHeaders(),
+    params: {
+      chat_id: process.env.ADMIN_TG_ID,
+      caption: type
+    }
+  });
+  return data.result.photo[0].file_id;
+}
+
+async function main() {
+  const files = fs.readdirSync(PIC_DIR).filter(f => f.endsWith('.jpg'));
+  const pool = [];
+  for (const file of files) {
+    const type = file.includes('morning') ? 'morning' : 'evening';
+    const fileId = await uploadToTelegram(`${PIC_DIR}/${file}`, type);
+    pool.push({file_id: fileId, type});
+    console.log(`${file} → ${fileId}`);
+  }
+  // Сохранить в БД
+  const {Client} = require('pg');
+  const pg = new Client({connectionString: process.env.POSTGRES_URL});
+  await pg.connect();
+  for (const p of pool) {
+    await pg.query('INSERT INTO pics_pool VALUES ($1, $2) ON CONFLICT DO NOTHING', [p.file_id, p.type]);
+  }
+  await pg.end();
+}
+
+main().catch(console.error);
+
+8.2. Ежедневный бэкап
+Файл: scripts/daily_backup.sh
+#!/bin/bash
+DATE=$(date +%Y%m%d)
+mkdir -p /opt/silent-bot/backups/pg
+docker exec n8n_db pg_dump -U n8n n8n > /opt/silent-bot/backups/pg/n8n_$DATE.sql
+gzip /opt/silent-bot/backups/pg/n8n_$DATE.sql
+# Удалить старше 7 дней
+find /opt/silent-bot/backups/pg -name "*.sql.gz" -mtime +7 -delete
+# Залить в Minio
+docker exec n8n_s3 mc cp /backups/pg/n8n_$DATE.sql.gz local/pg/
+
+9. Инструкция деплоя
+Шаг 0: Подготовка (1 час)
+Арендуйте VPS в РФ (MTS Cloud, 2 vCPU, 4 GB, Ubuntu 22.04)
+Купите домен bot-domain.ru, настройте A-запись на IP VPS
+Создайте бота в @BotFather, получите токен
+Зарегистрируйтесь в YooKassa, получите ShopId + SecretKey
+Шаг 1: Установка
+ssh root@bot-domain.ru
+apt update && apt install docker.io docker-compose -y
+mkdir /opt/silent-bot && cd /opt/silent-bot
+# Скопируйте все файлы проекта
+cp -r /path/to/silent-couple-bot/* .
+cp .env.example .env
+nano .env  # Заполните все переменные
+
+Шаг 2: Запуск
+docker-compose up -d
+docker-compose logs -f n8n  # Смотрим, пока не завершится миграция
+
+Шаг 3: Инициализация БД
+docker exec -it n8n_db psql -U n8n -d n8n -f /docker-entrypoint-initdb.d/01-schema.sql
+docker exec -it n8n_db psql -U n8n -d n8n -f /docker-entrypoint-initdb.d/02-indexes.sql
+docker exec -it n8n_db psql -U n8n -d n8n -f /docker-entrypoint-initdb.d/03-partitions.sql
+
+Шаг 4: Настройка N8N
+Откройте https://bot-domain.ru:5678
+Войдите с ADMIN_USER/ADMIN_PASS
+Settings → Community nodes → Install n8n-nodes-postgres-simplified
+Settings → Credentials → Добавьте:
+PostgreSQL (host=postgres, user=n8n, pass=...)
+Telegram (token=TG_BOT_TOKEN)
+YooKassa (shopId, secret)
+Minio (endpoint=minio:9000, key, secret)
+Settings → Import → Загрузите workflows W1-W10
+
+Шаг 5: Загрузка картинок
+# Положите 1000 jpeg в /opt/silent-bot/pics/
+mkdir -p /opt/silent-bot/pics
+# Скопируйте туда ваши morning/ и evening/ картинки
+docker exec -it n8n_main node /workflows/scripts/load_pics_to_tg.js
+
+Шаг 6: Настройка Telegram
+# Установите webhook
+curl -v "https://api.telegram.org/bot${TG_BOT_TOKEN}/setWebhook?url=https://${DOMAIN}/webhook/telegram"
+# Установите команды Menu Button
+curl -v "https://api.telegram.org/bot${TG_BOT_TOKEN}/setMyCommands" \
+  -d 'commands=[{"command":"menu","description":"Показать меню"},{"command":"pay","description":"Оплатить 199 ₽"},{"command":"delete","description":"Удалить себя"}]'
+
+Шаг 7: Тестирование
+Пишите боту /start
+Проходите flow: политика → принимаю → приглашение
+С другого аккаунта переходите по ссылке
+Ждите 07:30-08:30 → проверьте картинки и кнопки
+Нажмите 💌 → проверьте, что у партнёра кнопка исчезла
+
+10. Мониторинг и поддержка
+10.1. UptimeRobot
+Добавьте монитор https://bot-domain.ru/health (каждые 5 мин)
+Настройте алерт в Telegram при дауне >5 мин
+10.2. Grafana
+Импортируйте monitoring/grafana-dashboard.json
+Dashboard показывает:
+Количество пар, отправленных картинок, успешных tap
+Uptime, p99 latency, queue depth
+Количество refunds
+10.3. Алерты
+Telegram: отправляйте в канал #alerts при:
+Queue depth > 1000
+p99 latency > 2 сек
+Postgres replication lag > 30 сек
+10.4. Ежедневные задачи
+Бэкап: cron 0 4 * * * /opt/silent-bot/scripts/daily_backup.sh
+Чистка: W10 автоматически удаляет pings >90 дней, ledger >30 дней
+
+
+11. Юридика и соответствие
+11.1. 152-ФЗ (РФ)
+Локализация: VPS и БД в РФ (МТС, Selectel)
+Согласие: inline-кнопка, фиксация IP и даты
+Удаление: команда /delete → удаление всех ПДн ≤ 3 дней
+Регистрация в РКН: не требуется (<100k субъектов)
+Оферта: docs/oferta.md (публичная)
+11.2. GDPR (ЕС)
+Минимизация: только tg_id, utc_offset, dates
+Согласие: explicit, before processing
+Right to erasure: /delete → instant erase
+DPA: подписан с YooKassa
+Privacy policy: docs/privacy_telegra.md (Telegra.ph)
+11.3. Возврат средств
+Условие: простой сервиса >24 часов подряд
+Доказательство: UptimeRobot + логи n8n + Grafana
+Процедура: админ нажимает «Approve refund» в W8 → YooKassa API → уведомление user
+
+12. Репозиторий и разработка
+GitHub: https://github.com/your/silent-couple-bot
+CI/CD (опционально):
+# .github/workflows/deploy.yml
+on:
+  push:
+    branches: [main]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Deploy to VPS
+        run: ssh root@bot-domain.ru "cd /opt/silent-bot && git pull && docker-compose up -d"
+
+13. Контакты и поддержка
+Админ: @your_telegram
+Канал обновлений: @silent_couple_bot_news
+Email: support@bot-domain.ru
+

@@ -1,0 +1,155 @@
+1. pics_pool — нужна ли таблица?
+Решение: Да, одна строка = один file_id:
+sql
+Copy
+CREATE TABLE pics_pool (
+    file_id  text PRIMARY KEY,
+    type     text CHECK ('morning','evening'),
+    tags     text[] DEFAULT '{}'
+);
+Храним только Telegram file_id (не URL, не бинарник)
+Загружаем 1 раз скриптом load_images.py → получаем file_id → INSERT
+Размер: 1000 строк ≈ 40 kB → не храним в Redis (лишняя память)
+Уникальность проверяем по daily_state за 30 дней (без pic_ledger)
+2. Поле payer_id — разбор
+Table
+Copy
+Таблица	payer_id — что это?	Обновление
+users	ID пользователя, который платил за ЛЮБУЮ свою пару (история)	При успешной оплате → UPDATE users SET payer_id=$uid WHERE tg_id=$uid
+pairs	ID плательщика именно этой пары (текущий)	При оплате → UPDATE pairs SET payer_id=$uid WHERE id=$pair_id
+Дублирования нет — разное назначение:
+users.payer_id = «кто платил хоть раз» (для аналитики)
+pairs.payer_id = «кто платил за эту пару» (для уведомлений)
+3. daily_state vs уникальность 30 дней
+Проблема: daily_state удаляется через 48 ч → 30-дневная история исчезает.
+Решение: расширяем срок хранения до 31 дня:
+sql
+Copy
+ALTER TABLE daily_state
+ADD COLUMN created_at timestamptz DEFAULT now();
+
+-- удаляем старше 31 дня
+DELETE FROM daily_state WHERE created_at < now() - interval '31 day';
+Уникальность:
+sql
+Copy
+SELECT DISTINCT morning_file_id
+FROM daily_state
+WHERE pair_id = $pair AND created_at > now() - interval '31 day';
+Итого: нет отдельной pic_history — используем ту же таблицу, храним 31 день.
+4. Скрипт load_images.py
+Флоу:
+Читаем morning/*.jpg, evening/*.jpg
+Отправляем каждый файл ботом → получаем file_id
+INSERT в pics_pool(file_id, type)
+Куда сохранять file_id:
+В БД (pics_pool) — источник истины
+Не в Redis — лишняя память
+Не в файл — лишний asset
+Категоризация:
+Папка = тип (morning/, evening/) → поле type в таблице
+5. Mini App: эндпоинт /mini-app/send
+Авторизация:
+Обязательно проверяем initData (HMAC-SHA256) → FastAPI middleware
+Без токена в URL — токен хранится на сервере
+Как бот отправляет:
+FastAPI делает внутренний вызов:
+Python
+Copy
+await bot.send_photo(chat_id=chat_id, photo=file_id)
+TG_BOT_TOKEN берётся из переменной окружения (core/config.py)
+6. Circuit Breaker: хранение состояния
+Решение: Redis (не PostgreSQL)
+Причины:
+Скорость — 0.2 мс vs 2 мс
+Не нужна персистентность → TTL 60 сек достаточно
+Уменьшаем нагрузку на PG
+Реализация:
+Python
+Copy
+# Redis key: `cb:yookassa:{service}`
+# value: fail_count, TTL=60s
+При 3 ошибках → 60 сек блокировки, потом автоматический reset.
+7. Trial и статусы
+Логика:
+При создании пары → status='trial', period_end = now() + 7 дней
+Нет поля trial_end — используем subscriptions.period_end
+Cron worker/dunning.py 10:00 UTC:
+sql
+Copy
+UPDATE pairs SET status='past_due'
+WHERE period_end < CURRENT_DATE
+  AND status='trial';
+Итого: одно поле period_end решает и trial, и подписку.
+8. Команда /link в Chat Mode
+Флоу:
+Пользователь добавляет бота в общий чат
+Пользователь пишет в общем чате /link
+Бот читает message.chat.id → сохраняет в pairs.common_chat_id
+Отвечает: «Чат привязан»
+Автоматическое определение — не делаем (меньше кода, меньше прав).
+9. Уведомления обоих при оплате
+SQL:
+sql
+Copy
+SELECT uid_a, uid_b FROM pairs WHERE id = $pair_id;
+Отправляем:
+Python
+Copy
+await bot.send_photo(uid_a, ...)
+await bot.send_photo(uid_b, ...)
+Без JOIN к users — tg_id уже в pairs.
+10. Структура репозиториев
+Обязательные репозитории:
+repos/users.py — consent, utc_offset, payer_id
+repos/pairs.py — create, get_by_user, update_status, update_common_chat
+repos/daily_state.py — atomic lock, 30-дн уникальность
+repos/subscriptions.py — period_end, yoo_id
+repos/user_demo.py — is_used, mark_both
+Прямые запросы в сервисах — запрещены → всё через репозитории.
+11. Миграции Alembic
+Порядок создания:
+users
+pairs (FK на users)
+daily_state (FK на pairs)
+subscriptions (FK на pairs, users)
+user_demo (standalone)
+Сразу — одна миграция alembic revision --autogenerate на всю схему.
+12. Конфигурация (pydantic-settings)
+Обязательные переменные (MVP):
+env
+Copy
+TG_BOT_TOKEN
+DATABASE_URL          # postgresql+asyncpg://
+REDIS_URL             # redis://
+YOOKASSA_SHOP_ID
+YOOKASSA_SECRET_KEY
+MINIO_ENDPOINT
+MINIO_ACCESS_KEY
+MINIO_SECRET_KEY
+Опционально:
+env
+Copy
+ENVIRONMENT=prod|dev
+LOG_LEVEL=INFO|DEBUG
+REDIS_DB=0
+13. Логирование
+Уровни:
+bot → INFO (message flow)
+worker → INFO (cron jobs)
+mini_app → WARNING (errors only)
+Формат: structlog → JSON stdout
+Ротация: не нужна — Docker stdout → Loki (позже)
+14. Тестирование: фикстуры и моки
+Unit:
+Мокаем репозитории (MagicMock) → не трогаем БД
+Покрытие ≥70 % services + repos
+Интеграционные:
+pytest-asyncio + aiogram test-client (мок Telegram)
+Тестовая БД — PostgreSQL в Docker (test_db service)
+Мокаем YooKassa, MinIO — HTTP-over-mockserver
+Фикстуры:
+db_session (rollback после теста)
+bot_user (fake Telegram user)
+demo_images (3 картинки в MinIO)
+CI: GitHub Actions → запускает контейнеры → pytest --cov

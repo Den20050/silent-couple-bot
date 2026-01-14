@@ -1,0 +1,4 @@
+"""Silent Couple Bot 3.0"""
+
+__version__ = "3.0.0"
+

@@ -1,0 +1,138 @@
+version: "3.9"
+
+# Development docker-compose with full application stack
+# Usage: docker-compose -f docker-compose.dev.yml up
+
+services:
+  # PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: silent_couple_postgres_dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: silent_couple_bot
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: silent_couple_redis_dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data_dev:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MinIO
+  minio:
+    image: minio/minio:latest
+    container_name: silent_couple_minio_dev
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data_dev:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Bot (optional - for testing Docker setup)
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: bot
+    container_name: silent_couple_bot_dev
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # Database (using docker-compose service name)
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/silent_couple_bot
+      DATABASE_SSH_HOST: ""  # No SSH tunnel needed in Docker
+      # Redis (using docker-compose service name)
+      REDIS_URL: redis://redis:6379/0
+      REDIS_SSH_HOST: ""  # No SSH tunnel needed in Docker
+      # Telegram Bot Token (set in .env)
+      TG_BOT_TOKEN: ${TG_BOT_TOKEN}
+      # Other settings
+      PYTHONUNBUFFERED: 1
+    env_file:
+      - .env
+    volumes:
+      # Mount code for development (hot reload)
+      - .:/app
+    networks:
+      - silent_couple_net
+    # Uncomment to run bot in Docker
+    # command: ["python", "-m", "src.entrypoints.bot"]
+
+  # Worker (optional - for testing Docker setup)
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker
+    container_name: silent_couple_worker_dev
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # Database (using docker-compose service name)
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/silent_couple_bot
+      DATABASE_SSH_HOST: ""  # No SSH tunnel needed in Docker
+      # Redis (using docker-compose service name)
+      REDIS_URL: redis://redis:6379/0
+      REDIS_SSH_HOST: ""  # No SSH tunnel needed in Docker
+      # Telegram Bot Token (set in .env)
+      TG_BOT_TOKEN: ${TG_BOT_TOKEN}
+      # Other settings
+      PYTHONUNBUFFERED: 1
+    env_file:
+      - .env
+    volumes:
+      # Mount code for development (hot reload)
+      - .:/app
+    networks:
+      - silent_couple_net
+    # Uncomment to run worker in Docker
+    # command: ["python", "-m", "src.entrypoints.worker"]
+
+volumes:
+  postgres_data_dev:
+  redis_data_dev:
+  minio_data_dev:
+
+networks:
+  silent_couple_net:
+    driver: bridge
+

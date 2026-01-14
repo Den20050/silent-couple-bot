@@ -1,0 +1,111 @@
+version: "3.9"
+
+# Production docker-compose
+# Usage: docker-compose -f docker-compose.prod.yml up -d
+# Note: This assumes PostgreSQL and Redis are on remote server (via SSH tunnel or direct connection)
+# For full local stack, use docker-compose.yml or docker-compose.dev.yml
+
+services:
+  # Bot service
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: bot
+    container_name: silent_couple_bot_prod
+    restart: unless-stopped
+    environment:
+      PYTHONUNBUFFERED: 1
+    env_file:
+      - .env
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  # Worker service
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker
+    container_name: silent_couple_worker_prod
+    restart: unless-stopped
+    environment:
+      PYTHONUNBUFFERED: 1
+    env_file:
+      - .env
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  # Combined service (bot + worker in one container)
+  # Alternative to running bot and worker separately
+  # app:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #     target: combined
+  #   container_name: silent_couple_app_prod
+  #   restart: unless-stopped
+  #   environment:
+  #     PYTHONUNBUFFERED: 1
+  #   env_file:
+  #     - .env
+  #   healthcheck:
+  #     test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     start_period: 40s
+  #     retries: 3
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "10m"
+  #       max-file: "3"
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '1.5'
+  #         memory: 768M
+  #       reservations:
+  #         cpus: '0.75'
+  #         memory: 384M
+

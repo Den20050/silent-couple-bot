@@ -1,0 +1,168 @@
+Silent Couple Bot 3.0 — Полное описание проекта
+Минимализм + защита от повторного демо + масштаб 100 k+ пользователей
+Без кода, только архитектура, сценарии и структура.
+1. Концепция продукта
+Цель: ежедневный обмен картинками «Доброе утро» / «Спокойной ночи» между двумя людьми.
+Уникальность:
+Минимализм — нет аналитики, нет лишних таблиц, нет истории переписки.
+Защита от повторного демо — один запуск = оба пользователя в «вечном» блок-листе.
+Оплата любым — после успеха статус «оплачено» появляется у обоих мгновенно.
+Масштаб 100 k+ — stateless-сервисы, горизонтальное масштабирование без переписывания кода.
+2. Технологический стек
+Table
+Copy
+Слой	Инструмент	Назначение
+Bot core	Python 3.11, aiogram 3, uvloop	Webhook-бот, 50 msg/s на реплику
+Background	arq (Redis)	cron-задачи 07:30, 21:30, cleanup
+Mini App	FastAPI + static	Отправка картинки в общий чат
+БД	PostgreSQL 15, SQLAlchemy 2.0, asyncpg	4 таблицы, 1 перезаписываемая
+Migrations	Alembic	1 миграция на релиз
+Cache/Queue	Redis 7 (cluster-ready)	Очередь + rate-limit
+Object Storage	MinIO (S3)	Картинки, lifecycle 30 дней
+Monitoring	Prometheus + Grafana + Loki	4 метрики, 5 алертов
+CI/CD	GitHub Actions → Docker Hub → VPS	1 файл, 2 job’а
+IaC	Terraform (MTS Cloud, Ru)	VPS, DNS, Cloudflare
+3. Архитектура (high-level)
+Copy
+Telegram Users
+   ↓
+Cloudflare (WAF, rate-limit 100/s)
+   ↓
+VPS (4 vCPU, 8 GB, Ru)
+   ↓
+Docker Compose Stack
+ ├─ Bot (3 repl, stateless)
+ ├─ Worker (3 repl, cron)
+ ├─ Mini App (FastAPI, 1 repl)
+ ├─ PostgreSQL (1 primary + 2 read)
+ ├─ Redis (cluster-ready)
+ └─ MinIO (3 node, distributed)
+   ↓
+Prometheus + Grafana (metrics, alerts)
+Сервисы stateless → масштабируем docker-compose --scale.
+4. Структура проекта (файлы)
+Copy
+silent_couple_bot/
+├── src/
+│   ├── bot/           # aiogram handlers, middlewares
+│   ├── worker/        # arq cron jobs
+│   ├── mini_app/      # FastAPI + static
+│   ├── db/            # SQLAlchemy models, repos
+│   ├── services/      # Image, payment, telegram
+│   ├── core/          # config, constants
+│   └── monitoring/    # Prometheus counters
+├── tests/
+├── scripts/           # load_images, daily_backup
+├── docker-compose.yml
+├── docker-compose.prod.yml
+├── alembic.ini
+├── terraform/
+└── .github/workflows/deploy.yml
+5. База данных (4 таблицы)
+Table
+Copy
+Таблица	Назначение	Жизненный цикл
+users	tg_id, consent, payer_id	∞ (GDPR/152-ФЗ)
+pairs	uid_a, uid_b, mode, status	∞
+daily_state	день, пара, file_id, initiator	48 ч (перезаписывается)
+subscriptions	оплата, payer_id, period_end	5 лет
+user_demo	tg_id (PK)	∞ (блок-лист демо)
+Партиций нет — daily_state удаляется целиком каждые 6 часов.
+6. Меню бота (единое для обоих)
+Table
+Copy
+Команда / Кнопка	Что видит пользователь	Действие
+/start	«Добро пожаловать! Демо 7 дней» / «Вы уже пробовали демо»	Проверка user_demo
+/pay	Статус: trial / active / past_due
+Кнопка «💳 Оплатить 199 ₽»	Оплата любым → оба получают «✅ активна»
+/delete	«Все данные удалены»	CASCADE удаление, но user_demo остаётся
+/link (chat mode)	«Добавьте бота в чат и отправьте /link»	Сохранение common_chat_id
+Inline-кнопки	«Отправить в ответ» / Web App	Перезапись daily_state
+7. Сценарии взаимодействия
+7.1 Silent Mode (по умолчанию)
+A нажимает /start → демо 7 дней → A и B вносятся в user_demo
+07:30 → бот шлёт обоим:
+«Хотите отправить пожелание? [Отправить]»
+A нажимает первым → оба сообщения редактируются:
+A: «✅ Вы отправили пожелание»
+B: «\u200B» (невидимый символ)
+Бот отправляет B картинку + кнопку «Отправить в ответ»
+B отвечает → цепочка закрыта, кнопки исчезают
+Вечер — аналогично в 21:30
+7.2 Chat Mode (через Mini App)
+A выбирает «chat mode» → инструкция добавить бота в чат
+/link → сохраняется common_chat_id
+07:30 → бот шлёт обоим Web App кнопку:
+Любой нажимает → открывается Mini App → «Отправить» → картинка в общем чате
+История остаётся в личном чате пары, без переключения
+8. Оплата и статус (любой может платить)
+Table
+Copy
+Действие	Кто платит	Что видят оба
+Первая оплата	A или B	«✅ Подписка активна до 12.08.2025»
+Повторная оплата	любой	Просто продлевается period_end
+Просрочка	—	«⏳ Статус: past_due» и кнопка «Оплатить»
+Webhook YooKassa → circuit breaker → оба уведомления за 1 сек
+9. Флоу «кто первый» (без истории)
+Хранится только сегодняшний день (daily_state):
+Python
+Copy
+UPDATE daily_state
+SET morning_initiator = $uid, morning_file_id = $file
+WHERE pair_id = $pair AND day = CURRENT_DATE
+  AND morning_initiator IS NULL;
+48 часа спустя строка удаляется → место освобождается.
+10. Защита от повторного демо
+Таблица user_demo (1 столбец):
+sql
+Copy
+INSERT INTO user_demo(tg_id) VALUES ($uid_a),($uid_b)
+ON CONFLICT DO NOTHING;
+Первый запуск любого → оба id в таблице
+Оплата любого → та же команда (дубль не вставится)
+Удаление бота → id остаётся → повторного демо нет
+11. Масштабирование (из коробки)
+Table
+Copy
+Компонент	10 k → 100 k	Что делать
+Bot	docker-compose up --scale bot=5	5×50 msg/s = 250 msg/s
+Worker	--scale worker=5	5×cron = 5 параллельных
+PostgreSQL	Pgbouncer + read-replicas	1000 conn → 50 real
+Redis	redis-cli --cluster create …	6 nodes, 1 M ops/s
+MinIO	4-node distributed	100 TB, 1 disk loss-safe
+Никаких изменений кода — только docker-compose overlay.
+12. Мониторинг и алерты
+Grafana-dashboard (4 графика):
+DAU/MAU
+P99 latency < 500ms
+Queue depth (arq)
+Circuit breaker open
+Telegram-алерты:
+Queue > 1000
+PG lag > 30s
+Circuit open
+Uptime < 99%
+13. Юридика (152-ФЗ + GDPR)
+Table
+Copy
+Требование	Реализация
+Локализация	VPS в РФ, PostgreSQL в РФ
+Согласие	Inline-кнопка, IP+дата в users
+Удаление	/delete → CASCADE ≤ 3 сек, но user_demo остаётся
+Оферта	Кнопка «📄 Оферта» в /pay
+DPA	Подписан с YooKassa
+14. Роадмап
+3.0 (Q3 2025) — текущая
+Минимализм, защита демо, 100 k ready
+3.1 (Q4 2025)
+Голосовые пожелания (ogg)
+Кастомные картинки (загрузка пользователем)
+4.0 (2026)
+AI-генерация изображений
+Группы >2 человек
+White-label для брендов
+15. Контакты
+Admin TG: @your_admin
+Updates: @silent_couple_3_news
+Status: status.bot-domain.ru
+Repo: github.com/your/silent-couple-bot-py

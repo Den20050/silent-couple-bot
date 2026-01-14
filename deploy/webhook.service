@@ -1,0 +1,23 @@
+[Unit]
+Description=Silent Couple Bot Webhook Server
+After=network.target postgresql.service redis.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/Silent-Couple-Bot
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/usr/bin/python3 -m src.entrypoints.webhook
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+

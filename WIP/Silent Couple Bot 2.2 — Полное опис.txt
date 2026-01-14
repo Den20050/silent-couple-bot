@@ -1,0 +1,530 @@
+ Silent Couple Bot 2.2 — Полное описание проекта (без кода)
+1. Обзор и концепция продукта
+Silent Couple Bot 2.2 — Telegram-бот для пар с ежедневным ритуалом обмена картинками «Доброе утро» и «Спокойной ночи». Уникальность — Dual Mode (два режима работы), покрывающих разные сегменты пользователей:
+1.1 Режимы работы
+Silent Mode (режим по умолчанию)
+Для пар на расстоянии (LDR) или тех, кто ценит ненавязчивую связь
+Вся коммуникация происходит в изолированном чате с ботом
+Бот отправляет картинку → пользователь нажимает кнопку «💌» → партнёр получает уведомление
+Минимум текста, максимум «молчаливого присутствия»
+Chat Mode (новый режим)
+Для активных пар (влюблённые, молодёжь), которые уже общаются в личном чате
+Бот интегрируется в их существующий личный чат через Telegram Mini App
+Утром бот отправляет кнопку-ссылку → пользователь открывает Mini App → нажимает «Отправить» → картинка появляется в их личном чате
+История отношений остаётся в одном месте, без переключения контекста
+1.2 Ключевые особенности
+Уникальные картинки 30 дней: алгоритм гарантирует, что пара не получит одинаковые изображения в течение месяца
+Рандомное время: ±30 минут от центра окна (07:30-08:30, 21:30-22:30) для естественности
+Безопасность: 152-ФЗ (данные в РФ), GDPR (explicit consent, right to erasure)
+Отказоустойчивость: Circuit breaker для YooKassa, PostgreSQL реплики, graceful shutdown
+Мониторинг: Grafana + алерты в Telegram при проблемах
+2. Архитектура системы
+2.1 High-Level Diagram
+Copy
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Telegram Users (Web/Mobile/Desktop)                                       │
+│  ├─ Silent Mode: чат 1-на-1 с ботом                                       │
+│  └─ Chat Mode: личный чат пары + бот (интеграция через Mini App)          │
+└─────────────────┬───────────────────────────────────────────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Cloudflare (WAF, CDN, DDoS Protection)                                     │
+│  ├─ HTTPS termination                                                      │
+│  ├─ Rate limiting: 100 req/s per IP                                       │
+│  └─ Cache static assets (Mini App)                                        │
+└─────────────────┬───────────────────────────────────────────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ VPS (MTS Cloud / Selectel, Moscow) — 152-ФЗ compliant                     │
+│  OS: Ubuntu 22.04 LTS, 2 vCPU, 4 GB RAM, 40 GB SSD                        │
+│  Location: Russia (data localization)                                     │
+└─────────────────┬───────────────────────────────────────────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Docker Swarm / Docker Compose Stack                                       │
+│                                                                             │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │  N8N Main (primary instance)                                         │ │
+│  │    - Webhook receiver (Telegram, YooKassa)                          │ │
+│  │    - Workflow orchestrator (W1-W11)                                 │ │
+│  │    - Queue producer (Redux Bull)                                    │ │
+│  │    - Healthcheck endpoint: /health                                  │ │
+│  │    - Restart policy: unless-stopped                                 │ │
+│  └────────────┬──────────────────────────────────────────────────────────┘ │
+│               │                                                            │
+│  ┌────────────▼──────────────────────────────────────────────────────────┐ │
+│  │  N8N Workers (3 replicas)                                            │ │
+│  │    - Queue consumers (cron jobs, callbacks)                         │ │
+│  │    - Horizontal scaling (add more workers if needed)                │ │
+│  │    - Graceful shutdown: 30s timeout                                 │ │
+│  │    - Monitoring: queue depth, processing latency                    │ │
+│  └────────────┬──────────────────────────────────────────────────────────┘ │
+│               │                                                            │
+│  ┌────────────▼──────────────────────────────────────────────────────────┐ │
+│  │  Mini App Server (Node.js 18)                                        │ │
+│  │    - Express.js framework                                           │ │
+│  │    - Static file server (HTML/CSS/JS)                               │ │
+│  │    - Telegram initData verification (security)                      │ │
+│  │    - Rate limiting: 60 req/min per IP                               │ │
+│  │    - Helmet.js security headers                                     │ │
+│  └────────────┬──────────────────────────────────────────────────────────┘ │
+│               │                                                            │
+│  ┌────────────▼──────────────────────────────────────────────────────────┐ │
+│  │  PostgreSQL Primary                                                  │ │
+│  │    - PostgreSQL 15 Alpine                                           │ │
+│  │    - Custom config: postgresql.conf (tuned for performance)         │ │
+│  │    - Streaming WAL to replicas (synchronous → async)                │ │
+│  │    - Daily backups: pg_dump + WAL archiving to Minio                │ │
+│  │    - Healthcheck: pg_isready                                        │ │
+│  └────────────┬──────────────────────────────────────────────────────────┘ │
+│               │                                                            │
+│  ┌────────────▼──────────────────────────────────────────────────────────┐ │
+│  │  PostgreSQL Replica 1 & 2                                            │ │
+│  │    - Hot standby (read-only)                                        │ │
+│  │    - Used for SELECT queries from N8N                               │ │
+│  │    - Async replication (performance)                                │ │
+│  │    - Automatic failover (manual via repmgr if needed)               │ │
+│  └────────────┬──────────────────────────────────────────────────────────┘ │
+│               │                                                            │
+│  ┌────────────▼──────────────────────────────────────────────────────────┐ │
+│  │  Redis (Bull Queue)                                                  │ │
+│  │    - Redis 7 Alpine                                                 │ │
+│  │    - Persistence: AOF (appendonly.aof)                              │ │
+│  │    - Eviction policy: noeviction                                    │ │
+│  │    - Memory limit: 512 MB                                           │ │
+│  │    - Password auth (via Docker network isolation)                   │ │
+│  └────────────┬──────────────────────────────────────────────────────────┘ │
+│               │                                                            │
+│  ┌────────────▼──────────────────────────────────────────────────────────┐ │
+│  │  Minio S3                                                            │ │
+│  │    - MinIO latest                                                   │ │
+│  │    - 2 buckets: pics (images), backups (pg_dumps)                  │ │
+│  │    - Lifecycle policy: auto-delete old files                        │ │
+│  │    - Encryption at rest (server-side)                               │ │
+│  │    - Console UI on port 9001                                        │ │
+│  └────────────┬──────────────────────────────────────────────────────────┘ │
+└───────────────┼───────────────────────────────────────────────────────────┐
+                │                                                             │
+                ▼                                                             │
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ External Services                                                           │
+│  ├─ Telegram Bot API (webhook + Mini App integration)                     │
+│  ├─ YooKassa (payments, refunds, webhooks)                                │
+│  ├─ UptimeRobot (external uptime monitoring)                              │
+│  └─ Grafana (metrics visualization)                                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+2.2 Data Flow по сценариям
+Silent Mode Flow:
+Copy
+User A → /start → W1 → Onboarding → Invite User B → Pair created (mode='silent')
+Cron (07:30) → W3 → Send request message to both users
+User A taps button → W5 → Send picture to User B → User B sees in bot chat
+User B taps button → W5 → Send response picture to User A → Chain complete
+Chat Mode Flow:
+Copy
+User A → /start → W1 → Choose "chat mode" → Get instructions
+User A → adds bot to common chat → /link → W11 → Save common_chat_id
+Cron (07:30) → W3 → Send Mini App button to both users
+User A taps button → Mini App opens → User A taps "Send to chat"
+Mini App Server → Telegram API → Picture appears in common chat → Natural conversation continues
+2.3 Security & Compliance Layer
+Table
+Copy
+Компонент	Защита / Соответствие
+Mini App	Telegram initData verification, CSP headers, rate limiting, HTTPS only
+N8N Webhooks	Basic Auth + IP whitelist (Telegram IPs: 149.154.160.0/20, 91.108.4.0/22)
+PostgreSQL	SSL-only connections, scram-sha-256 auth, read-only replicas for queries
+YooKassa	HMAC-SHA256 signature verification, idempotency keys, circuit breaker
+Redis	Password auth, no public exposure, Docker network isolation
+Cloudflare	WAF rules, rate limiting, DDoS protection, bot management
+152-ФЗ	VPS в РФ, данные не покидают территорию, локализация ПДн
+GDPR	Explicit consent, right to erasure (/delete), data minimization
+3. Структура файлов проекта
+Copy
+silent-couple-bot/
+│
+├── 📄 docker-compose.yml                 # Основные сервисы (N8N, PG, Redis, Minio, Mini App)
+├── 📄 docker-compose.replicas.yml       # PostgreSQL реплики
+├── 📄 docker-compose.workers.yml        # N8N Workers (3 инстанса)
+├── 📄 Dockerfile.n8n                     # Кастомный образ N8N с healthcheck
+├── 📄 deploy.sh                          # Скрипт деплоя (1 команда)
+├── 📄 .env.example                       # Шаблон переменных окружения
+│
+├── 📁 init/                              # Инициализация PostgreSQL
+│   ├── 01-schema.sql                     # DDL (таблицы, индексы, триггеры, RLS)
+│   ├── 02-users.sql                      # Создание роли replicator для репликации
+│   └── 03-partitions.sql                 # Partitioning (автосоздание на 2 года)
+│
+├── 📁 scripts/
+│   ├── postgresql.conf                   # Конфиг PostgreSQL (performance, replication)
+│   ├── replica-setup.sh                  # Инициализация standby replica
+│   ├── load_test.js                      # Загрузка 1000+ картинок в пул
+│   ├── benchmark.sh                      # Нагрузочное тестирование
+│   ├── worker-monitor.js                 # Мониторинг очереди и health workers
+│   └── daily_backup.sh                   # Бэкап в Minio + очистка старых
+│
+├── 📁 workflows/                         # N8N Workflows (JSON)
+│   ├── W1_onboarding.json                # Onboarding + выбор режима
+│   ├── W2_timezone.json                  # Установка часового пояса
+│   ├── W3_morning_v2.json                # Отправка утренних картинок (Dual Mode)
+│   ├── W4_evening.json                   # Отправка вечерних картинок
+│   ├── W5_tap_v2.json                    # Обработка нажатий кнопок
+│   ├── W6_payment_circuit.json           # YooKassa webhook + circuit breaker
+│   ├── W7_dunning.json                   # Напоминания о просрочке
+│   ├── W8_refund.json                    # Ручное создание возврата
+│   ├── W9_support.json                   # /delete, /help (GDPR)
+│   ├── W10_cleaner.json                  # Очистка старых данных
+│   └── W11_common_chat.json              # Сохранение common_chat_id (режим chat)
+│
+├── 📁 mini-app/                          # Telegram Mini App
+│   ├── index.html                        # UI: загрузка картинки, кнопка отправки
+│   ├── server.js                         # Express server + security + verification
+│   ├── manifest.json                     # Web App manifest
+│   └── package.json                      # Dependencies (Express, Helmet, rate-limiter)
+│
+├── 📁 monitoring/
+│   └── grafana-dashboard.json            # Dashboard (uptime, latency, queue, finances)
+│
+└── 📁 docs/
+    ├── oferta.md                         # Публичная оферта (152-ФЗ)
+    └── privacy_telegra.md                # Privacy Policy (GDPR)
+Описание ключевых файлов
+init/01-schema.sql
+Создаёт таблицы: users, pairs (с полями mode и common_chat_id), subscriptions, pings (партиционированная), pics_pool, pic_ledger (партиционированная), refunds, consent_audit, circuit_breaker
+Индексы для производительности
+Функции для автосоздания партиций
+Триггеры для автообновления updated_at
+Row Level Security (опционально)
+scripts/postgresql.conf
+Настройки производительности: shared_buffers, work_mem, effective_cache_size
+Параметры репликации: wal_level = replica, max_wal_senders = 10
+Логирование: log_statement = 'none' (GDPR), log_min_duration_statement = 1000
+workflows/W1_onboarding.json
+6 шагов: старт → согласие → выбор режима → генерация инвайт-ссылки
+Ветвление: mode='silent' или mode='chat'
+При mode='chat' — инструкция добавить бота в чат и использовать /link
+workflows/W3_morning_v2.json
+Cron каждые 30 мин проверяет UTC время
+Запрос к БД: получает пары с status IN ('trial', 'active')
+Ветвление по pairs.mode:
+'silent' → отправляет текстовый запрос с inline-кнопкой в чат с ботом
+'chat' → отправляет кнопку Mini App (web_app) в личный чат пользователя
+mini-app/index.html
+UI: контейнер для картинки, кнопка «Отправить», индикатор загрузки
+Логика: получает file_id и chat_id из URL, загружает картинку через Telegram Bot API, при нажатии кнопки делает POST запрос на sendPhoto
+Безопасность: проверяет initData (Telegram signature)
+4. База данных — детальное описание
+4.1 Таблицы и их назначение
+users
+Хранит минимум информации о пользователе для соответствия GDPR.
+tg_id: Telegram ID (уникальный, primary key)
+tg_username: username (может быть NULL)
+utc_offset: часовой пояс для расчёта времени отправки
+consent, consent_dt, consent_ip: данные согласия (152-ФЗ)
+pairs
+Связывает двух пользователей в пару, хранит режим работы.
+uid_a, uid_b: ID пользователей (связь many-to-one с users)
+status: trial, active, past_due, cancelled
+mode: silent (по умолчанию) или chat
+common_chat_id: ID общего чата (только для mode='chat')
+morning_initiator_uid: кто первым нажал утром (для предотвращения конфликтов)
+subscriptions
+Отслеживает платежи и подписки.
+pair_id: связь с парой
+payer_uid: кто платит (один из двоих)
+external_id: ID платежа в YooKassa
+current_period_end: дата окончания текущего периода
+pings
+Лог взаимодействий (partitioned). Каждый тап, отправка картинки записывается здесь.
+Партицируется по месяцу (sent_at)
+Авто-очистка через 90 дней (W10)
+pic_ledger
+История отправленных картинок (partitioned). Гарантирует уникальность 30 дней.
+pair_id, file_id, role (A/B), sent_at
+Партицируется по месяцу
+Авто-очистка через 30 дней
+circuit_breaker
+Отслеживает ошибки внешних сервисов для pattern Circuit Breaker.
+service: yookassa, telegram, miniapp
+error_count, is_open, opened_at
+При 3 ошибках за 60 сек → circuit открывается на 60 сек → алерт в Grafana
+4.2 Индексы и производительность
+Все SELECT-запросы покрыты индексами:
+pairs(status, mode) — для фильтрации в W3/W4
+pairs(common_chat_id) — для W11 (поиск по чату)
+subscriptions(current_period_end, status) — для W7 (просроченные подписки)
+pings(pair_id, sent_at) — для аналитики по парам
+pic_ledger(pair_id, sent_at) — для проверки уникальности картинок
+4.3 Партиционирование
+Таблицы pings и pic_ledger партицируются по месяцам:
+Автоматическое создание партиций на 2 года вперёд (функция create_next_month_partitions())
+Каждая партиция именуется: pings_2025_07, ledger_2025_07
+W10 удаляет старые партиции (>90 дней для pings, >30 дней для ledger)
+5. N8N Workflows — подробное описание
+Всего 11 workflows в системе:
+Table
+Copy
+ID	Название	Триггер	Что делает
+W1	Onboarding v2	/start	Регистрация, согласие, выбор режима (silent/chat), генерация инвайт-ссылки
+W2	Timezone Setter	/tz	Автоопределение или ручная установка часового пояса
+W3	Morning Sender v2	Cron (каждые 30 мин)	Отправка утренних картинок с ветвлением по режиму
+W4	Evening Sender	Cron (каждые 30 мин)	Отправка вечерних картинок (аналогично W3)
+W5	Tap Callback v2	Callback query	Обработка нажатий кнопок, логика "кто первый нажал", zero-width space
+W6	Payment Hook	YooKassa webhook	Обработка платежей, circuit breaker, обновление подписки
+W7	Daily Dunning	Cron (10:00 UTC)	Напоминания о просроченных подписках
+W8	Refund Gate	Manual trigger	Создание возврата при даунтайме >24ч
+W9	Support Commands	/delete, /help	GDPR удаление, справка
+W10	Data Cleaner	Cron (03:00 UTC)	Очистка старых данных (90/30 дней)
+W11	Common Chat Linker	/link	Сохранение common_chat_id для режима chat
+5.1 W1: Onboarding v2 — подробный flow
+Trigger: User нажимает /start
+Parse User: Извлекает tg_id, username, IP из запроса
+Upsert User: INSERT в users (ON CONFLICT разрешает дубликаты)
+Show Policy: Отправляет сообщение с кнопкой [📄 Политика] (ссылка на Telegra.ph)
+Ask Consent: Второе сообщение с inline-кнопкой [Принимаю ✅]
+Save Consent: UPDATE users.consent = TRUE, запись в consent_audit
+Ask Mode: Пользователь выбирает режим:
+[💬 Часто пишем в личном чате] → callback mode_chat
+[💔 Редко, нужен сигнал] → callback mode_silent
+Mode Instruction: Отправляет инструкции:
+Chat mode: «Добавьте бота в личный чат и отправьте /link»
+Silent mode: «Пригласите партнёра по ссылке»
+5.2 W3/W4: Sender Workflows
+Логика работы:
+Cron срабатывает каждые 30 минут
+Запрос к БД: выбирает пары со статусом 'trial'/'active', где текущее время (с учётом utc_offset) = 07:30-08:30 или 21:30-22:30
+Для каждой пары:
+Если mode='silent': отправляет текст «Хотите отправить пожелание?» с inline-кнопкой в чат с ботом
+Если mode='chat': отправляет кнопку Mini App (web_app) с параметрами file_id и chat_id
+Сохраняет message_id_a и message_id_b для последующего редактирования (удаления) в pairs
+Выбор картинки:
+Запрос к pics_pool с ORDER BY RANDOM() LIMIT 1
+Проверка в pic_ledger что картинка не отправлялась этой паре за последние 30 дней
+Если картинок не осталось → сброс леджера для этой пары (DELETE FROM pic_ledger WHERE pair_id=?)
+5.3 W5: Tap Callback v2
+Обрабатывает 2 типа callback_data:
+request_morning_{pair_id}_{user_id} — кто-то хочет отправить первым
+tap_morning_{pair_id}_{user_id} — второй отвечает на полученную картинку
+Алгоритм "кто первый":
+Atomic UPDATE: UPDATE pairs SET morning_initiator_uid = $1 WHERE id = $2 AND initiator_uid IS NULL
+Если UPDATE вернул 0 строк → кто-то уже нажал → показываем «Ваш партнёр уже отправил»
+Если UPDATE успешен → редактируем сообщения:
+Инициатор: ✅ Вы отправили пожелание
+Партнёр: (невидимый символ \u200B — визуально исчезает)
+5.4 W6: Payment Hook + Circuit Breaker
+Flow:
+YooKassa отправляет POST на /webhook/yookassa
+Проверка подписи (HMAC-SHA256)
+Circuit Breaker Check: запрос в circuit_breaker — если is_open = TRUE → игнорируем webhook (отправим позже)
+UPDATE subscriptions (status='active', продление даты)
+Отправка уведомления пользователю
+При ошибке: увеличиваем error_count, если ≥3 → открываем circuit, отправляем алерт в Grafana
+6. Telegram Mini App — архитектура
+6.1 Как это работает
+Mini App — это веб-приложение, которое запускается внутри Telegram (встроенный браузер).
+Flow:
+User нажимает web_app кнопку в сообщении от бота
+Telegram открывает iframe с URL https://your-domain.ru/mini-app?file_id=XXX&chat_id=YYY
+Mini App загружает картинку через Telegram Bot API (getFile)
+User нажимает кнопку «Отправить в этот чат»
+Mini App делает POST запрос на sendPhoto с параметрами chat_id и file_id
+Картинка появляется в личном чате пары
+Mini App закрывается (Telegram.WebApp.close())
+6.2 Security measures
+initData verification: Mini App проверяет подпись Telegram, чтобы убедиться что запрос пришёл от legit пользователя
+CSP headers: Content Security Policy блокует внешние скрипты
+Rate limiting: 60 запросов в минуту с одного IP (защита от abuse)
+Helmet.js: Защита от XSS, clickjacking, других атак
+HTTPS only: Cloudflare → Mini App (No HTTP)
+6.3 UI/UX
+Загрузка: показывается спиннер пока картинка загружается
+Ошибка: если не удалось загрузить — показывается сообщение «Попробуйте позже»
+Успех: Telegram показывает нативный alert «Картинка отправлена!»
+Закрытие: Mini App автоматически закрывается через 1 секунду после успеха
+7. Процесс деплоя (без кода)
+Шаг 0: Подготовка (1 час)
+Арендуйте VPS в РФ (MTS Cloud или Selectel): Ubuntu 22.04, 2 vCPU, 4 GB RAM
+Купите домен (например, bot-domain.ru) и направьте A-запись на IP VPS
+Зарегистрируйте бота в @BotFather, получите токен
+Зарегистрируйтесь в YooKassa, получите ShopId и SecretKey
+Шаг 1: Настройка сервера
+Подключитесь по SSH:
+bash
+Copy
+apt update && apt install docker.io docker-compose -y
+mkdir /opt/silent-bot && cd /opt/silent-bot
+# Скопируйте файлы проекта на сервер
+Шаг 2: Переменные окружения
+Создайте файл .env в корне проекта и заполните:
+DOMAIN=bot-domain.ru
+TG_BOT_TOKEN=...
+DB_PASSWORD=...
+YOOKASSA_SHOP_ID=...
+ADMIN_TG_ID=... (ваш Telegram ID для алертов)
+Шаг 3: Кастомный Docker образ N8N
+Соберите образ со всеми зависимостями:
+bash
+Copy
+docker build -t n8n-custom:latest -f Dockerfile.n8n .
+Шаг 4: Запуск инфраструктуры
+bash
+Copy
+docker-compose up -d
+Подождите 60 секунд пока PostgreSQL инициализируется.
+Шаг 5: Инициализация базы данных
+bash
+Copy
+docker exec -it n8n_db_primary psql -U n8n -d n8n -f /docker-entrypoint-initdb.d/01-schema.sql
+docker exec -it n8n_db_primary psql -U n8n -d n8n -f /docker-entrypoint-initdb.d/02-users.sql
+docker exec -it n8n_db_primary psql -U n8n -d n8n -f /docker-entrypoint-initdb.d/03-partitions.sql
+Шаг 6: Создание слотов репликации
+bash
+Copy
+docker exec n8n_db_primary psql -U n8n -c "SELECT * FROM pg_create_physical_replication_slot('replica1');"
+docker exec n8n_db_primary psql -U n8n -c "SELECT * FROM pg_create_physical_replication_slot('replica2');"
+Шаг 7: Запуск N8N Workers
+bash
+Copy
+docker-compose -f docker-compose.workers.yml up -d
+Шаг 8: Настройка Mini App
+bash
+Copy
+cd /opt/silent-bot/mini-app
+npm install --production
+cd ..
+Mini App автоматически запустится вместе с остальными сервисами.
+Шаг 9: Webhook Telegram
+bash
+Copy
+curl "https://api.telegram.org/bot${TG_BOT_TOKEN}/setWebhook?url=https://${DOMAIN}/webhook/telegram"
+Шаг 10: Меню команд
+bash
+Copy
+curl -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/setMyCommands" \
+  -d 'commands=[{"command":"start","description":"Начать"},{"command":"tz","description":"Часовой пояс"},{"command":"menu","description":"Меню"},{"command":"pay","description":"Оплатить"},{"command":"delete","description":"Удалить себя"},{"command":"link","description":"Связать чат"},{"command":"help","description":"Помощь"}]'
+Шаг 11: Загрузка картинок
+bash
+Copy
+# Создайте папку
+mkdir -p /opt/silent-bot/pics
+# Скопируйте 500-1000 JPG (morning_*.jpg, evening_*.jpg)
+# Запустите скрипт загрузки
+node scripts/load_test.js
+Шаг 12: Проверка
+Напишите боту /start, пройдите онбординг, пригласите партнёра, дождитесь 07:30-08:30 — проверьте flow.
+8. Мониторинг и поддержка
+8.1 Метрики (Grafana Dashboard)
+Основные метрики:
+Users: количество активных пар, новых регистраций, конверсия trial→paid
+Messages: отправлено картинок, успешных taps, процент открытия Mini App
+Performance: p99 latency обработки webhook, глубина очереди Redis, lag реплик PG
+Financial: успешных платежей, refunds, MRR, churn rate
+Uptime: доступность каждого сервиса (N8N, PG, Mini App)
+8.2 Алерты (Telegram-канал #alerts)
+Table
+Copy
+Триггер	Условие	Действие
+Queue overflow	bull:n8n:waiting > 1000	Добавить N8N workers (scale up)
+High latency	p99 latency > 2s	Проверить медленные запросы в PG
+Replication lag	lag > 30s	Проверить реплики, возможно сеть
+Circuit open	circuit_breaker.is_open = true	Вмешательство админа, проверить YooKassa
+Low uptime	uptime < 99% за 1ч	Проверить логи, возможно рестарт сервиса
+High refund rate	>5 refunds в день	Проверить stability сервиса
+8.3 Ежедневные операции
+Автоматические:
+03:00 UTC: W10 очищает старые данные (pings >90д, ledger >30д)
+04:00 UTC: daily_backup.sh делает pg_dump → gzip → загружает в Minio
+10:00 UTC: W7 отправляет дандинг-уведомления о просрочке
+Ручные:
+Проверка Grafana Dashboard (утром)
+Просмотр алертов в Telegram
+Разбор failed платежей (если есть)
+9. Юридика и соответствие
+9.1 152-ФЗ (РФ)
+Локализация: VPS и PostgreSQL в РФ (MTS Cloud/Selectel)
+Согласие: Inline-кнопка, фиксация IP и даты в consent_audit
+Удаление: Команда /delete → мгновенное удаление ВСЕХ данных ≤ 3 секунд
+Оферта: docs/oferta.md (публикуется в Menu Button)
+РКН: Не требует регистрации (< 100k субъектов ПДн)
+9.2 GDPR (ЕС)
+Минимизация: Храним только tg_id, utc_offset, даты
+Explicit consent: До начала обработки (W1 проверяет consent = TRUE)
+Right to erasure: /delete → CASCADE DELETE во всех таблицах
+Data portability: Можно экспортировать данные через /export (опционально)
+DPA: Подписан с YooKassa (processor agreement)
+9.3 Refund Policy
+Условие: Простой сервиса > 24 часов подряд ( uptime < 95% )
+Доказательство: UptimeRobot + логи N8N + Grafana метрики
+Процедура: Админ запускает W8 → YooKassa API → возврат 199 ₽
+Срок: Деньги возвращаются в течение 3 рабочих дней
+10. Масштабирование и производительность
+10.1 Горизонтальное масштабирование
+N8N Workers:
+Добавьте больше воркеров, если очередь растёт:
+bash
+Copy
+docker-compose -f docker-compose.workers.yml up -d --scale n8n-worker-1=3
+PostgreSQL Read Replicas:
+Все SELECT-запросы в N8N workflows можно направлять на реплики (уже настроено в DB_POSTGRESDB_READ_REPLICA_HOSTS)
+Mini App:
+За Cloudflare можно добавить балансировщик и несколько инстансов Express (если нагрузка > 1000 req/s)
+10.2 Вертикальное масштабирование
+VPS: Увеличьте RAM до 8 GB если PG cash и Redis cache не влезают
+shared_buffers = 25% RAM (2 GB при 8 GB RAM)
+max_connections = 300 (при 1000+ активных пар)
+10.3 Оптимизация производительности
+База данных:
+Все запросы с LIMIT 1 и ORDER BY RANDOM() используют индексное сканирование
+pic_ledger — кластеризованный индекс по (pair_id, sent_at) ускоряет проверку уникальности
+Redis:
+Используется Bull Queue для надежной доставки сообщений (retry, persistence)
+AOF persistence гарантирует, что job'ы не потеряются при рестарте
+Mini App:
+Картинки кэшируются браузером Telegram (304 Not Modified)
+File IDs кэшируются в pics_pool, повторные загрузки не нужны
+11. Риски и контрмеры
+Table
+Copy
+Риск	Вероятность	Влияние	Контрмеры
+Username скрыт	Высокая	Средняя	Показывать ID для поиска в /link
+Mini App не открывается	Средняя	Высокая	Graceful degradation → fallback к silent mode
+Одновременное нажатие	Низкая	Низкая	Atomic UPDATE с WHERE initiator_uid IS NULL
+PG replication lag	Средняя	Высокая	Мониторинг lag, async mode для performance
+YooKassa downtime	Средняя	Высокая	Circuit breaker + retry logic (3 attempts)
+Telegram rate limit	Низкая	Высокая	Batch sending (50 users/мин), очередь Redis
+User удаляет бота из чата	Высокая	Средняя	W11 проверяет common_chat_id, можно повторно /link
+GDPR fine	Низкая	Критичная	Автоудаление ≤ 3 секунд, аудит consent_audit
+12. KPI и метрики успеха
+DAU/MAU: Daily/Monthly Active Users (цель: 1000 активных пар)
+Conversion rate: Trial → Paid (цель: 15%)
+Churn: Отказ от подписки (цель: < 5% в месяц)
+Engagement: Среднее количество taps в день (цель: 1.8)
+Uptime: 99.9% (цель: < 1ч downtime в месяц)
+P99 latency: < 500ms для webhook'ов
+Refund rate: < 1%
+13. Роадмап
+Версия 2.2 (текущая)
+✅ Dual Mode (silent/chat)
+✅ Mini App
+✅ Circuit breaker
+✅ PostgreSQL реплики
+Версия 2.3 (Q4 2025)
+Аналитика в личном кабинете (web dashboard)
+Кастомные картинки (пользователь может загрузить свои)
+Голосовые сообщения (аудио-пожелания)
+Интеграция с Apple Health / Google Fit (auto-detect sleep time)
+Версия 3.0 (2026)
+AI-генерация картинок (Stable Diffusion)
+Поддержка видео-клипов
+Группы >2 человек (семьи)
+White-label для брендов
+14. Контакты и поддержка
+Админ: @your_telegram
+Канал обновлений: @silent_couple_bot_news
+Email: support@bot-domain.ru
+Status page: status.bot-domain.ru (UptimeRobot)
+GitHub: https://github.com/your/silent-couple-bot
+Документация завершена. Проект готов к деплою в продакшен.

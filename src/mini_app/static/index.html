@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="format-detection" content="telephone=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Silent Couple — Отправить картинку</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 24px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            max-width: 400px;
+            width: 100%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .image-container {
+            position: relative;
+            width: 100%;
+            margin-bottom: 20px;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #f0f0f0;
+            aspect-ratio: 1;
+        }
+
+        #picture {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #999;
+        }
+
+        .error {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #e74c3c;
+            text-align: center;
+            padding: 20px;
+        }
+
+        #shareBtn {
+            width: 100%;
+            padding: 16px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        #shareBtn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        #shareBtn:active {
+            transform: translateY(0);
+        }
+
+        #shareBtn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .footer {
+            margin-top: 16px;
+            text-align: center;
+            font-size: 12px;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Доброе утро ☀️</h1>
+            <p>Нажмите кнопку, чтобы отправить картинку в ваш чат</p>
+        </div>
+
+        <div class="image-container">
+            <img id="picture" style="display: none;">
+            <div class="loading" id="loading">Загрузка...</div>
+            <div class="error" id="error" style="display: none;"></div>
+        </div>
+
+        <button id="shareBtn" disabled>
+            <span>📤</span>
+            <span>Отправить в этот чат</span>
+        </button>
+
+        <div class="footer">
+            Silent Couple Bot 3.0
+        </div>
+    </div>
+
+    <script>
+        class MiniApp {
+            constructor() {
+                this.tg = window.Telegram.WebApp;
+                this.params = new URLSearchParams(window.location.search);
+                this.fileId = this.params.get('file_id');
+                this.chatId = this.params.get('chat_id');
+                
+                this.pictureEl = document.getElementById('picture');
+                this.loadingEl = document.getElementById('loading');
+                this.errorEl = document.getElementById('error');
+                this.shareBtn = document.getElementById('shareBtn');
+                
+                this.init();
+            }
+
+            async init() {
+                try {
+                    if (!this.tg) {
+                        throw new Error('Telegram WebApp не доступен');
+                    }
+
+                    if (!this.fileId || !this.chatId) {
+                        throw new Error('Недостаточно параметров');
+                    }
+
+                    this.tg.expand();
+                    await this.loadImage();
+                    this.setupButton();
+                } catch (error) {
+                    this.showError(error.message);
+                }
+            }
+
+            async loadImage() {
+                try {
+                    const botToken = this.tg.initDataUnsafe?.bot_token || '';
+                    const response = await fetch(
+                        `https://api.telegram.org/bot${botToken}/getFile?file_id=${this.fileId}`
+                    );
+
+                    if (!response.ok) {
+                        throw new Error('Не удалось получить файл');
+                    }
+
+                    const data = await response.json();
+                    
+                    if (!data.ok) {
+                        throw new Error(data.description || 'API Error');
+                    }
+
+                    const filePath = data.result.file_path;
+                    const imageUrl = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
+
+                    this.pictureEl.src = imageUrl;
+                    this.pictureEl.style.display = 'block';
+                    this.loadingEl.style.display = 'none';
+                } catch (error) {
+                    this.showError(`Ошибка загрузки: ${error.message}`);
+                }
+            }
+
+            setupButton() {
+                this.shareBtn.disabled = false;
+                
+                this.shareBtn.addEventListener('click', async () => {
+                    await this.sendPhoto();
+                });
+            }
+
+            async sendPhoto() {
+                try {
+                    this.shareBtn.disabled = true;
+                    this.shareBtn.innerHTML = '<span>⏳</span><span>Отправка...</span>';
+
+                    const initData = this.tg.initData;
+                    const formData = new FormData();
+                    formData.append('initData', initData);
+                    formData.append('file_id', this.fileId);
+                    formData.append('chat_id', this.chatId);
+
+                    const response = await fetch('/send', {
+                        method: 'POST',
+                        body: formData,
+                    });
+
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(data.detail || 'Send failed');
+                    }
+
+                    this.tg.showAlert('✅ Картинка отправлена!');
+                    
+                    setTimeout(() => {
+                        this.tg.close();
+                    }, 1000);
+                } catch (error) {
+                    this.tg.showAlert(`❌ Ошибка: ${error.message}`);
+                    this.shareBtn.disabled = false;
+                    this.shareBtn.innerHTML = '<span>📤</span><span>Отправить в этот чат</span>';
+                }
+            }
+
+            showError(message) {
+                this.loadingEl.style.display = 'none';
+                this.errorEl.textContent = `❌ ${message}`;
+                this.errorEl.style.display = 'block';
+                this.pictureEl.style.display = 'none';
+                this.shareBtn.disabled = true;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            new MiniApp();
+        });
+    </script>
+</body>
+</html>
+
