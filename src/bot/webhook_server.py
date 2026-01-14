@@ -14,6 +14,9 @@ from fastapi.responses import JSONResponse
 from src.core.config import settings
 from src.core.logger import get_logger
 from src.core.redis_client import create_redis_client, test_redis_connection
+from src.core.bootstrap import bootstrap_application
+from src.core.di.container import Container
+from src.bot.middlewares.container import ContainerMiddleware
 from src.bot.middlewares.database import DatabaseMiddleware
 from src.bot.middlewares.rate_limit import RateLimitMiddleware
 from src.bot.middlewares.timezone import TimezoneMiddleware
@@ -35,23 +38,26 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
     if bot is not None and dp is not None:
         return bot, dp
 
+    # Bootstrap application to get container with all dependencies
+    container: Container = bootstrap_application()
+    
     # Initialize Redis (or use MemoryStorage if Redis unavailable)
-    # Store Redis client globally to prevent connection closure
-    redis_client = await create_redis_client()
+    # Create separate Redis client for RedisStorage (it manages its own connection)
+    # Store a separate Redis client globally for rate limiting middleware
+    redis_storage_client = await create_redis_client()
+    redis_client = await create_redis_client()  # Separate client for rate limiting
     storage = None
 
-    if redis_client:
+    if redis_storage_client:
         try:
-            storage = RedisStorage(redis=redis_client)
+            storage = RedisStorage(redis=redis_storage_client)
             logger.info("Using Redis storage")
         except Exception as e:
             logger.warning(f"Failed to create RedisStorage: {e}")
             logger.warning("Falling back to MemoryStorage")
             storage = MemoryStorage()
-            # Don't close redis_client here - keep it for rate limiting middleware
-        else:
-            # Redis storage created successfully, redis_client is stored globally
-            pass
+            await redis_storage_client.aclose()
+            redis_storage_client = None
     else:
         logger.warning("Redis not available, using MemoryStorage")
         logger.warning(
@@ -70,7 +76,12 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
     dp = Dispatcher(storage=storage)
 
     # Register middlewares (order matters!)
-    # 1. Database middleware first (provides session)
+    # 0. Container middleware first (provides container and services like bot_provider, telegram_messenger)
+    container_middleware = ContainerMiddleware(container)
+    dp.message.middleware(container_middleware)
+    dp.callback_query.middleware(container_middleware)
+
+    # 1. Database middleware (provides session)
     dp.message.middleware(DatabaseMiddleware())
     dp.callback_query.middleware(DatabaseMiddleware())
 
