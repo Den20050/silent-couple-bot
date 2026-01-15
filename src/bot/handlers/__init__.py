@@ -6,7 +6,7 @@ from src.bot.handlers import (
     start,
     subscription,
 )
-from src.bot.handlers.callbacks import router as callbacks
+from src.bot.handlers.callbacks.router import router as callbacks
 from src.bot.handlers.menu import router as menu
 from src.bot.handlers.pay import router as pay
 from src.bot.handlers.settings import router as settings
