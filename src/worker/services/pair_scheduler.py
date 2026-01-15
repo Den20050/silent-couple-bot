@@ -68,9 +68,19 @@ class PairScheduler:
         Returns:
             True if wish was sent, False otherwise
         """
+        def _skip(reason: str, **extra: object) -> bool:
+            logger.debug(
+                "Skipping wish send for pair",
+                pair_id=getattr(pair, "id", None),
+                pic_type=pic_type,
+                reason=reason,
+                **extra,
+            )
+            return False
+
         # Check if subscription is past due
         if pair.status == PairStatus.PAST_DUE.value:
-            return False
+            return _skip("pair_status_past_due")
         
         # Get daily state
         daily_state = await self.daily_state_repo.get_or_create(pair.id, today)
@@ -78,10 +88,10 @@ class PairScheduler:
         # Check if already sent today
         if pic_type == "morning":
             if daily_state.morning_initiator is not None:
-                return False
+                return _skip("already_sent_today", initiator=daily_state.morning_initiator)
         else:  # evening
             if daily_state.evening_initiator is not None:
-                return False
+                return _skip("already_sent_today", initiator=daily_state.evening_initiator)
         
         # Check if at least one user is in their time window
         user_a_local_time = TimeWindowService.get_user_local_time(now_utc, user_a.utc_offset)
@@ -96,7 +106,13 @@ class PairScheduler:
         
         # If neither user is in their time window, skip
         if not user_a_in_window and not user_b_in_window:
-            return False
+            return _skip(
+                "outside_time_window",
+                user_a_local_time=str(user_a_local_time),
+                user_b_local_time=str(user_b_local_time),
+                user_a_utc_offset=getattr(user_a, "utc_offset", None),
+                user_b_utc_offset=getattr(user_b, "utc_offset", None),
+            )
         
         # Check wish request attempt limit (max 3 attempts per day with 1 hour intervals)
         wish_request_key_prefix = f"{settings.redis_key_prefix_wish_request}:{pair.id}:{pic_type}:{today.isoformat()}"
@@ -116,7 +132,7 @@ class PairScheduler:
                 pic_type=pic_type,
                 attempt_count=attempt_count,
             )
-            return False
+            return _skip("attempt_limit_reached", attempt_count=attempt_count)
         
         # Check if we should send based on attempt count and time intervals
         if attempt_count == 0:
@@ -154,7 +170,7 @@ class PairScheduler:
                 pic_type=pic_type,
                 attempt_count=attempt_count,
             )
-            return False
+            return _skip("attempt_interval_not_met", attempt_count=attempt_count)
         
         # Build request message based on pair mode
         if pair.mode == "chat":
