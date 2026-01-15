@@ -61,7 +61,7 @@ class PairScheduler:
         pic_type: str,
         today: date,
         now_utc: datetime,
-    ) -> bool:
+    ) -> tuple[bool, str]:
         """Send wish for a pair if conditions are met.
         
         Args:
@@ -73,9 +73,9 @@ class PairScheduler:
             now_utc: Current UTC datetime
             
         Returns:
-            True if wish was sent, False otherwise
+            Tuple of (success, reason). If success is False, reason describes skip cause.
         """
-        def _skip(reason: str, **extra: object) -> bool:
+        def _skip(reason: str, **extra: object) -> tuple[bool, str]:
             logger.debug(
                 "Skipping wish send for pair",
                 pair_id=getattr(pair, "id", None),
@@ -83,7 +83,7 @@ class PairScheduler:
                 reason=reason,
                 **extra,
             )
-            return False
+            return False, reason
 
         # Check if subscription is past due
         if pair.status == PairStatus.PAST_DUE.value:
@@ -350,7 +350,7 @@ class PairScheduler:
                 user_b_in_window=user_b_in_window,
                 attempt_count=new_count,
             )
-            return True
+            return True, "sent"
         
-        return False
+        return _skip("send_failed_no_recipients")
 

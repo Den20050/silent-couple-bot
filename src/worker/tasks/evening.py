@@ -1,15 +1,27 @@
 """Evening sender task."""
 
+from collections import Counter
 from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import select
 
+from src.core.config import settings
 from src.core.logger import get_logger
 from src.db.models import User
 from src.worker.di.context import WorkerContext
 
 logger = get_logger(__name__)
+
+
+def _mask_db_url(url: str) -> str:
+    if "://" not in url:
+        return url
+    scheme, rest = url.split("://", 1)
+    if "@" not in rest:
+        return url
+    _creds, tail = rest.split("@", 1)
+    return f"{scheme}://***@{tail}"
 
 
 async def evening_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> None:
@@ -34,6 +46,12 @@ async def evening_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> 
         
         now_utc = datetime.utcnow()
         today = date.today()
+        logger.info(
+            "Evening sender tick",
+            now_utc=now_utc.isoformat(),
+            today=str(today),
+            database_url=_mask_db_url(settings.database_url),
+        )
         
         async with worker_context.session_factory() as session:
             scheduler = worker_context.create_pair_scheduler(session)
@@ -52,6 +70,7 @@ async def evening_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> 
             logger.info("Past due pairs found", count=len(past_due_pairs))
             
             sent_count = 0
+            reasons: Counter[str] = Counter()
             
             # Process active pairs - send wishes
             for pair in pairs:
@@ -68,7 +87,7 @@ async def evening_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> 
                     user_b = user_b_result.scalar_one()
                     
                     # Try to send wish
-                    success = await scheduler.send_wish_for_pair(
+                    success, reason = await scheduler.send_wish_for_pair(
                         pair=pair,
                         user_a=user_a,
                         user_b=user_b,
@@ -76,6 +95,7 @@ async def evening_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> 
                         today=today,
                         now_utc=now_utc,
                     )
+                    reasons[reason] += 1
                     
                     if success:
                         sent_count += 1
@@ -119,7 +139,11 @@ async def evening_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> 
                     )
                     continue
             
-            logger.info("Evening sender completed", sent_count=sent_count)
+            logger.info(
+                "Evening sender completed",
+                sent_count=sent_count,
+                reasons=dict(reasons),
+            )
     finally:
         await worker_context.close_bot()
         await lock_service.close()
