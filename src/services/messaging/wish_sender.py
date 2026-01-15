@@ -17,6 +17,69 @@ from src.core.protocols.messenger import MessengerProtocol
 
 logger = get_logger(__name__)
 
+_WISH_REQUEST_PROMPT_SET_TTL_SECONDS = 48 * 3600
+
+
+def _wish_request_prompt_set_key(tg_id: int, pic_type: str, day: date) -> str:
+    """Redis set key for storing request-prompt message_ids per user/day/type."""
+    return f"wish_request_prompt_ids:{tg_id}:{pic_type}:{day.isoformat()}"
+
+
+async def _disable_wish_request_prompts(
+    telegram_messenger: MessengerProtocol,
+    tg_id: int,
+    pic_type: str,
+    day: date,
+) -> None:
+    """Remove 'send wish' buttons from previously sent request prompts for user.
+
+    This prevents the user from pressing a stale 'send' button after their partner
+    has already initiated the wish for this pair/day.
+    """
+    try:
+        from src.core.redis_client import create_redis_client
+
+        redis_client = await create_redis_client(socket_connect_timeout=2, socket_timeout=2)
+        if redis_client is None:
+            return
+
+        key = _wish_request_prompt_set_key(tg_id=tg_id, pic_type=pic_type, day=day)
+        message_ids = await redis_client.smembers(key)
+
+        if not message_ids:
+            await redis_client.aclose()
+            return
+
+        for raw_id in message_ids:
+            try:
+                message_id = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            try:
+                await telegram_messenger.remove_reply_markup(
+                    chat_id=tg_id,
+                    message_id=message_id,
+                )
+            except Exception:
+                # Message may have been deleted/edited already; ignore.
+                continue
+
+        # Remove tracking key after best-effort cleanup
+        try:
+            await redis_client.delete(key)
+        except Exception:
+            pass
+        finally:
+            await redis_client.aclose()
+    except Exception as e:
+        logger.warning(
+            "Failed to disable wish request prompts",
+            tg_id=tg_id,
+            pic_type=pic_type,
+            day=str(day),
+            error=str(e),
+        )
+
 
 class WishSenderService:
     """Service for sending wishes to partners."""
@@ -150,6 +213,15 @@ class WishSenderService:
             photo=file_id,
             caption=caption,
             reply_markup=reply_markup,
+        )
+
+        # Partner may still have a stale "send wish" request prompt with a button.
+        # Remove those buttons so they can't press it after this pair already has an initiator.
+        await _disable_wish_request_prompts(
+            telegram_messenger=self.telegram_messenger,
+            tg_id=partner.tg_id,
+            pic_type=pic_type,
+            day=today,
         )
 
         # Get partner nickname for confirmation message
