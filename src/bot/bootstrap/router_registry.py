@@ -12,7 +12,11 @@ from src.bot.handlers.pay import router as pay_router
 from src.bot.handlers.feedback import router as feedback_router
 from src.bot.handlers.delete import router as delete_router
 from src.bot.handlers.link import router as link_router
-from src.bot.handlers.callbacks import router as callbacks_router
+# IMPORTANT:
+# There is a legacy file `src/bot/handlers/callbacks.py` in history that conflicts
+# with the callbacks package directory `src/bot/handlers/callbacks/`.
+# Always import the package router explicitly to avoid ambiguity.
+from src.bot.handlers.callbacks.router import router as callbacks_router
 
 logger = get_logger(__name__)
 
