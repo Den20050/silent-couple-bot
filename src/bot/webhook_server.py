@@ -129,6 +129,7 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
             BotCommand(command="subscription", description="📊 Подписка"),
             BotCommand(command="pay", description="💳 Оплатить"),
             BotCommand(command="settings", description="⚙️ Настройки"),
+            BotCommand(command="share", description="📤 Поделиться ботом"),
             BotCommand(command="feedback", description="💬 Обратная связь"),
             BotCommand(command="delete", description="🗑️ Удалить аккаунт"),
         ]
