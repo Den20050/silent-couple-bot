@@ -20,6 +20,13 @@ from src.worker.services.lock_service import LockService
 
 logger = get_logger(__name__)
 
+_WISH_REQUEST_PROMPT_SET_TTL_SECONDS = 48 * 3600
+
+
+def _wish_request_prompt_set_key(tg_id: int, pic_type: str, day: date) -> str:
+    """Redis set key for storing request-prompt message_ids per user/day/type."""
+    return f"wish_request_prompt_ids:{tg_id}:{pic_type}:{day.isoformat()}"
+
 
 class PairScheduler:
     """Service for scheduling and sending pair wishes."""
@@ -219,12 +226,26 @@ class PairScheduler:
         }
         
         try:
-            await self.telegram_messenger.send_message(
+            msg_a = await self.telegram_messenger.send_message(
                 chat_id=user_a.tg_id,
                 text=request_text,
                 reply_markup=reply_markup_a,
             )
             sent_to_a = True
+            try:
+                redis_client = await self.lock_service.get_redis_client()
+                if redis_client is not None:
+                    key = _wish_request_prompt_set_key(user_a.tg_id, pic_type, today)
+                    await redis_client.sadd(key, str(msg_a.message_id))
+                    await redis_client.expire(key, _WISH_REQUEST_PROMPT_SET_TTL_SECONDS)
+            except Exception as e:
+                logger.warning(
+                    "Failed to track wish request prompt message_id (user_a)",
+                    pair_id=pair.id,
+                    tg_id=user_a.tg_id,
+                    pic_type=pic_type,
+                    error=str(e),
+                )
         except Exception as e:
             logger.error(
                 "Error sending request to user_a",
@@ -263,12 +284,26 @@ class PairScheduler:
         }
         
         try:
-            await self.telegram_messenger.send_message(
+            msg_b = await self.telegram_messenger.send_message(
                 chat_id=user_b.tg_id,
                 text=request_text,
                 reply_markup=reply_markup_b,
             )
             sent_to_b = True
+            try:
+                redis_client = await self.lock_service.get_redis_client()
+                if redis_client is not None:
+                    key = _wish_request_prompt_set_key(user_b.tg_id, pic_type, today)
+                    await redis_client.sadd(key, str(msg_b.message_id))
+                    await redis_client.expire(key, _WISH_REQUEST_PROMPT_SET_TTL_SECONDS)
+            except Exception as e:
+                logger.warning(
+                    "Failed to track wish request prompt message_id (user_b)",
+                    pair_id=pair.id,
+                    tg_id=user_b.tg_id,
+                    pic_type=pic_type,
+                    error=str(e),
+                )
         except Exception as e:
             logger.error(
                 "Error sending request to user_b",
