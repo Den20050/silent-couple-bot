@@ -1,7 +1,7 @@
 """add_user_notification_windows
 
 Revision ID: 5b1b5f9c2b2a
-Revises: df533770ed60
+Revises: a703b4149630
 Create Date: 2026-01-16
 
 """
@@ -14,7 +14,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = "5b1b5f9c2b2a"
-down_revision: Union[str, None] = "df533770ed60"
+down_revision: Union[str, None] = "a703b4149630"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
