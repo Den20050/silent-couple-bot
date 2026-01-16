@@ -3,6 +3,7 @@
 from aiogram.types import Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.config import settings
 from src.core.logger import get_logger
 from src.db.repositories.users import UsersRepository
 from src.services.timezone import detect_timezone_from_ip
@@ -29,13 +30,13 @@ async def get_or_create_user(
     if user:
         return user, False
     
-    # Extract IP from message (if available via webhook)
-    # IP is set by webhook_server.py on the message object
+    # In webhook mode, Telegram sends updates from Telegram servers,
+    # so request IP is not a reliable user IP. We keep consent_ip for audit only.
     consent_ip = getattr(message, "ip", None)
     
     # Try to detect timezone from IP (if available)
     utc_offset = None
-    if consent_ip:
+    if settings.timezone_detect_from_ip_enabled and consent_ip:
         try:
             utc_offset = await detect_timezone_from_ip(consent_ip)
         except Exception as e:

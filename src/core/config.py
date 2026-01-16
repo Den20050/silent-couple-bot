@@ -225,6 +225,16 @@ class Settings(BaseSettings):
     evening_start: str = "21:00"  # 21:00 user local time
     evening_end: str = "22:00"  # 22:00 user local time
 
+    # Timezone detection
+    timezone_detect_from_ip_enabled: bool = Field(
+        default=False,
+        description=(
+            "Enable timezone (UTC offset) detection from IP address. "
+            "WARNING: In Telegram webhook mode, the request IP is usually a Telegram server IP, "
+            "not the user's IP, so enabling this may set incorrect utc_offset values."
+        ),
+    )
+
     # Trial period (days)
     trial_period_days: int = Field(
         default=7,
