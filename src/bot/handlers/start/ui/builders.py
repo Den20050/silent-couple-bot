@@ -128,3 +128,55 @@ def get_welcome_accept_keyboard() -> InlineKeyboardMarkup:
             ],
         ]
     )
+
+
+def get_notif_time_morning_keyboard() -> InlineKeyboardMarkup:
+    """Get keyboard for selecting preferred morning notification time window."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="06–07",
+                    callback_data="notif_time:morning:6",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="07–08",
+                    callback_data="notif_time:morning:7",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="08–09",
+                    callback_data="notif_time:morning:8",
+                )
+            ],
+        ]
+    )
+
+
+def get_notif_time_evening_keyboard() -> InlineKeyboardMarkup:
+    """Get keyboard for selecting preferred evening notification time window."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="20–21",
+                    callback_data="notif_time:evening:20",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="21–22",
+                    callback_data="notif_time:evening:21",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="22–23",
+                    callback_data="notif_time:evening:22",
+                )
+            ],
+        ]
+    )

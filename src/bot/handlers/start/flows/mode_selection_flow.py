@@ -16,6 +16,7 @@ from src.bot.handlers.start.services.onboarding_service import (
 )
 from src.bot.handlers.start.ui.builders import (
     get_invite_link_keyboard,
+    get_notif_time_morning_keyboard,
 )
 
 logger = get_logger(__name__)
@@ -68,6 +69,27 @@ class ModeSelectionFlow:
         
         # Show invite link immediately after mode selection
         await self._show_invite_link(callback, tg_id, mode)
+
+        # Ask once about preferred notification windows (soft onboarding step)
+        try:
+            from src.db.repositories.users import UsersRepository
+
+            users_repo = UsersRepository(session)
+            if not getattr(user, "notification_windows_prompted", False):
+                await users_repo.update_notification_windows_prompted(tg_id, True)
+                await session.commit()
+                await callback.message.answer(
+                    get_message("NOTIF_TIME_MORNING_PROMPT"),
+                    reply_markup=get_notif_time_morning_keyboard(),
+                    parse_mode=ParseMode.HTML,
+                )
+        except Exception as e:
+            logger.warning(
+                "Failed to send notification windows prompt",
+                tg_id=tg_id,
+                error=str(e),
+            )
+
         await state.clear()
     
     async def _show_invite_link(
