@@ -1,6 +1,7 @@
 """Pair scheduling service for sending wishes and reminders."""
 
 from datetime import date, datetime, timedelta
+from datetime import time as time_type
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -100,16 +101,35 @@ class PairScheduler:
             if daily_state.evening_initiator is not None:
                 return _skip("already_sent_today", initiator=daily_state.evening_initiator)
         
-        # Check if at least one user is in their time window
+        # Check if at least one user is in their time window (per-user preferences)
         user_a_local_time = TimeWindowService.get_user_local_time(now_utc, user_a.utc_offset)
         user_b_local_time = TimeWindowService.get_user_local_time(now_utc, user_b.utc_offset)
         
+        def _window_for_user(user_obj, which: str) -> tuple[time_type, time_type]:
+            if which == "morning":
+                start_hour = getattr(user_obj, "morning_window_start_hour", None)
+            else:
+                start_hour = getattr(user_obj, "evening_window_start_hour", None)
+
+            # Fallback to global config windows if field is missing (e.g., before migration)
+            if start_hour is None:
+                if which == "morning":
+                    return settings.morning_start_time, settings.morning_end_time
+                return settings.evening_start_time, settings.evening_end_time
+
+            start = time_type(int(start_hour), 0)
+            end = time_type((int(start_hour) + 1) % 24, 0)
+            return start, end
+
         if pic_type == "morning":
-            user_a_in_window = TimeWindowService.is_in_morning_window(user_a_local_time)
-            user_b_in_window = TimeWindowService.is_in_morning_window(user_b_local_time)
-        else:  # evening
-            user_a_in_window = TimeWindowService.is_in_evening_window(user_a_local_time)
-            user_b_in_window = TimeWindowService.is_in_evening_window(user_b_local_time)
+            a_start, a_end = _window_for_user(user_a, "morning")
+            b_start, b_end = _window_for_user(user_b, "morning")
+        else:
+            a_start, a_end = _window_for_user(user_a, "evening")
+            b_start, b_end = _window_for_user(user_b, "evening")
+
+        user_a_in_window = TimeWindowService.is_in_time_window(user_a_local_time, a_start, a_end)
+        user_b_in_window = TimeWindowService.is_in_time_window(user_b_local_time, b_start, b_end)
         
         # If neither user is in their time window, skip
         if not user_a_in_window and not user_b_in_window:

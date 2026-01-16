@@ -33,6 +33,8 @@ from src.bot.handlers.start.ui.builders import (
     get_policy_keyboard,
     get_welcome_next_keyboard,
     get_welcome_accept_keyboard,
+    get_notif_time_morning_keyboard,
+    get_notif_time_evening_keyboard,
 )
 from src.bot.handlers.start.flows import (
     InviteFlow,
@@ -41,6 +43,11 @@ from src.bot.handlers.start.flows import (
 )
 
 logger = get_logger(__name__)
+
+
+def _format_hour_range(start_hour: int) -> str:
+    end_hour = (start_hour + 1) % 24
+    return f"{start_hour:02d}–{end_hour:02d}"
 
 
 class PairCreationStates(StatesGroup):
@@ -277,6 +284,23 @@ async def handle_start_logic(
                 )
                 await message.answer(message_text)
         
+        # Soft one-time prompt: ask user to configure preferred notification windows
+        if user.consent and not getattr(user, "notification_windows_prompted", False):
+            try:
+                await users_repo.update_notification_windows_prompted(tg_id, True)
+                await session.commit()
+                await message.answer(
+                    get_message("NOTIF_TIME_MORNING_PROMPT"),
+                    reply_markup=get_notif_time_morning_keyboard(),
+                    parse_mode="HTML",
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to send notification windows prompt from /start",
+                    tg_id=tg_id,
+                    error=str(e),
+                )
+
         return
         
     # At this point, user has NO pair - continue with onboarding flow
@@ -662,6 +686,71 @@ async def handle_mode_silent(
     await mode_selection_flow.handle_mode_selection(
         callback, "silent", session, state
     )
+
+
+@handle_errors(error_key="START_ERROR", show_alert=True)
+async def handle_notif_time_selection(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    state: FSMContext,  # noqa: ARG001
+    bot_provider: BotProvider,  # noqa: ARG001
+    messenger: TelegramMessenger,  # noqa: ARG001
+) -> None:
+    """Handle notification time window selection (morning/evening).
+
+    This callback can be triggered from onboarding (/start) or from Settings screen.
+    """
+    tg_id = callback.from_user.id
+    parts = (callback.data or "").split(":")
+    if len(parts) != 3:
+        await callback.answer("Ошибка выбора времени", show_alert=True)
+        return
+
+    _, which, hour_str = parts
+    try:
+        start_hour = int(hour_str)
+    except ValueError:
+        await callback.answer("Ошибка выбора времени", show_alert=True)
+        return
+
+    users_repo = UsersRepository(session)
+
+    if which == "morning":
+        if start_hour not in (6, 7, 8):
+            await callback.answer("Недопустимое время", show_alert=True)
+            return
+        await users_repo.update_morning_window_start_hour(tg_id, start_hour)
+        await session.commit()
+        await callback.message.edit_text(
+            get_message("NOTIF_TIME_EVENING_PROMPT"),
+            reply_markup=get_notif_time_evening_keyboard(),
+            parse_mode="HTML",
+        )
+        await callback.answer()
+        return
+
+    if which == "evening":
+        if start_hour not in (20, 21, 22):
+            await callback.answer("Недопустимое время", show_alert=True)
+            return
+        await users_repo.update_evening_window_start_hour(tg_id, start_hour)
+        await session.commit()
+        user = await users_repo.get_by_tg_id(tg_id)
+        morning_range = _format_hour_range(getattr(user, "morning_window_start_hour", 7))
+        evening_range = _format_hour_range(getattr(user, "evening_window_start_hour", 21))
+        await callback.message.edit_text(
+            get_message(
+                "NOTIF_TIME_DONE",
+                morning_range=morning_range,
+                evening_range=evening_range,
+            ),
+            reply_markup=None,
+            parse_mode="HTML",
+        )
+        await callback.answer()
+        return
+
+    await callback.answer("Ошибка выбора времени", show_alert=True)
 
 
 # ============================================================================

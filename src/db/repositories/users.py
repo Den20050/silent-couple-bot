@@ -91,3 +91,44 @@ class UsersRepository:
         await self.session.flush()
         return result.scalar_one_or_none()
 
+    async def update_notification_windows_prompted(
+        self, tg_id: int, prompted: bool
+    ) -> Optional[User]:
+        """Mark that user has already been prompted to configure notification windows."""
+        stmt = (
+            update(User)
+            .where(User.tg_id == tg_id)
+            .values(notification_windows_prompted=prompted)
+            .returning(User)
+        )
+        result = await self.session.execute(stmt)
+        await self.session.flush()
+        return result.scalar_one_or_none()
+
+    async def update_morning_window_start_hour(
+        self, tg_id: int, start_hour: int
+    ) -> Optional[User]:
+        """Update user's preferred morning window start hour (0-23)."""
+        stmt = (
+            update(User)
+            .where(User.tg_id == tg_id)
+            .values(morning_window_start_hour=start_hour)
+            .returning(User)
+        )
+        result = await self.session.execute(stmt)
+        await self.session.flush()
+        return result.scalar_one_or_none()
+
+    async def update_evening_window_start_hour(
+        self, tg_id: int, start_hour: int
+    ) -> Optional[User]:
+        """Update user's preferred evening window start hour (0-23)."""
+        stmt = (
+            update(User)
+            .where(User.tg_id == tg_id)
+            .values(evening_window_start_hour=start_hour)
+            .returning(User)
+        )
+        result = await self.session.execute(stmt)
+        await self.session.flush()
+        return result.scalar_one_or_none()

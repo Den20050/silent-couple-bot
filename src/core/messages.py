@@ -498,6 +498,26 @@ class Messages:
         "✅ Работает даже если пользователь не в ваших контактах!"
     )
     MENU_SHARE_SHOW_LINK_BUTTON = "📋 Показать ссылку для копирования"
+
+    # Notification time windows
+    NOTIF_TIME_MORNING_PROMPT = (
+        "🕒 <b>Во сколько вам удобнее получать утренние сообщения?</b>\n"
+        "<i>(по вашему местному времени)</i>\n\n"
+        "Выберите интервал:"
+    )
+    NOTIF_TIME_EVENING_PROMPT = (
+        "🌙 <b>А вечером?</b>\n"
+        "<i>(по вашему местному времени)</i>\n\n"
+        "Выберите интервал:"
+    )
+    NOTIF_TIME_DONE = (
+        "✅ Готово!\n\n"
+        "🕒 Утро: <b>{morning_range}</b>\n"
+        "🌙 Вечер: <b>{evening_range}</b>"
+    )
+
+    # Settings
+    SETTINGS_CHANGE_TIME_WINDOW = "🕒 Время сообщений"
     MENU_FEEDBACK_TITLE = (
         "💬 <b>Обратная связь</b>\n\n"
         "Выберите категорию обратной связи:"

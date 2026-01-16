@@ -48,6 +48,12 @@ class SettingsUIService:
                         callback_data=nickname_callback,
                     ),
                 ],
+                [
+                    InlineKeyboardButton(
+                        text=get_message("SETTINGS_CHANGE_TIME_WINDOW"),
+                        callback_data="settings_change_time_window",
+                    ),
+                ],
             ])
         
         keyboard_buttons.append([ButtonTemplates.back_button("settings_back_to_menu")])

@@ -11,6 +11,7 @@ from src.core.logger import get_logger
 from src.core.messages import get_message
 from src.bot.handlers.settings.states import SettingsStates
 from src.services.application.settings import SettingsApplicationService
+from src.bot.handlers.start.ui.builders import get_notif_time_morning_keyboard
 
 logger = get_logger(__name__)
 
@@ -301,6 +302,24 @@ async def handle_settings_change_nickname(
     except Exception as e:
         logger.error("Error in handle_settings_change_nickname", error=str(e), exc_info=True)
         await callback.answer(get_message("SETTINGS_ERROR"), show_alert=True)
+
+
+@router.callback_query(F.data == "settings_change_time_window")
+async def handle_settings_change_time_window(
+    callback: CallbackQuery,
+    state: FSMContext,
+) -> None:
+    """Open notification window selection from Settings.
+
+    Selection itself is handled by start router callback `notif_time:*`.
+    """
+    await state.clear()
+    await callback.message.edit_text(
+        get_message("NOTIF_TIME_MORNING_PROMPT"),
+        reply_markup=get_notif_time_morning_keyboard(),
+        parse_mode=ParseMode.HTML,
+    )
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("settings_select_partner_for_nickname:"))

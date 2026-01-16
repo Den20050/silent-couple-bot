@@ -18,6 +18,7 @@ from src.bot.handlers.start.commands import (
     handle_pair_creation_nickname_input,
     handle_welcome_next,
     handle_welcome_accept,
+    handle_notif_time_selection,
 )
 
 router = Router(name="start")
@@ -93,6 +94,18 @@ async def welcome_accept_handler(
 ) -> None:
     """Handle welcome accept button."""
     await handle_welcome_accept(callback, session, state, bot_provider, telegram_messenger)
+
+
+@router.callback_query(F.data.startswith("notif_time:"))
+async def notif_time_handler(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    state: FSMContext,
+    bot_provider: BotProvider,
+    telegram_messenger: TelegramMessenger,
+) -> None:
+    """Handle preferred notification window selection."""
+    await handle_notif_time_selection(callback, session, state, bot_provider, telegram_messenger)
 
 
 # IMPORTANT: FSM state handlers must be registered BEFORE general message handlers
