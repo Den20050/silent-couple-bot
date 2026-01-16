@@ -2,6 +2,7 @@
 
 import sys
 import subprocess
+from urllib.parse import urlsplit, urlunsplit
 from pathlib import Path
 from typing import Optional
 
@@ -14,6 +15,36 @@ from alembic import command
 from src.core.config import settings
 from src.core.ssh_tunnel import ensure_database_tunnel
 
+
+def _sanitize_database_url(database_url: str) -> str:
+    """Return a copy of database_url with password masked.
+
+    Args:
+        database_url: SQLAlchemy/DB URL.
+
+    Returns:
+        URL safe to print in logs/terminal output.
+    """
+    try:
+        parts = urlsplit(database_url)
+        if not parts.username:
+            return database_url
+
+        # urlsplit puts credentials into netloc, rebuild netloc with masked password.
+        host_port = parts.hostname or ""
+        if parts.port is not None:
+            host_port = f"{host_port}:{parts.port}"
+
+        userinfo = parts.username
+        if parts.password is not None:
+            userinfo = f"{userinfo}:***"
+
+        netloc = f"{userinfo}@{host_port}" if host_port else userinfo
+        return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+    except Exception:
+        # Never fail migrations due to logging sanitization.
+        return "<redacted>"
+
 def main():
     """Run migration with automatic SSH tunnel creation if needed."""
     tunnel_process: Optional[subprocess.Popen] = None
@@ -22,7 +53,7 @@ def main():
         print("=" * 60)
         print("Applying Alembic Migration")
         print("=" * 60)
-        print(f"Database URL: {settings.database_url}")
+        print(f"Database URL: {_sanitize_database_url(settings.database_url)}")
         print()
         
         # Try to create SSH tunnel if needed
