@@ -13,6 +13,12 @@ logger = get_logger(__name__)
 router = Router(name="other_callbacks")
 
 
+@router.callback_query(F.data.startswith("wish_sent_"))
+async def handle_wish_sent_noop(callback: CallbackQuery) -> None:
+    """Handle disabled 'sent' buttons in aggregated wish request prompts."""
+    await callback.answer("✅ Уже отправлено")
+
+
 @router.callback_query(F.data.startswith("cancel_initiator_warnings_"))
 async def handle_cancel_initiator_warnings(
     callback: CallbackQuery,

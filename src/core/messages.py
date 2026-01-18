@@ -229,6 +229,12 @@ class Messages:
     WORKER_MORNING_REQUEST_SILENT = 'Хотите отправить пожелание с "Добрым утром"?'
     WORKER_EVENING_REQUEST_CHAT = "Вечер! Отправьте пожелание на ночь:"
     WORKER_EVENING_REQUEST_SILENT = 'Хотите отправить пожелание с "Спокойной ночи"?'
+    WORKER_MORNING_REQUEST_SELECT_PARTNER = (
+        "🌅 Утро! Кому отправить пожелание? Выберите партнёра:"
+    )
+    WORKER_EVENING_REQUEST_SELECT_PARTNER = (
+        "🌙 Вечер! Кому отправить пожелание? Выберите партнёра:"
+    )
     WORKER_SEND_PICTURE_BUTTON = "Отправить картинку"
     WORKER_PAST_DUE_DUNNING = "⏳ Подписка просрочена. Оплатите для продолжения использования."
     WORKER_PAY_NOW_BUTTON = "💳 Оплатить"

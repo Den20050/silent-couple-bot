@@ -69,8 +69,11 @@ async def evening_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> 
             past_due_pairs = await pairs_repo.get_past_due_pairs()
             logger.info("Past due pairs found", count=len(past_due_pairs))
             
-            sent_count = 0
+            notified_users_count = 0
             reasons: Counter[str] = Counter()
+            user_to_pair_ids: dict[int, set[int]] = {}
+            from src.worker.services.pair_scheduler import WishRequestAttemptContext
+            attempt_ctx_by_pair_id: dict[int, WishRequestAttemptContext] = {}
             
             # Process active pairs - send wishes
             for pair in pairs:
@@ -87,7 +90,7 @@ async def evening_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> 
                     user_b = user_b_result.scalar_one()
                     
                     # Try to send wish
-                    success, reason = await scheduler.send_wish_for_pair(
+                    eligible, reason, attempt_ctx = await scheduler.send_wish_for_pair(
                         pair=pair,
                         user_a=user_a,
                         user_b=user_b,
@@ -97,9 +100,10 @@ async def evening_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> 
                     )
                     reasons[reason] += 1
                     
-                    if success:
-                        sent_count += 1
-                        await session.commit()
+                    if eligible and attempt_ctx is not None:
+                        user_to_pair_ids.setdefault(user_a.tg_id, set()).add(pair.id)
+                        user_to_pair_ids.setdefault(user_b.tg_id, set()).add(pair.id)
+                        attempt_ctx_by_pair_id[pair.id] = attempt_ctx
                 except Exception as e:
                     logger.error(
                         "Error sending evening wish",
@@ -109,6 +113,16 @@ async def evening_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> 
                     )
                     await session.rollback()
                     continue
+            
+            if user_to_pair_ids:
+                updated_count, _succeeded_users, _pairs_marked = await scheduler.send_aggregated_wish_requests(
+                    user_to_pair_ids=user_to_pair_ids,
+                    pic_type="evening",
+                    today=today,
+                    now_utc=now_utc,
+                    attempt_ctx_by_pair_id=attempt_ctx_by_pair_id,
+                )
+                notified_users_count = updated_count
             
             # Process past_due pairs - send subscription notifications instead of wishes
             from src.worker.tasks.past_due import send_past_due_notification
@@ -141,7 +155,7 @@ async def evening_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> 
             
             logger.info(
                 "Evening sender completed",
-                sent_count=sent_count,
+                sent_count=notified_users_count,
                 reasons=dict(reasons),
             )
     finally:

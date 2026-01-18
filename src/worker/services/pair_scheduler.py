@@ -18,15 +18,28 @@ from src.services.messaging.caption_service import CaptionService
 from src.core.protocols.messenger import MessengerProtocol
 from src.worker.services.time_window_service import TimeWindowService
 from src.worker.services.lock_service import LockService
+from dataclasses import dataclass
+
+from src.services.messaging.ui.wish_request_ui import WishRequestUIService
 
 logger = get_logger(__name__)
 
-_WISH_REQUEST_PROMPT_SET_TTL_SECONDS = 48 * 3600
+_WISH_REQUEST_PROMPT_MESSAGE_TTL_SECONDS = 48 * 3600
 
 
-def _wish_request_prompt_set_key(tg_id: int, pic_type: str, day: date) -> str:
-    """Redis set key for storing request-prompt message_ids per user/day/type."""
-    return f"wish_request_prompt_ids:{tg_id}:{pic_type}:{day.isoformat()}"
+def _wish_request_prompt_message_id_key(tg_id: int, pic_type: str, day: date) -> str:
+    """Redis key for storing single aggregated request prompt message_id."""
+    return f"wish_request_prompt_message_id:{tg_id}:{pic_type}:{day.isoformat()}"
+
+
+@dataclass(frozen=True)
+class WishRequestAttemptContext:
+    """Redis attempt-tracking context for a pair/day/pic_type."""
+
+    first_sent_key: str
+    last_sent_key: str
+    count_key: str
+    attempt_count: int
 
 
 class PairScheduler:
@@ -54,6 +67,20 @@ class PairScheduler:
         self.image_service = ImageService(session)
         self.caption_service = CaptionService(session)
     
+    # NOTE: public-ish DTO so worker tasks can track attempt state per pair
+
+
+    async def _mark_attempt_sent(self, ctx: WishRequestAttemptContext, now_utc: datetime) -> None:
+        """Update Redis attempt tracking for a pair/pic_type/day after we notified at least one user."""
+        new_count = ctx.attempt_count + 1
+        now_iso = now_utc.isoformat()
+
+        if ctx.attempt_count == 0:
+            await self.lock_service.set_key_with_ttl(ctx.first_sent_key, now_iso, 86400)
+
+        await self.lock_service.set_key_with_ttl(ctx.last_sent_key, now_iso, 86400)
+        await self.lock_service.set_key_with_ttl(ctx.count_key, str(new_count), 86400)
+
     async def send_wish_for_pair(
         self,
         pair,
@@ -62,8 +89,8 @@ class PairScheduler:
         pic_type: str,
         today: date,
         now_utc: datetime,
-    ) -> tuple[bool, str]:
-        """Send wish for a pair if conditions are met.
+    ) -> tuple[bool, str, WishRequestAttemptContext | None]:
+        """Plan wish request for a pair (does NOT send messages directly).
         
         Args:
             pair: Pair object
@@ -74,7 +101,7 @@ class PairScheduler:
             now_utc: Current UTC datetime
             
         Returns:
-            Tuple of (success, reason). If success is False, reason describes skip cause.
+            Tuple of (should_notify, reason). If should_notify is False, reason describes skip cause.
         """
         def _skip(reason: str, **extra: object) -> tuple[bool, str]:
             logger.debug(
@@ -84,11 +111,12 @@ class PairScheduler:
                 reason=reason,
                 **extra,
             )
-            return False, reason
+            return False, reason, None
 
         # Check if subscription is past due
         if pair.status == PairStatus.PAST_DUE.value:
-            return _skip("pair_status_past_due")
+            ok, reason = _skip("pair_status_past_due")
+            return ok, reason, None
         
         # Get daily state
         daily_state = await self.daily_state_repo.get_or_create(pair.id, today)
@@ -96,10 +124,16 @@ class PairScheduler:
         # Check if already sent today
         if pic_type == "morning":
             if daily_state.morning_initiator is not None:
-                return _skip("already_sent_today", initiator=daily_state.morning_initiator)
+                ok, reason = _skip(
+                    "already_sent_today", initiator=daily_state.morning_initiator
+                )
+                return ok, reason, None
         else:  # evening
             if daily_state.evening_initiator is not None:
-                return _skip("already_sent_today", initiator=daily_state.evening_initiator)
+                ok, reason = _skip(
+                    "already_sent_today", initiator=daily_state.evening_initiator
+                )
+                return ok, reason, None
         
         # Check if at least one user is in their time window (per-user preferences)
         user_a_local_time = TimeWindowService.get_user_local_time(now_utc, user_a.utc_offset)
@@ -133,13 +167,14 @@ class PairScheduler:
         
         # If neither user is in their time window, skip
         if not user_a_in_window and not user_b_in_window:
-            return _skip(
+            ok, reason = _skip(
                 "outside_time_window",
                 user_a_local_time=str(user_a_local_time),
                 user_b_local_time=str(user_b_local_time),
                 user_a_utc_offset=getattr(user_a, "utc_offset", None),
                 user_b_utc_offset=getattr(user_b, "utc_offset", None),
             )
+            return ok, reason, None
         
         # Check wish request attempt limit (max 3 attempts per day with 1 hour intervals)
         wish_request_key_prefix = f"{settings.redis_key_prefix_wish_request}:{pair.id}:{pic_type}:{today.isoformat()}"
@@ -159,7 +194,8 @@ class PairScheduler:
                 pic_type=pic_type,
                 attempt_count=attempt_count,
             )
-            return _skip("attempt_limit_reached", attempt_count=attempt_count)
+            ok, reason = _skip("attempt_limit_reached", attempt_count=attempt_count)
+            return ok, reason, None
         
         # Check if we should send based on attempt count and time intervals
         if attempt_count == 0:
@@ -197,180 +233,101 @@ class PairScheduler:
                 pic_type=pic_type,
                 attempt_count=attempt_count,
             )
-            return _skip("attempt_interval_not_met", attempt_count=attempt_count)
+            ok, reason = _skip("attempt_interval_not_met", attempt_count=attempt_count)
+            return ok, reason, None
         
-        # Build request message based on pair mode
-        if pair.mode == "chat":
-            if pic_type == "morning":
-                request_text = get_message("WORKER_MORNING_REQUEST_CHAT")
-            else:  # evening
-                request_text = get_message("WORKER_EVENING_REQUEST_CHAT")
-        else:  # silent
-            if pic_type == "morning":
-                request_text = get_message("WORKER_MORNING_REQUEST_SILENT")
-            else:  # evening
-                request_text = get_message("WORKER_EVENING_REQUEST_SILENT")
-        
-        # Send request to BOTH users (if at least one is in their time window)
-        # Both users should receive the request, regardless of their individual time windows
-        sent_to_a = False
-        sent_to_b = False
-        
-        # Send to user_a
-        # Check if user_a has multiple active pairs
-        all_user_a_pairs = await self.pairs_repo.get_all_by_user_tg_id(user_a.tg_id)
-        active_user_a_pairs = [
-            p for p in all_user_a_pairs
-            if p.status in ("trial", "active")
-        ]
-        has_multiple_pairs_a = len(active_user_a_pairs) > 1
-        
-        # Build callback data based on number of pairs
-        if has_multiple_pairs_a:
-            callback_prefix = "request_morning_all" if pic_type == "morning" else "request_evening_all"
-            callback_data_a = f"{callback_prefix}_{user_a.id}"
-        else:
-            callback_prefix = "request_morning" if pic_type == "morning" else "request_evening"
-            callback_data_a = f"{callback_prefix}_{pair.id}_{user_a.id}"
-        
-        button_text = get_message("WORKER_SEND_PICTURE_BUTTON")
-        reply_markup_a = {
-            "inline_keyboard": [
-                [
-                    {
-                        "text": button_text,
-                        "callback_data": callback_data_a,
-                    },
-                ],
-            ],
-        }
-        
-        try:
-            msg_a = await self.telegram_messenger.send_message(
-                chat_id=user_a.tg_id,
-                text=request_text,
-                reply_markup=reply_markup_a,
-            )
-            sent_to_a = True
+        attempt_ctx = WishRequestAttemptContext(
+            first_sent_key=first_sent_key,
+            last_sent_key=last_sent_key,
+            count_key=count_key,
+            attempt_count=attempt_count,
+        )
+
+        # If we reached here, the pair is eligible to be included in the aggregated prompt.
+        return True, "eligible", attempt_ctx
+
+    async def send_aggregated_wish_requests(
+        self,
+        user_to_pair_ids: dict[int, set[int]],
+        pic_type: str,
+        today: date,
+        now_utc: datetime,
+        attempt_ctx_by_pair_id: dict[int, WishRequestAttemptContext],
+    ) -> tuple[int, set[int], set[int]]:
+        """Send/update aggregated wish request prompts for specified users.
+
+        Returns:
+            (users_updated_count, successfully_notified_user_tg_ids, pairs_marked_as_attempt_sent)
+        """
+        ui_builder = WishRequestUIService(self.session)
+        updated = 0
+        succeeded: set[int] = set()
+        delivered_pair_ids: set[int] = set()
+
+        for tg_id, pair_ids in user_to_pair_ids.items():
             try:
-                redis_client = await self.lock_service.get_redis_client()
-                if redis_client is not None:
-                    key = _wish_request_prompt_set_key(user_a.tg_id, pic_type, today)
-                    await redis_client.sadd(key, str(msg_a.message_id))
-                    await redis_client.expire(key, _WISH_REQUEST_PROMPT_SET_TTL_SECONDS)
-            except Exception as e:
-                logger.warning(
-                    "Failed to track wish request prompt message_id (user_a)",
-                    pair_id=pair.id,
-                    tg_id=user_a.tg_id,
+                ui = await ui_builder.build_for_user(
+                    user_tg_id=tg_id,
                     pic_type=pic_type,
-                    error=str(e),
+                    day=today,
                 )
-        except Exception as e:
-            logger.error(
-                "Error sending request to user_a",
-                pair_id=pair.id,
-                user_a_tg_id=user_a.tg_id,
-                error=str(e),
-                exc_info=True,
-            )
-        
-        # Send to user_b
-        # Check if user_b has multiple active pairs
-        all_user_b_pairs = await self.pairs_repo.get_all_by_user_tg_id(user_b.tg_id)
-        active_user_b_pairs = [
-            p for p in all_user_b_pairs
-            if p.status in ("trial", "active")
-        ]
-        has_multiple_pairs_b = len(active_user_b_pairs) > 1
-        
-        # Build callback data based on number of pairs
-        if has_multiple_pairs_b:
-            callback_prefix = "request_morning_all" if pic_type == "morning" else "request_evening_all"
-            callback_data_b = f"{callback_prefix}_{user_b.id}"
-        else:
-            callback_prefix = "request_morning" if pic_type == "morning" else "request_evening"
-            callback_data_b = f"{callback_prefix}_{pair.id}_{user_b.id}"
-        
-        reply_markup_b = {
-            "inline_keyboard": [
-                [
-                    {
-                        "text": button_text,
-                        "callback_data": callback_data_b,
-                    },
-                ],
-            ],
-        }
-        
-        try:
-            msg_b = await self.telegram_messenger.send_message(
-                chat_id=user_b.tg_id,
-                text=request_text,
-                reply_markup=reply_markup_b,
-            )
-            sent_to_b = True
-            try:
-                redis_client = await self.lock_service.get_redis_client()
-                if redis_client is not None:
-                    key = _wish_request_prompt_set_key(user_b.tg_id, pic_type, today)
-                    await redis_client.sadd(key, str(msg_b.message_id))
-                    await redis_client.expire(key, _WISH_REQUEST_PROMPT_SET_TTL_SECONDS)
-            except Exception as e:
-                logger.warning(
-                    "Failed to track wish request prompt message_id (user_b)",
-                    pair_id=pair.id,
-                    tg_id=user_b.tg_id,
-                    pic_type=pic_type,
-                    error=str(e),
+                key = _wish_request_prompt_message_id_key(tg_id, pic_type, today)
+                message_id_raw = await self.lock_service.get_key(key)
+                if message_id_raw:
+                    try:
+                        message_id = int(message_id_raw)
+                        await self.telegram_messenger.edit_message(
+                            chat_id=tg_id,
+                            message_id=message_id,
+                            text=ui.text,
+                            reply_markup=ui.reply_markup,
+                        )
+                        updated += 1
+                        succeeded.add(tg_id)
+                        delivered_pair_ids.update(pair_ids)
+                        continue
+                    except Exception:
+                        # If edit fails (message deleted, etc.), fall back to sending a new prompt.
+                        pass
+
+                msg = await self.telegram_messenger.send_message(
+                    chat_id=tg_id,
+                    text=ui.text,
+                    reply_markup=ui.reply_markup,
                 )
-        except Exception as e:
-            logger.error(
-                "Error sending request to user_b",
-                pair_id=pair.id,
-                user_b_tg_id=user_b.tg_id,
-                error=str(e),
-                exc_info=True,
-            )
-        
-        if sent_to_a or sent_to_b:
-            # Update wish request tracking in Redis
-            new_count = attempt_count + 1
-            now_iso = now_utc.isoformat()
-            
-            # Set first_sent time if this is the first attempt
-            if attempt_count == 0:
                 await self.lock_service.set_key_with_ttl(
-                    first_sent_key,
-                    now_iso,
-                    86400,  # 24 hours TTL
+                    key,
+                    str(msg.message_id),
+                    _WISH_REQUEST_PROMPT_MESSAGE_TTL_SECONDS,
                 )
-            
-            # Always update last_sent time
-            await self.lock_service.set_key_with_ttl(
-                last_sent_key,
-                now_iso,
-                86400,  # 24 hours TTL
-            )
-            
-            # Update attempt count
-            await self.lock_service.set_key_with_ttl(
-                count_key,
-                str(new_count),
-                86400,  # 24 hours TTL
-            )
-            
-            logger.info(
-                "Wish request sent to users",
-                pair_id=pair.id,
-                pic_type=pic_type,
-                sent_to_user_a=sent_to_a,
-                sent_to_user_b=sent_to_b,
-                user_a_in_window=user_a_in_window,
-                user_b_in_window=user_b_in_window,
-                attempt_count=new_count,
-            )
-            return True, "sent"
-        
-        return _skip("send_failed_no_recipients")
+                updated += 1
+                succeeded.add(tg_id)
+                delivered_pair_ids.update(pair_ids)
+            except Exception as e:
+                logger.error(
+                    "Failed to send/update aggregated wish request prompt",
+                    tg_id=tg_id,
+                    pic_type=pic_type,
+                    error=str(e),
+                    exc_info=True,
+                )
+
+        # Mark attempt tracking only for pairs for which at least one user prompt succeeded.
+        pairs_marked: set[int] = set()
+        for pair_id in delivered_pair_ids:
+            ctx = attempt_ctx_by_pair_id.get(pair_id)
+            if ctx is None:
+                continue
+            try:
+                await self._mark_attempt_sent(ctx, now_utc=now_utc)
+                pairs_marked.add(pair_id)
+            except Exception as e:
+                logger.warning(
+                    "Failed to mark wish request attempt as sent",
+                    pair_id=pair_id,
+                    pic_type=pic_type,
+                    error=str(e),
+                )
+
+        return updated, succeeded, pairs_marked
 
