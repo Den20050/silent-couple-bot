@@ -235,6 +235,12 @@ class Messages:
     WORKER_EVENING_REQUEST_SELECT_PARTNER = (
         "🌙 Вечер! Кому отправить пожелание? Выберите партнёра:"
     )
+    WORKER_WISH_PAY_EXPIRED = (
+        "❌ Для пары с <b>{partner_text}</b> демо-режим или подписка закончились.\n"
+        "Пожалуйста, оплатите подписку, чтобы продолжить."
+    )
+    WORKER_WISH_PAY_BUTTON = "💳 Оплатить подписку"
+    WORKER_WISH_BACK_BUTTON = "◀️ Назад"
     WORKER_SEND_PICTURE_BUTTON = "Отправить картинку"
     WORKER_PAST_DUE_DUNNING = "⏳ Подписка просрочена. Оплатите для продолжения использования."
     WORKER_PAY_NOW_BUTTON = "💳 Оплатить"

@@ -60,3 +60,40 @@ async def test_build_for_user_renders_partner_buttons_with_sent_state() -> None:
     assert sent_btn["callback_data"] == "wish_sent_morning_2"
     assert sent_btn["text"].startswith("✅")
 
+
+@pytest.mark.asyncio
+async def test_build_for_user_renders_pay_button_for_past_due_pair() -> None:
+    # given
+    session = MagicMock()
+    service = WishRequestUIService(session=session)  # type: ignore[arg-type]
+
+    user = SimpleNamespace(id=10, tg_id=100, username=None)
+    partner = SimpleNamespace(id=11, tg_id=200, username="husband")
+    pair_past_due = SimpleNamespace(
+        id=3, uid_a=10, uid_b=11, status="past_due", nickname_a=None, nickname_b=None
+    )
+
+    service._users_repo = SimpleNamespace(  # type: ignore[attr-defined]
+        get_by_tg_id=AsyncMock(return_value=user),
+        get_by_id=AsyncMock(return_value=partner),
+    )
+    service._pairs_repo = SimpleNamespace(  # type: ignore[attr-defined]
+        get_all_by_user_tg_id=AsyncMock(return_value=[pair_past_due]),
+        get_my_nickname_for_partner=MagicMock(return_value=None),
+    )
+    service._daily_state_repo = SimpleNamespace(  # type: ignore[attr-defined]
+        get_or_create=AsyncMock(),
+    )
+
+    # when
+    ui = await service.build_for_user(
+        user_tg_id=100, pic_type="evening", day=date(2026, 1, 18)
+    )
+
+    # then
+    keyboard = ui.reply_markup["inline_keyboard"]
+    assert len(keyboard) == 1
+    btn = keyboard[0][0]
+    assert btn["callback_data"] == "wish_pay_evening_3"
+    assert btn["text"].startswith("💳")
+
