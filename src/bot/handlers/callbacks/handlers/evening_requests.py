@@ -11,21 +11,18 @@ from src.core.messages import get_message
 from src.core.logger import get_logger
 from src.core.config import Settings
 from src.db.repositories.daily_state import DailyStateRepository
-from src.db.repositories.users import UsersRepository
 from src.services.telegram.messenger import TelegramMessenger
 from src.bot.handlers.callbacks.validators import (
     parse_callback_data,
     validate_pair_and_user,
-    validate_user_has_active_pairs,
 )
 from src.bot.handlers.callbacks.use_cases.send_wish import (
     send_wish_to_partner,
-    send_wish_to_all_partners,
 )
 from src.bot.handlers.callbacks.use_cases.schedule_reminders import (
     schedule_reminder_tasks,
 )
-from src.bot.handlers.callbacks.formatters import format_confirmation_message
+from src.services.messaging.ui.wish_request_ui import WishRequestUIService
 
 logger = get_logger(__name__)
 
@@ -33,64 +30,42 @@ router = Router(name="evening_requests")
 
 
 @router.callback_query(F.data.startswith("request_evening_all_"))
-async def handle_request_evening_all(
+async def handle_request_evening_all_legacy(
     callback: CallbackQuery,
     session: AsyncSession,
     telegram_messenger: TelegramMessenger,
 ) -> None:
-    """Handle evening request button for all partners (user with multiple pairs)."""
-    # Parse callback data: request_evening_all_{user_id}
-    parsed = parse_callback_data(callback.data, expected_parts=4, prefix="request_evening_all_")
+    """Legacy handler: 'send to all' is deprecated; convert prompt to per-partner UI."""
+    parsed = parse_callback_data(
+        callback.data, expected_parts=4, prefix="request_evening_all_"
+    )
     if not parsed:
         await callback.answer(get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
         return
-    
-    user_id = parsed[0]
+
+    (user_id,) = parsed
     tg_id = callback.from_user.id
-    
-    logger.info(
-        "Processing request_evening_all callback",
-        user_id=user_id,
-        tg_id=tg_id,
-        callback_data=callback.data,
-    )
-    
-    # Validate user
+
+    # Ensure the callback belongs to the same user (basic safety)
+    from src.db.repositories.users import UsersRepository
+
     users_repo = UsersRepository(session)
     user = await users_repo.get_by_id(user_id)
     if not user or user.tg_id != tg_id:
         await callback.answer(get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
         return
-    
-    # Validate user has active pairs
-    active_pairs = await validate_user_has_active_pairs(session, tg_id)
-    if not active_pairs:
-        await callback.answer("❌ У вас нет активных пар", show_alert=True)
-        return
-    
-    # Send wish to all partners
+
     today = date.today()
-    sent_count, partner_nicknames = await send_wish_to_all_partners(
-        session=session,
-        active_pairs=active_pairs,
-        user_id=user_id,
-        tg_id=tg_id,
-        pic_type="evening",
-        today=today,
-        telegram_messenger=telegram_messenger,
+    ui_builder = WishRequestUIService(session)
+    ui = await ui_builder.build_for_user(user_tg_id=tg_id, pic_type="evening", day=today)
+
+    await telegram_messenger.edit_message(
+        chat_id=tg_id,
+        message_id=callback.message.message_id,
+        text=ui.text,
+        reply_markup=ui.reply_markup,
     )
-    
-    # Edit message to show success with partner nicknames
-    if sent_count > 0:
-        message_text = format_confirmation_message(partner_nicknames)
-        await telegram_messenger.edit_message(
-            chat_id=tg_id,
-            message_id=callback.message.message_id,
-            text=message_text,
-        )
-        await callback.answer()
-    else:
-        await callback.answer("❌ Не удалось отправить пожелания", show_alert=True)
+    await callback.answer("ℹ️ Выберите партнёра")
 
 
 @router.callback_query(F.data.startswith("request_evening_"))
@@ -138,6 +113,7 @@ async def handle_request_evening(
     
     today = date.today()
     daily_state_repo = DailyStateRepository(session)
+    ui_builder = WishRequestUIService(session)
     
     # Send wish to partner
     success, partner_nickname = await send_wish_to_partner(
@@ -154,6 +130,19 @@ async def handle_request_evening(
         # Check if partner already sent
         daily_state = await daily_state_repo.get_by_pair_and_day(pair_id, today)
         if daily_state and daily_state.evening_initiator is not None:
+            # Refresh UI (best effort) so the user sees "sent" status.
+            try:
+                ui = await ui_builder.build_for_user(
+                    user_tg_id=tg_id, pic_type="evening", day=today
+                )
+                await telegram_messenger.edit_message(
+                    chat_id=tg_id,
+                    message_id=callback.message.message_id,
+                    text=ui.text,
+                    reply_markup=ui.reply_markup,
+                )
+            except Exception:
+                pass
             await callback.answer(
                 get_message("CALLBACK_PARTNER_ALREADY_SENT"),
                 show_alert=True
@@ -165,12 +154,41 @@ async def handle_request_evening(
             )
         return
     
-    # Success - edit message
+    # Success: refresh the aggregated prompt (no extra confirmation message in chat)
+    ui = await ui_builder.build_for_user(user_tg_id=tg_id, pic_type="evening", day=today)
     await telegram_messenger.edit_message(
         chat_id=tg_id,
         message_id=callback.message.message_id,
-        text="✅ Вы отправили пожелание",
+        text=ui.text,
+        reply_markup=ui.reply_markup,
     )
+
+    # Also refresh partner's prompt message if we can find it (best effort)
+    try:
+        from src.core.redis_client import create_redis_client
+
+        partner_tg_id = user_b.tg_id if user_a.tg_id == tg_id else user_a.tg_id
+        redis_client = await create_redis_client(socket_connect_timeout=2, socket_timeout=2)
+        if redis_client is not None:
+            key = f"wish_request_prompt_message_id:{partner_tg_id}:evening:{today.isoformat()}"
+            msg_id_raw = await redis_client.get(key)
+            await redis_client.aclose()
+            if msg_id_raw:
+                try:
+                    partner_msg_id = int(msg_id_raw)
+                    partner_ui = await ui_builder.build_for_user(
+                        user_tg_id=partner_tg_id, pic_type="evening", day=today
+                    )
+                    await telegram_messenger.edit_message(
+                        chat_id=partner_tg_id,
+                        message_id=partner_msg_id,
+                        text=partner_ui.text,
+                        reply_markup=partner_ui.reply_markup,
+                    )
+                except Exception:
+                    pass
+    except Exception:
+        pass
     
     # Schedule reminder tasks
     partner_tg_id = user_b.tg_id if user_a.tg_id == tg_id else user_a.tg_id
@@ -185,5 +203,5 @@ async def handle_request_evening(
         settings=settings,
     )
     
-    await callback.answer()
+    await callback.answer("✅ Отправлено")
 
