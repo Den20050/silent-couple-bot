@@ -33,7 +33,7 @@ def test_build_bot_info_message_includes_configured_fields() -> None:
     text = ui.build_bot_info_message()
 
     # then
-    assert "Информация о ресурсе" in text
+    assert "Информация о боте" in text
     assert "123456789012" in text
     assert "ИП" in text
     assert "support@example.com" in text
