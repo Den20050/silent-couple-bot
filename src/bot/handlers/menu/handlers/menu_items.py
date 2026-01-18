@@ -87,6 +87,17 @@ async def cmd_bot_info(
         await message.answer(get_message("MENU_ERROR"))
 
 
+@router.message(Command("resource_info"))
+async def cmd_resource_info(
+    message: Message,
+    menu_ui: MenuUIService,
+    settings: Settings,
+) -> None:
+    """Alias for /bot_info - show resource information (from env via Settings)."""
+    # Reuse the same implementation to keep behaviour identical.
+    await cmd_bot_info(message=message, menu_ui=menu_ui, settings=settings)
+
+
 @router.message(Command("create_pair"))
 async def cmd_create_pair(
     message: Message,
