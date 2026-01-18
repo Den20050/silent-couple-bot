@@ -1,5 +1,7 @@
 """Other callback handlers."""
 
+from datetime import date
+
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.messages import get_message
 from src.core.logger import get_logger
 from src.services.telegram.messenger import TelegramMessenger
+from src.services.messaging.ui.wish_request_ui import WishRequestUIService
 
 logger = get_logger(__name__)
 
@@ -17,6 +20,126 @@ router = Router(name="other_callbacks")
 async def handle_wish_sent_noop(callback: CallbackQuery) -> None:
     """Handle disabled 'sent' buttons in aggregated wish request prompts."""
     await callback.answer("✅ Уже отправлено")
+
+
+@router.callback_query(F.data.startswith("wish_back_"))
+async def handle_wish_back(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    telegram_messenger: TelegramMessenger,
+) -> None:
+    """Return from pay explanation back to the aggregated wish request list."""
+    # Format: wish_back_{pic_type}
+    try:
+        pic_type = callback.data.replace("wish_back_", "", 1)
+    except Exception:
+        await callback.answer(get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+        return
+
+    if pic_type not in ("morning", "evening"):
+        await callback.answer(get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+        return
+
+    tg_id = callback.from_user.id
+    ui_builder = WishRequestUIService(session)
+    ui = await ui_builder.build_for_user(user_tg_id=tg_id, pic_type=pic_type, day=date.today())
+
+    await telegram_messenger.edit_message(
+        chat_id=tg_id,
+        message_id=callback.message.message_id,
+        text=ui.text,
+        reply_markup=ui.reply_markup,
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("wish_pay_"))
+async def handle_wish_pay(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    telegram_messenger: TelegramMessenger,
+) -> None:
+    """Show 'demo/subscription ended' explanation and a pay button for this pair."""
+    # Format: wish_pay_{pic_type}_{pair_id}
+    raw = callback.data.replace("wish_pay_", "", 1)
+    parts = raw.split("_", 1)
+    if len(parts) != 2:
+        await callback.answer(get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+        return
+
+    pic_type, pair_id_raw = parts
+    if pic_type not in ("morning", "evening"):
+        await callback.answer(get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+        return
+
+    try:
+        pair_id = int(pair_id_raw)
+    except ValueError:
+        await callback.answer(get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+        return
+
+    tg_id = callback.from_user.id
+
+    from src.db.repositories.pairs import PairsRepository
+    from src.db.repositories.users import UsersRepository
+    from src.bot.handlers.start.services.pair_service import format_partner_text
+
+    pairs_repo = PairsRepository(session)
+    users_repo = UsersRepository(session)
+
+    user = await users_repo.get_by_tg_id(tg_id)
+    pair = await pairs_repo.get_by_id(pair_id)
+    if not user or not pair:
+        await callback.answer(get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+        return
+
+    if user.id not in (pair.uid_a, pair.uid_b):
+        await callback.answer(get_message("CALLBACK_ACCESS_DENIED"), show_alert=True)
+        return
+
+    if pair.status != "past_due":
+        # Pair is no longer past due; refresh the list.
+        ui_builder = WishRequestUIService(session)
+        ui = await ui_builder.build_for_user(user_tg_id=tg_id, pic_type=pic_type, day=date.today())
+        await telegram_messenger.edit_message(
+            chat_id=tg_id,
+            message_id=callback.message.message_id,
+            text=ui.text,
+            reply_markup=ui.reply_markup,
+        )
+        await callback.answer()
+        return
+
+    partner_id = pair.uid_b if pair.uid_a == user.id else pair.uid_a
+    partner = await users_repo.get_by_id(partner_id)
+    partner_nickname = pairs_repo.get_my_nickname_for_partner(pair, user.id)
+    partner_text = format_partner_text(partner.username if partner else None, partner_nickname)
+
+    text = get_message("WORKER_WISH_PAY_EXPIRED", partner_text=partner_text)
+    reply_markup = {
+        "inline_keyboard": [
+            [
+                {
+                    "text": get_message("WORKER_WISH_PAY_BUTTON"),
+                    "callback_data": f"pay_select_currency_{pair_id}",
+                }
+            ],
+            [
+                {
+                    "text": get_message("WORKER_WISH_BACK_BUTTON"),
+                    "callback_data": f"wish_back_{pic_type}",
+                }
+            ],
+        ]
+    }
+
+    await telegram_messenger.edit_message(
+        chat_id=tg_id,
+        message_id=callback.message.message_id,
+        text=text,
+        reply_markup=reply_markup,
+    )
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("cancel_initiator_warnings_"))

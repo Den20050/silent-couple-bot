@@ -60,7 +60,7 @@ class WishRequestUIService:
             )
 
         pairs = await self._pairs_repo.get_all_by_user_tg_id(user_tg_id)
-        active_pairs = [p for p in pairs if p.status in ("trial", "active")]
+        visible_pairs = [p for p in pairs if p.status in ("trial", "active", "past_due")]
 
         if pic_type == "morning":
             text = get_message("WORKER_MORNING_REQUEST_SELECT_PARTNER")
@@ -72,9 +72,10 @@ class WishRequestUIService:
         from src.bot.handlers.start.services.pair_service import format_partner_text
 
         pending_rows: list[list[dict]] = []
+        pay_rows: list[list[dict]] = []
         sent_rows: list[list[dict]] = []
 
-        for pair in active_pairs:
+        for pair in visible_pairs:
             partner_id = pair.uid_b if pair.uid_a == user.id else pair.uid_a
             partner = await self._users_repo.get_by_id(partner_id)
             partner_nickname = self._pairs_repo.get_my_nickname_for_partner(pair, user.id)
@@ -82,6 +83,18 @@ class WishRequestUIService:
                 partner.username if partner else None,
                 partner_nickname,
             )
+
+            # Past due pairs: show pay CTA instead of wish send
+            if pair.status == "past_due":
+                pay_rows.append(
+                    [
+                        {
+                            "text": f"💳 {partner_text} — демо закончилось, оплатить",
+                            "callback_data": f"wish_pay_{pic_type}_{pair.id}",
+                        }
+                    ]
+                )
+                continue
 
             daily_state = await self._daily_state_repo.get_or_create(pair.id, day)
             if pic_type == "morning":
@@ -102,6 +115,6 @@ class WishRequestUIService:
                 }
                 pending_rows.append([button])
 
-        reply_markup = {"inline_keyboard": pending_rows + sent_rows}
+        reply_markup = {"inline_keyboard": pending_rows + pay_rows + sent_rows}
         return WishRequestUI(text=text, reply_markup=reply_markup)
 
