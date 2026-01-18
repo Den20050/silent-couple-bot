@@ -52,7 +52,7 @@ async def setup_bot_commands(bot: Bot, container: Container) -> None:
         # Set commands for all users (without admin commands)
         user_commands = [
             BotCommand(command="start", description="🚀 Начать/Перезапустить бота"),
-            BotCommand(command="create_pair", description="➕ Создать пару"),
+            BotCommand(command="create_pair", description="➕ Создать дополнительную пару"),
             BotCommand(command="subscription", description="📊 Подписка"),
             BotCommand(command="pay", description="💳 Оплатить"),
             BotCommand(command="settings", description="⚙️ Настройки"),
