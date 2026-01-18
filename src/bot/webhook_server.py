@@ -131,6 +131,8 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
             BotCommand(command="settings", description="⚙️ Настройки"),
             BotCommand(command="share", description="📤 Поделиться ботом"),
             BotCommand(command="feedback", description="💬 Обратная связь"),
+            # "Информация о ресурсе" (реквизиты/контакты) подтягивается из env (Settings.resource_*)
+            BotCommand(command="resource_info", description="ℹ️ Информация о ресурсе"),
             BotCommand(command="delete", description="🗑️ Удалить аккаунт"),
         ]
         await bot.set_my_commands(user_commands)

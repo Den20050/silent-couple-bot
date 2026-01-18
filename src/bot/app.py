@@ -58,7 +58,10 @@ async def setup_bot_commands(bot: Bot, container: Container) -> None:
             BotCommand(command="settings", description="⚙️ Настройки"),
             BotCommand(command="share", description="📤 Поделиться ботом"),
             BotCommand(command="feedback", description="💬 Обратная связь"),
-            BotCommand(command="bot_info", description="ℹ️ Сведения о боте"),
+            # "Информация о ресурсе" (реквизиты/контакты) подтягивается из env (Settings.resource_*)
+            BotCommand(command="resource_info", description="ℹ️ Информация о ресурсе"),
+            # Backward compatibility: keep old command working, but don't expose it in the menu.
+            # BotCommand(command="bot_info", description="ℹ️ Сведения о боте"),
             BotCommand(command="delete", description="🗑️ Удалить аккаунт"),
         ]
         await bot.set_my_commands(user_commands)
