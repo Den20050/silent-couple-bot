@@ -11,6 +11,19 @@ from src.worker.di.context import WorkerContext
 
 logger = get_logger(__name__)
 
+def build_share_nudge_key(tg_id: int) -> str:
+    """Build Redis key for share nudge throttling.
+
+    Important: key MUST NOT include the day; throttling is handled via TTL
+    so the nudge is sent at most once per configured interval (e.g., 5 days).
+    """
+    return f"share_nudge_sent:user:{tg_id}"
+
+
+def get_share_nudge_ttl_seconds(ttl_hours: int) -> int:
+    """Convert TTL hours to seconds for Redis."""
+    return int(ttl_hours) * 3600
+
 
 async def send_share_nudge(
     ctx: dict[str, Any],
@@ -67,8 +80,8 @@ async def send_share_nudge(
             # Send one message per user
             for user_id, (tg_id, pair_mode) in users_to_notify.items():
                 try:
-                    # Check if nudge already sent today for this user
-                    nudge_key = f"share_nudge_sent:user:{tg_id}:{today.isoformat()}"
+                    # Check if nudge was sent recently for this user (throttled via TTL)
+                    nudge_key = build_share_nudge_key(tg_id)
                     
                     already_sent = await lock_service.check_key_exists(nudge_key)
                     if already_sent:
@@ -93,7 +106,7 @@ async def send_share_nudge(
                     await lock_service.set_key_with_ttl(
                         nudge_key,
                         "1",
-                        settings.nudge_ttl_hours * 3600,
+                        get_share_nudge_ttl_seconds(settings.nudge_ttl_hours),
                     )
                     
                     sent_count += 1
