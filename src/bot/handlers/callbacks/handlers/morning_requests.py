@@ -23,6 +23,7 @@ from src.bot.handlers.callbacks.use_cases.schedule_reminders import (
     schedule_reminder_tasks,
 )
 from src.services.messaging.ui.wish_request_ui import WishRequestUIService
+from src.services.messaging.wish_request_prompt_refresher import refresh_aggregated_wish_prompt
 
 logger = get_logger(__name__)
 
@@ -163,32 +164,15 @@ async def handle_request_morning(
         reply_markup=ui.reply_markup,
     )
 
-    # Also refresh partner's prompt message if we can find it (best effort)
-    try:
-        from src.core.redis_client import create_redis_client
-
-        partner_tg_id = user_b.tg_id if user_a.tg_id == tg_id else user_a.tg_id
-        redis_client = await create_redis_client(socket_connect_timeout=2, socket_timeout=2)
-        if redis_client is not None:
-            key = f"wish_request_prompt_message_id:{partner_tg_id}:morning:{today.isoformat()}"
-            msg_id_raw = await redis_client.get(key)
-            await redis_client.aclose()
-            if msg_id_raw:
-                try:
-                    partner_msg_id = int(msg_id_raw)
-                    partner_ui = await ui_builder.build_for_user(
-                        user_tg_id=partner_tg_id, pic_type="morning", day=today
-                    )
-                    await telegram_messenger.edit_message(
-                        chat_id=partner_tg_id,
-                        message_id=partner_msg_id,
-                        text=partner_ui.text,
-                        reply_markup=partner_ui.reply_markup,
-                    )
-                except Exception:
-                    pass
-    except Exception:
-        pass
+    # Also refresh partner's prompt message (best effort) so the send button disappears for this pair.
+    partner_tg_id = user_b.tg_id if user_a.tg_id == tg_id else user_a.tg_id
+    await refresh_aggregated_wish_prompt(
+        session=session,
+        telegram_messenger=telegram_messenger,
+        tg_id=partner_tg_id,
+        pic_type="morning",
+        day=today,
+    )
     
     # Schedule reminder tasks
     partner_tg_id = user_b.tg_id if user_a.tg_id == tg_id else user_a.tg_id

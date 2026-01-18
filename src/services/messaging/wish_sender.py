@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.constants import PicType, PairStatus
 from src.core.logger import get_logger
 from src.core.messages import get_message
+from src.services.messaging.wish_request_prompt_refresher import refresh_aggregated_wish_prompt
 from src.db.repositories.daily_state import DailyStateRepository
 from src.db.repositories.pairs import PairsRepository
 from src.db.repositories.users import UsersRepository
@@ -149,6 +150,15 @@ class WishSenderService:
             photo=file_id,
             caption=caption,
             reply_markup=reply_markup,
+        )
+
+        # Best-effort: refresh partner's aggregated prompt so "send wish" CTA is gone for this pair.
+        await refresh_aggregated_wish_prompt(
+            session=self.session,
+            telegram_messenger=self.telegram_messenger,
+            tg_id=partner.tg_id,
+            pic_type=pic_type,
+            day=today,
         )
 
         # Get partner nickname for confirmation message
