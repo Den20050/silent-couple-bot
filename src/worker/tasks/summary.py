@@ -70,20 +70,32 @@ async def send_week_summary(
                     # Send summary using NotificationBuilder
                     messenger = worker_context.messenger
                     notification_builder = worker_context.notification_builder
-                    
-                    summary_text = await notification_builder.build_week_summary_message(
+
+                    # Include partner nickname only when partner has no username.
+                    nickname_for_a = (
+                        pairs_repo.get_my_nickname_for_partner(pair, user_a.id)
+                        if not user_b.username
+                        else None
+                    )
+                    nickname_for_b = (
+                        pairs_repo.get_my_nickname_for_partner(pair, user_b.id)
+                        if not user_a.username
+                        else None
+                    )
+
+                    summary_text_a = await notification_builder.build_week_summary_message(
                         pair_mode=pair.mode,
                         days_count=days_count,
+                        partner_nickname=nickname_for_a,
+                    )
+                    summary_text_b = await notification_builder.build_week_summary_message(
+                        pair_mode=pair.mode,
+                        days_count=days_count,
+                        partner_nickname=nickname_for_b,
                     )
                     
-                    await messenger.send_message(
-                        chat_id=user_a.tg_id,
-                        text=summary_text,
-                    )
-                    await messenger.send_message(
-                        chat_id=user_b.tg_id,
-                        text=summary_text,
-                    )
+                    await messenger.send_message(chat_id=user_a.tg_id, text=summary_text_a)
+                    await messenger.send_message(chat_id=user_b.tg_id, text=summary_text_b)
                     
                     # Mark summary as sent
                     await worker_context.lock_service.set_key_with_ttl(

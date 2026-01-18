@@ -131,26 +131,34 @@ class NotificationBuilder:
         self,
         pair_mode: str,
         days_count: int,
+        partner_nickname: str | None = None,
     ) -> str:
         """Build week summary message.
         
         Args:
             pair_mode: Pair mode ("chat" or "silent")
             days_count: Number of days with activity
+            partner_nickname: Optional partner nickname to include (only when appropriate)
             
         Returns:
             Summary message text
         """
         if pair_mode == "chat":
+            if partner_nickname:
+                return get_message(
+                    "WEEK_SUMMARY_CHAT_WITH_NICKNAME",
+                    days_count=days_count,
+                    nickname=partner_nickname,
+                )
+            return get_message("WEEK_SUMMARY_CHAT", days_count=days_count)
+
+        if partner_nickname:
             return get_message(
-                "WEEK_SUMMARY_CHAT",
+                "WEEK_SUMMARY_SILENT_WITH_NICKNAME",
                 days_count=days_count,
+                nickname=partner_nickname,
             )
-        else:
-            return get_message(
-                "WEEK_SUMMARY_SILENT",
-                days_count=days_count,
-            )
+        return get_message("WEEK_SUMMARY_SILENT", days_count=days_count)
     
     async def build_share_nudge_message(
         self,
