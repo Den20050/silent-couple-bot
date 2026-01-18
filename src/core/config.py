@@ -302,9 +302,10 @@ class Settings(BaseSettings):
     
     # Other notification TTL settings
     nudge_ttl_hours: int = Field(
-        default=24,
+        # Used for share nudge throttling. 5 days = 120 hours.
+        default=120,
         ge=1,
-        description="TTL for nudge keys in hours (default: 24)",
+        description="TTL for nudge keys in hours (default: 120)",
     )
     summary_ttl_days: int = Field(
         default=7,
