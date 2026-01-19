@@ -94,9 +94,11 @@ async def check_and_update_expired_subscriptions(
                     )
                     dunning_text_a, keyboard = await notification_builder.build_dunning_notification_message(
                         partner_label=label_for_a,
+                        pair_id=pair.id,
                     )
                     dunning_text_b, _keyboard_b = await notification_builder.build_dunning_notification_message(
                         partner_label=label_for_b,
+                        pair_id=pair.id,
                     )
                     
                     await messenger.send_message(
@@ -200,10 +202,12 @@ async def send_past_due_notification(
         notification_text_a, reply_markup = await notification_builder.build_past_due_notification_message(
             include_button=True,
             partner_label=label_for_a,
+            pair_id=pair.id,
         )
         notification_text_b, _reply_markup_b = await notification_builder.build_past_due_notification_message(
             include_button=True,
             partner_label=label_for_b,
+            pair_id=pair.id,
         )
         
         await messenger.send_message(

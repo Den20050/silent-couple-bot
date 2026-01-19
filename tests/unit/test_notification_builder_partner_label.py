@@ -33,3 +33,14 @@ async def test_notification_builder_dunning_with_partner_uses_labeled_message() 
         partner="@someuser",
     )
 
+
+async def test_notification_builder_includes_pair_id_in_pay_callback() -> None:
+    builder = NotificationBuilder(messenger=_FakeMessenger())
+    _text, kb = await builder.build_past_due_notification_message(
+        include_button=True,
+        partner_label="Мама",
+        pair_id=123,
+    )
+    assert kb is not None
+    assert kb["inline_keyboard"][0][0]["callback_data"] == "pay_select_currency_123"
+

@@ -203,6 +203,7 @@ class NotificationBuilder:
         self,
         include_button: bool = True,
         partner_label: str | None = None,
+        pair_id: int | None = None,
     ) -> tuple[str, Optional[dict]]:
         """Build past due notification message and keyboard.
         
@@ -223,12 +224,15 @@ class NotificationBuilder:
         
         reply_markup = None
         if include_button:
+            callback_data = (
+                f"pay_select_currency_{pair_id}" if pair_id is not None else "pay_select_currency"
+            )
             reply_markup = {
                 "inline_keyboard": [
                     [
                         {
                             "text": get_message("WORKER_PAY_NOW_BUTTON"),
-                            "callback_data": "pay_select_currency",
+                            "callback_data": callback_data,
                         },
                     ],
                 ],
@@ -240,6 +244,7 @@ class NotificationBuilder:
         self,
         *,
         partner_label: str | None = None,
+        pair_id: int | None = None,
     ) -> tuple[str, dict]:
         """Build dunning notification message and keyboard.
         
@@ -259,7 +264,11 @@ class NotificationBuilder:
                 [
                     {
                         "text": get_message("WORKER_PAY_NOW_BUTTON"),
-                        "callback_data": "pay_select_currency",
+                        "callback_data": (
+                            f"pay_select_currency_{pair_id}"
+                            if pair_id is not None
+                            else "pay_select_currency"
+                        ),
                     },
                 ],
             ],
