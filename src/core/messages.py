@@ -166,6 +166,9 @@ class Messages:
     SUBSCRIPTION_PAST_DUE = (
         "📊 <b>Подписка</b>\n\n⏳ Подписка просрочена. Оплатите для продолжения использования."
     )
+    SUBSCRIPTION_PAST_DUE_WITH_PARTNER = (
+        "📊 <b>Подписка</b>\n\n⏳ Подписка просрочена (пара с {partner}). Оплатите для продолжения использования."
+    )
     SUBSCRIPTION_TRIAL_DAYS_LEFT = (
         "📊 <b>Подписка</b>\n\nДемо режим активен, остаток {days_left} дней"
     )
@@ -224,6 +227,9 @@ class Messages:
     WORKER_PAST_DUE_NOTIFICATION = (
         "Демо режим закончился. Для продолжения работы бота выберите тариф и оплатите подписку."
     )
+    WORKER_PAST_DUE_NOTIFICATION_WITH_PARTNER = (
+        "Демо режим закончился (пара с {partner}). Для продолжения работы бота выберите тариф и оплатите подписку."
+    )
     WORKER_PAST_DUE_BUTTON = "Выбрать тариф"
     WORKER_MORNING_REQUEST_CHAT = "Утро! Отправьте доброе пожелание в ответ:"
     WORKER_MORNING_REQUEST_SILENT = 'Хотите отправить пожелание с "Добрым утром"?'
@@ -243,6 +249,9 @@ class Messages:
     WORKER_WISH_BACK_BUTTON = "◀️ Назад"
     WORKER_SEND_PICTURE_BUTTON = "Отправить картинку"
     WORKER_PAST_DUE_DUNNING = "⏳ Подписка просрочена. Оплатите для продолжения использования."
+    WORKER_PAST_DUE_DUNNING_WITH_PARTNER = (
+        "⏳ Подписка просрочена (пара с {partner}). Оплатите для продолжения использования."
+    )
     WORKER_PAY_NOW_BUTTON = "💳 Оплатить"
 
     # =============================================================================

@@ -1,7 +1,7 @@
 """Past due subscription tasks."""
 
 from datetime import date
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy import select
 
@@ -10,6 +10,7 @@ from src.core.logger import get_logger
 from src.db.models import User
 from src.db.repositories.pairs import PairsRepository
 from src.db.repositories.subscriptions import SubscriptionsRepository
+from src.services.messaging.partner_label import format_partner_label
 from src.worker.di.context import WorkerContext
 from src.worker.tasks.utils.state_checks import check_past_due_notification_needed
 
@@ -83,16 +84,29 @@ async def check_and_update_expired_subscriptions(
                     messenger = worker_context.messenger
                     notification_builder = worker_context.notification_builder
                     
-                    dunning_text, keyboard = await notification_builder.build_dunning_notification_message()
+                    label_for_a = format_partner_label(
+                        partner_nickname=pairs_repo.get_my_nickname_for_partner(pair, user_a.id),
+                        partner_username=user_b.username,
+                    )
+                    label_for_b = format_partner_label(
+                        partner_nickname=pairs_repo.get_my_nickname_for_partner(pair, user_b.id),
+                        partner_username=user_a.username,
+                    )
+                    dunning_text_a, keyboard = await notification_builder.build_dunning_notification_message(
+                        partner_label=label_for_a,
+                    )
+                    dunning_text_b, _keyboard_b = await notification_builder.build_dunning_notification_message(
+                        partner_label=label_for_b,
+                    )
                     
                     await messenger.send_message(
                         chat_id=user_a.tg_id,
-                        text=dunning_text,
+                        text=dunning_text_a,
                         reply_markup=keyboard,
                     )
                     await messenger.send_message(
                         chat_id=user_b.tg_id,
-                        text=dunning_text,
+                        text=dunning_text_b,
                         reply_markup=keyboard,
                     )
                     
@@ -147,6 +161,7 @@ async def send_past_due_notification(
     """
     lock_service = worker_context.lock_service
     async with worker_context.session_factory() as session:
+        pairs_repo = PairsRepository(session)
         # Check if notification should be sent
         should_send = await check_past_due_notification_needed(
             session=session,
@@ -174,18 +189,31 @@ async def send_past_due_notification(
         messenger = worker_context.messenger
         notification_builder = worker_context.notification_builder
         
-        notification_text, reply_markup = await notification_builder.build_past_due_notification_message(
+        label_for_a = format_partner_label(
+            partner_nickname=pairs_repo.get_my_nickname_for_partner(pair, user_a.id),
+            partner_username=user_b.username,
+        )
+        label_for_b = format_partner_label(
+            partner_nickname=pairs_repo.get_my_nickname_for_partner(pair, user_b.id),
+            partner_username=user_a.username,
+        )
+        notification_text_a, reply_markup = await notification_builder.build_past_due_notification_message(
             include_button=True,
+            partner_label=label_for_a,
+        )
+        notification_text_b, _reply_markup_b = await notification_builder.build_past_due_notification_message(
+            include_button=True,
+            partner_label=label_for_b,
         )
         
         await messenger.send_message(
             chat_id=user_a.tg_id,
-            text=notification_text,
+            text=notification_text_a,
             reply_markup=reply_markup,
         )
         await messenger.send_message(
             chat_id=user_b.tg_id,
-            text=notification_text,
+            text=notification_text_b,
             reply_markup=reply_markup,
         )
         
