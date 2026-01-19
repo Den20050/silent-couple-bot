@@ -202,16 +202,24 @@ class NotificationBuilder:
     async def build_past_due_notification_message(
         self,
         include_button: bool = True,
+        partner_label: str | None = None,
     ) -> tuple[str, Optional[dict]]:
         """Build past due notification message and keyboard.
         
         Args:
             include_button: Whether to include payment button
+            partner_label: Optional partner label to disambiguate a specific pair
             
         Returns:
             Tuple of (message_text, reply_markup or None)
         """
-        notification_text = get_message("WORKER_PAST_DUE_NOTIFICATION")
+        if partner_label:
+            notification_text = get_message(
+                "WORKER_PAST_DUE_NOTIFICATION_WITH_PARTNER",
+                partner=partner_label,
+            )
+        else:
+            notification_text = get_message("WORKER_PAST_DUE_NOTIFICATION")
         
         reply_markup = None
         if include_button:
@@ -228,13 +236,23 @@ class NotificationBuilder:
         
         return notification_text, reply_markup
     
-    async def build_dunning_notification_message(self) -> tuple[str, dict]:
+    async def build_dunning_notification_message(
+        self,
+        *,
+        partner_label: str | None = None,
+    ) -> tuple[str, dict]:
         """Build dunning notification message and keyboard.
         
         Returns:
             Tuple of (message_text, reply_markup)
         """
-        dunning_text = get_message("WORKER_PAST_DUE_DUNNING")
+        if partner_label:
+            dunning_text = get_message(
+                "WORKER_PAST_DUE_DUNNING_WITH_PARTNER",
+                partner=partner_label,
+            )
+        else:
+            dunning_text = get_message("WORKER_PAST_DUE_DUNNING")
         
         keyboard = {
             "inline_keyboard": [
