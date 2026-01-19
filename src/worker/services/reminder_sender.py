@@ -156,39 +156,44 @@ class ReminderSender:
             except Exception:
                 msg_id = None
 
+        # UX choice: don't "edit in place" because edits don't bump the message to the bottom.
+        # Instead, try to delete the previous reminder message and send a new one (so it's visible).
+        # If deletion fails, at least remove buttons from the old message to avoid confusion.
         if msg_id:
             try:
-                await self._messenger.edit_message(
+                deleted = await self._messenger.delete_message(
                     chat_id=recipient_tg_id,
                     message_id=msg_id,
-                    text=text,
-                    reply_markup=reply_markup,
                 )
-                message_id = msg_id
-            except Exception as e:
-                # Telegram returns Bad Request "message is not modified" when we try to set the
-                # same text/markup. Treat it as success to avoid sending duplicates.
-                if "message is not modified" in str(e).lower():
-                    message_id = msg_id
-                else:
-                    msg_id = None
-
-        if not msg_id:
-            msg = await self._messenger.send_message(
-                chat_id=recipient_tg_id,
-                text=text,
-                reply_markup=reply_markup,
-            )
-            message_id = msg.message_id
-            if redis is not None:
+                if not deleted:
+                    await self._messenger.remove_reply_markup(
+                        chat_id=recipient_tg_id,
+                        message_id=msg_id,
+                    )
+            except Exception:
                 try:
-                    await redis.setex(
-                        _reminder_prompt_message_id_key(recipient_tg_id, pic_type, day),
-                        _REMINDER_PROMPT_MESSAGE_TTL_SECONDS,
-                        str(message_id),
+                    await self._messenger.remove_reply_markup(
+                        chat_id=recipient_tg_id,
+                        message_id=msg_id,
                     )
                 except Exception:
                     pass
+
+        msg = await self._messenger.send_message(
+            chat_id=recipient_tg_id,
+            text=text,
+            reply_markup=reply_markup,
+        )
+        message_id = msg.message_id
+        if redis is not None:
+            try:
+                await redis.setex(
+                    _reminder_prompt_message_id_key(recipient_tg_id, pic_type, day),
+                    _REMINDER_PROMPT_MESSAGE_TTL_SECONDS,
+                    str(message_id),
+                )
+            except Exception:
+                pass
 
         await activate_message(
             redis=redis,
