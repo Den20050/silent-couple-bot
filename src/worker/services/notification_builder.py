@@ -25,6 +25,7 @@ class NotificationBuilder:
         pair_id: int,
         initiator_tg_id: int,
         target_day: date,
+        initiator_label: str | None = None,
     ) -> tuple[str, dict]:
         """Build reminder message and keyboard for recipient.
         
@@ -38,11 +39,19 @@ class NotificationBuilder:
         Returns:
             Tuple of (message_text, reply_markup)
         """
-        # Get message based on mode
+        # Get message based on mode (optionally with partner label for multi-pair clarity)
         if pair_mode == "chat":
-            reminder_text = get_message("REMINDER_CHAT_MODE")
+            reminder_text = (
+                get_message("REMINDER_CHAT_MODE_WITH_NICKNAME", nickname=initiator_label)
+                if initiator_label
+                else get_message("REMINDER_CHAT_MODE")
+            )
         else:
-            reminder_text = get_message("REMINDER_SILENT_MODE")
+            reminder_text = (
+                get_message("REMINDER_SILENT_MODE_WITH_NICKNAME", nickname=initiator_label)
+                if initiator_label
+                else get_message("REMINDER_SILENT_MODE")
+            )
         
         # Create callback data with day
         callback_prefix = "tap_morning" if pic_type == "morning" else "tap_evening"
