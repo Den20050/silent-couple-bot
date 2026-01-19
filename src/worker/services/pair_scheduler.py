@@ -111,7 +111,7 @@ class PairScheduler:
                 reason=reason,
                 **extra,
             )
-            return False, reason, None
+            return False, reason
 
         # Check if subscription is past due
         if pair.status == PairStatus.PAST_DUE.value:
