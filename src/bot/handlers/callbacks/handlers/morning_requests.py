@@ -25,7 +25,7 @@ from src.bot.handlers.callbacks.use_cases.schedule_reminders import (
 )
 from src.services.messaging.ui.wish_request_ui import WishRequestUIService
 from src.services.messaging.wish_request_prompt_refresher import refresh_aggregated_wish_prompt
-from src.services.messaging.active_action_message import is_message_active
+from src.services.messaging.active_action_message import is_message_active, ActionKind
 
 logger = get_logger(__name__)
 
@@ -86,6 +86,7 @@ async def handle_request_morning(
             redis=container.redis,
             tg_id=tg_id,
             message_id=callback.message.message_id,
+            kind=ActionKind.PROMPT,
         )
         if not ok:
             await telegram_messenger.remove_reply_markup(

@@ -269,6 +269,12 @@ class Messages:
     # Silent Mode reminders/warnings (lines 226-248 in MODES_DETAILED.md)
     REMINDER_SILENT_MODE = "Если есть секунда — ответьте картинкой, чтобы он не беспокоился."
     REMINDER_SILENT_MODE_WITH_NICKNAME = "от {nickname}. Если есть секунда — ответьте картинкой, чтобы он не беспокоился."
+    REMINDER_MULTI_TITLE = "Тебя ждут ❤️"
+    REMINDER_MULTI_SILENT = (
+        "Если есть секунда — ответьте картинкой, чтобы они не беспокоились:\n\n{items}"
+    )
+    REMINDER_MULTI_CHAT = "Тебя ждут ❤️\n\n{items}"
+    RESPOND_BUTTON_WITH_PARTNER = "Ответить {partner}"
     WARNING_SILENT_MODE = "⚠️ @{username} не отвечает, воспользуйтесь другим способом узнать, всё ли у него в порядке."
     WARNING_SILENT_MODE_WITH_NICKNAME = "⚠️ {nickname} не отвечает, воспользуйтесь другим способом узнать, всё ли у него в порядке."
     

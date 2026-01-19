@@ -71,6 +71,47 @@ class NotificationBuilder:
         }
         
         return reminder_text, reply_markup
+
+    async def build_aggregated_reminder_message(
+        self,
+        *,
+        pair_mode: str,
+        items: list[dict],
+    ) -> tuple[str, dict]:
+        """Build aggregated reminder message with multiple respond actions.
+
+        Args:
+            pair_mode: "chat" or "silent"
+            items: List of dicts with keys:
+              - partner_label: str
+              - callback_data: str
+
+        Returns:
+            (text, reply_markup)
+        """
+        lines = [f"• {it['partner_label']}" for it in items]
+        items_text = "\n".join(lines)
+
+        if pair_mode == "silent":
+            text = get_message("REMINDER_MULTI_SILENT", items=items_text)
+        else:
+            text = get_message("REMINDER_MULTI_CHAT", items=items_text)
+
+        keyboard_rows: list[list[dict]] = []
+        for it in items:
+            keyboard_rows.append(
+                [
+                    {
+                        "text": get_message(
+                            "RESPOND_BUTTON_WITH_PARTNER",
+                            partner=it["partner_label"],
+                        ),
+                        "callback_data": it["callback_data"],
+                    }
+                ]
+            )
+
+        return text, {"inline_keyboard": keyboard_rows}
     
     async def build_warning_message(
         self,

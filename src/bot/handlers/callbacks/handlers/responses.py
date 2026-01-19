@@ -12,7 +12,7 @@ from src.core.di.container import Container
 from src.services.telegram.messenger import TelegramMessenger
 from src.bot.handlers.callbacks.validators import parse_callback_data_with_day
 from src.bot.handlers.callbacks.use_cases.respond_to_wish import respond_to_wish
-from src.services.messaging.active_action_message import is_message_active
+from src.services.messaging.active_action_message import is_message_active, ActionKind
 
 logger = get_logger(__name__)
 
@@ -33,6 +33,7 @@ async def handle_tap_morning(
             redis=container.redis,
             tg_id=tg_id,
             message_id=callback.message.message_id,
+            kind=ActionKind.REMINDER,
         )
         if not ok:
             # Best-effort: remove stale buttons so the user stops clicking.
@@ -107,6 +108,7 @@ async def handle_tap_evening(
             redis=container.redis,
             tg_id=tg_id,
             message_id=callback.message.message_id,
+            kind=ActionKind.REMINDER,
         )
         if not ok:
             await telegram_messenger.remove_reply_markup(

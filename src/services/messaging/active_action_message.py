@@ -24,16 +24,33 @@ logger = get_logger(__name__)
 _ACTIVE_TTL_SECONDS = 72 * 3600
 
 
-def _active_key(tg_id: int) -> str:
-    return f"{settings.redis_key_prefix_active_action_message}:{tg_id}"
+class ActionKind:
+    """Interactive message kind.
+
+    We keep separate "active" pointers for different kinds, and apply simple priority:
+    - when a new prompt arrives, it disables reminder buttons to prevent confusion
+    - reminders do not disable prompts (so users can still send today's wish)
+    """
+
+    PROMPT = "prompt"    # morning/evening wish request
+    REMINDER = "reminder"  # unanswered "Тебя ждут" / respond reminders
 
 
-async def get_active_message_id(redis: Optional[Redis], tg_id: int) -> int | None:
-    """Get currently active interactive message_id for a user (if stored)."""
+def _active_key(tg_id: int, kind: str) -> str:
+    return f"{settings.redis_key_prefix_active_action_message}:{kind}:{tg_id}"
+
+
+async def get_active_message_id(
+    redis: Optional[Redis],
+    tg_id: int,
+    *,
+    kind: str,
+) -> int | None:
+    """Get active interactive message_id for a user/kind (if stored)."""
     if redis is None:
         return None
     try:
-        raw = await redis.get(_active_key(tg_id))
+        raw = await redis.get(_active_key(tg_id, kind))
         if not raw:
             return None
         if isinstance(raw, bytes):
@@ -49,14 +66,15 @@ async def activate_message(
     messenger: MessengerProtocol,
     tg_id: int,
     message_id: int,
+    kind: str,
     ttl_seconds: int = _ACTIVE_TTL_SECONDS,
 ) -> None:
-    """Mark message as active and disable buttons on the previous active message (best-effort)."""
+    """Mark message as active for its kind and disable stale buttons (best-effort)."""
     if redis is None:
         return
 
     try:
-        prev_id = await get_active_message_id(redis, tg_id)
+        prev_id = await get_active_message_id(redis, tg_id, kind=kind)
         if prev_id and prev_id != message_id:
             try:
                 await messenger.remove_reply_markup(chat_id=tg_id, message_id=prev_id)
@@ -68,7 +86,22 @@ async def activate_message(
                     error=str(e),
                 )
 
-        await redis.setex(_active_key(tg_id), ttl_seconds, str(message_id))
+        # Priority: when a prompt arrives, disable reminder buttons too.
+        if kind == ActionKind.PROMPT:
+            reminder_id = await get_active_message_id(
+                redis, tg_id, kind=ActionKind.REMINDER
+            )
+            if reminder_id and reminder_id != message_id:
+                try:
+                    await messenger.remove_reply_markup(chat_id=tg_id, message_id=reminder_id)
+                except Exception:
+                    pass
+                try:
+                    await redis.delete(_active_key(tg_id, ActionKind.REMINDER))
+                except Exception:
+                    pass
+
+        await redis.setex(_active_key(tg_id, kind), ttl_seconds, str(message_id))
     except Exception as e:
         logger.debug(
             "Failed to update active interactive message (ignored)",
@@ -83,9 +116,10 @@ async def is_message_active(
     redis: Optional[Redis],
     tg_id: int,
     message_id: int,
+    kind: str,
 ) -> bool:
-    """Check whether the given message_id is currently active for user."""
-    active_id = await get_active_message_id(redis, tg_id)
+    """Check whether the given message_id is currently active for user/kind."""
+    active_id = await get_active_message_id(redis, tg_id, kind=kind)
     if active_id is None:
         # If we don't know, don't block (backward-compatible).
         return True
