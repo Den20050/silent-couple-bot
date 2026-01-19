@@ -106,28 +106,31 @@ async def process_reminders_for_type(
         pic_type=pic_type,
         reminder_hours=recipient_reminder_hours,
     )
-    
+
     for hours in recipient_reminder_hours:
         unanswered = await reminder_finder.find_unanswered_pictures(hours, pic_type)
-        
+
         logger.info(
             "Found unanswered pictures",
             pic_type=pic_type,
             hours=hours,
             count=len(unanswered),
         )
-        
+
+        # Collect candidates per recipient and send one aggregated reminder per user.
+        candidates_by_recipient: dict[int, list[ReminderCandidate]] = {}
+
         for state in unanswered:
             try:
                 # Build candidate
                 candidate = await reminder_finder.build_reminder_candidate(state, pic_type)
                 if not candidate:
                     continue
-                
+
                 # Validate conditions
                 if not await reminder_validator.should_send_reminder(candidate):
                     continue
-                
+
                 # Check Redis lock to prevent duplicate reminders
                 reminder_key = (
                     f"{settings.redis_key_prefix_reminder_sent}:{candidate.pair.id}:{candidate.target_day}:{pic_type}:{hours}"
@@ -135,17 +138,32 @@ async def process_reminders_for_type(
                 already_sent = await lock_service.check_key_exists(reminder_key)
                 if already_sent:
                     continue
-                
-                # Send reminder
-                await reminder_sender.send_reminder(
-                    candidate=candidate,
-                    reminder_key=reminder_key,
-                    lock_service=lock_service,
+
+                # Mark reminder as sent for this pair/hour (so we don't retry)
+                await lock_service.set_key_with_ttl(
+                    reminder_key, "1", settings.reminder_ttl_hours * 3600
                 )
+
+                candidates_by_recipient.setdefault(candidate.recipient.tg_id, []).append(candidate)
             except Exception as e:
                 logger.error(
                     "Error processing reminder",
                     pair_id=state.pair_id,
+                    pic_type=pic_type,
+                    hours=hours,
+                    error=str(e),
+                    exc_info=True,
+                )
+                continue
+
+        # Send aggregated reminder per recipient.
+        for recipient_tg_id, candidates in candidates_by_recipient.items():
+            try:
+                await reminder_sender.send_aggregated_reminder(candidates=candidates)
+            except Exception as e:
+                logger.error(
+                    "Error sending aggregated reminder",
+                    recipient_tg_id=recipient_tg_id,
                     pic_type=pic_type,
                     hours=hours,
                     error=str(e),

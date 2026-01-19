@@ -7,10 +7,16 @@ from src.core.logger import get_logger
 from src.core.messages import get_message
 from src.worker.di.context import WorkerContext
 from src.worker.services.reminder_finder import ReminderCandidate
-from src.services.messaging.active_action_message import activate_message
+from src.services.messaging.active_action_message import activate_message, ActionKind
 from src.services.messaging.partner_label import format_partner_label
 
 logger = get_logger(__name__)
+
+_REMINDER_PROMPT_MESSAGE_TTL_SECONDS = 48 * 3600
+
+
+def _reminder_prompt_message_id_key(tg_id: int, pic_type: str, day: date) -> str:
+    return f"reminder_prompt_message_id:{tg_id}:{pic_type}:{day.isoformat()}"
 
 
 class ReminderSender:
@@ -79,6 +85,7 @@ class ReminderSender:
             messenger=self._messenger,
             tg_id=candidate.recipient.tg_id,
             message_id=msg.message_id,
+            kind=ActionKind.REMINDER,
         )
         
         # Mark reminder as sent
@@ -91,6 +98,106 @@ class ReminderSender:
             pair_id=candidate.pair.id,
             recipient_tg_id=candidate.recipient.tg_id,
             pic_type=candidate.pic_type,
+        )
+
+    async def send_aggregated_reminder(
+        self,
+        *,
+        candidates: list[ReminderCandidate],
+    ) -> None:
+        """Send (or edit) a single aggregated reminder message per user/pic_type/day.
+
+        This reduces the "spam" feeling when a user has multiple pairs and multiple reminder hours.
+        """
+        if not candidates:
+            return
+
+        # group assumed homogeneous by recipient + pic_type + day; enforce by taking from first.
+        recipient_tg_id = candidates[0].recipient.tg_id
+        pic_type = candidates[0].pic_type
+        day = candidates[0].target_day
+        pair_mode = candidates[0].pair.mode
+
+        items: list[dict] = []
+        for c in candidates:
+            nickname_for_initiator = (
+                c.pair.nickname_a
+                if c.pair.uid_a == c.recipient.id
+                else c.pair.nickname_b
+                if c.pair.uid_b == c.recipient.id
+                else None
+            )
+            initiator_label = format_partner_label(
+                partner_nickname=nickname_for_initiator,
+                partner_username=c.initiator.username,
+            ) or get_message("WORKER_RECIPIENT_FALLBACK")
+
+            callback_prefix = "tap_morning" if c.pic_type == "morning" else "tap_evening"
+            callback_data = (
+                f"{callback_prefix}_{c.pair.id}_{c.initiator.tg_id}|{c.target_day.isoformat()}"
+            )
+            items.append({"partner_label": initiator_label, "callback_data": callback_data})
+
+        text, reply_markup = await self._notification_builder.build_aggregated_reminder_message(
+            pair_mode=pair_mode,
+            items=items,
+        )
+
+        # Edit in place if we have a stored message_id, otherwise send new.
+        redis = self._worker_context.redis
+        msg_id: int | None = None
+        if redis is not None:
+            try:
+                raw = await redis.get(_reminder_prompt_message_id_key(recipient_tg_id, pic_type, day))
+                if raw:
+                    if isinstance(raw, bytes):
+                        raw = raw.decode()
+                    msg_id = int(raw)
+            except Exception:
+                msg_id = None
+
+        if msg_id:
+            try:
+                await self._messenger.edit_message(
+                    chat_id=recipient_tg_id,
+                    message_id=msg_id,
+                    text=text,
+                    reply_markup=reply_markup,
+                )
+                message_id = msg_id
+            except Exception:
+                msg_id = None
+
+        if not msg_id:
+            msg = await self._messenger.send_message(
+                chat_id=recipient_tg_id,
+                text=text,
+                reply_markup=reply_markup,
+            )
+            message_id = msg.message_id
+            if redis is not None:
+                try:
+                    await redis.setex(
+                        _reminder_prompt_message_id_key(recipient_tg_id, pic_type, day),
+                        _REMINDER_PROMPT_MESSAGE_TTL_SECONDS,
+                        str(message_id),
+                    )
+                except Exception:
+                    pass
+
+        await activate_message(
+            redis=redis,
+            messenger=self._messenger,
+            tg_id=recipient_tg_id,
+            message_id=message_id,
+            kind=ActionKind.REMINDER,
+        )
+
+        logger.info(
+            "Aggregated recipient reminder sent",
+            recipient_tg_id=recipient_tg_id,
+            pic_type=pic_type,
+            items_count=len(items),
         )
 
 
