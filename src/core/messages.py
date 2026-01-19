@@ -202,6 +202,9 @@ class Messages:
     CALLBACK_WISH_RESPONDED = "✅ Вы ответили на пожелание"
     RESPOND_BUTTON_TEXT = "Нажмите кнопку ниже, чтобы ответить:"
     CALLBACK_RESPONSE_SENT = "Ответ отправлен!"
+    CALLBACK_STALE_MESSAGE = (
+        "⏳ Это сообщение уже не актуально. Пожалуйста, используйте последнее сообщение от бота."
+    )
     CALLBACK_WISH_NOT_SENT_YET = "Пожелание ещё не отправлено"
     CALLBACK_ALREADY_RESPONDED = "Вы уже ответили на пожелание"
     CALLBACK_USER_NOT_FOUND = "Пользователь не найден"
