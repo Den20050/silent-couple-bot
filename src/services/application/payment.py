@@ -154,7 +154,7 @@ class PaymentApplicationService:
         from src.bot.validators.user import validate_user_exists
         user = await validate_user_exists(self._session, tg_id, "PAY_START_REQUIRED")
         
-        # Get pair (either specified or first one)
+        # Get pair (either specified or inferred)
         from src.db.repositories.pairs import PairsRepository
         pairs_repo = PairsRepository(self._session)
         
@@ -164,9 +164,27 @@ class PaymentApplicationService:
             pair = await validate_pair_exists(self._session, pair_id, "PAY_NO_PAIR")
             await validate_pair_access(self._session, pair, user.id, tg_id, "PAY_NO_PAIR")
         else:
-            # Use first pair (backward compatibility)
-            from src.bot.validators.pair import validate_user_has_pair
-            pair = await validate_user_has_pair(self._session, tg_id, "PAY_NO_PAIR")
+            # Backward compatibility: old buttons / flows may not include pair_id.
+            # If user has multiple active pairs, ask which pair to pay for.
+            all_pairs = await pairs_repo.get_all_by_user_tg_id(tg_id)
+            active_pairs = [p for p in all_pairs if p.status in ("trial", "active")]
+
+            if len(active_pairs) > 1:
+                return await self.show_pair_selection(tg_id=tg_id)
+
+            if not active_pairs:
+                # Fallback to any pair (if exists) to preserve previous behavior
+                if not all_pairs:
+                    from src.bot.exceptions import PairNotFoundError
+                    raise PairNotFoundError(
+                        tg_id=tg_id,
+                        message_key="PAY_NO_PAIR",
+                        message=get_message("PAY_NO_PAIR"),
+                    )
+                pair = all_pairs[0]
+            else:
+                pair = active_pairs[0]
+
             pair_id = pair.id
         
         # Validate subscription exists (raises SubscriptionNotFoundError if not found)

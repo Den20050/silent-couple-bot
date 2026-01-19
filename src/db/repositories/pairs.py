@@ -49,14 +49,16 @@ class PairsRepository:
             )
             return None
         
-        # Then find pair where user is either uid_a or uid_b
-        # Use explicit OR condition to find pairs where user is in either position
+        # Then find first pair where user is either uid_a or uid_b.
+        # IMPORTANT: Users can have multiple pairs, so we must NOT use scalar_one_or_none()
+        # (it raises MultipleResultsFound). Keep backward-compatible behavior: return first.
         result = await self.session.execute(
-            select(Pair).where(
-                (Pair.uid_a == user_id) | (Pair.uid_b == user_id)
-            )
+            select(Pair)
+            .where((Pair.uid_a == user_id) | (Pair.uid_b == user_id))
+            .order_by(Pair.id.asc())
+            .limit(1)
         )
-        pair = result.scalar_one_or_none()
+        pair = result.scalars().first()
         
         logger.info(
             "get_by_user_tg_id: pair lookup result",
