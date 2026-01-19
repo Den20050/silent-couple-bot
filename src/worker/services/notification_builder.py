@@ -89,6 +89,31 @@ class NotificationBuilder:
         Returns:
             (text, reply_markup)
         """
+        # Single item: keep the original (non-plural) phrasing with explicit partner label.
+        if len(items) == 1:
+            label = items[0]["partner_label"]
+            if pair_mode == "silent":
+                text = get_message("REMINDER_SILENT_MODE_WITH_NICKNAME", nickname=label)
+            else:
+                text = get_message("REMINDER_CHAT_MODE_WITH_NICKNAME", nickname=label)
+
+            return (
+                text,
+                {
+                    "inline_keyboard": [
+                        [
+                            {
+                                "text": get_message(
+                                    "RESPOND_BUTTON_WITH_PARTNER",
+                                    partner=label,
+                                ),
+                                "callback_data": items[0]["callback_data"],
+                            }
+                        ]
+                    ]
+                },
+            )
+
         lines = [f"• {it['partner_label']}" for it in items]
         items_text = "\n".join(lines)
 

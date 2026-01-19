@@ -165,8 +165,13 @@ class ReminderSender:
                     reply_markup=reply_markup,
                 )
                 message_id = msg_id
-            except Exception:
-                msg_id = None
+            except Exception as e:
+                # Telegram returns Bad Request "message is not modified" when we try to set the
+                # same text/markup. Treat it as success to avoid sending duplicates.
+                if "message is not modified" in str(e).lower():
+                    message_id = msg_id
+                else:
+                    msg_id = None
 
         if not msg_id:
             msg = await self._messenger.send_message(
