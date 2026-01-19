@@ -10,6 +10,7 @@ from src.bot.exceptions import (
     SubscriptionNotFoundError,
     PaymentError,
 )
+from src.core.messages import get_message
 from src.domain.services.subscription_status import SubscriptionStatusService
 from src.services.messaging.ui.payment_ui import PaymentUIService
 from src.core.protocols.payment import PaymentServiceProtocol
@@ -98,6 +99,41 @@ def payment_service(
 
 
 @pytest.mark.asyncio
+async def test_show_currencies_without_pair_id_and_multiple_pairs_returns_pair_selection(
+    payment_service,
+    mock_subscription_status_service,
+):
+    """Old callbacks may not include pair_id; user must be able to choose which pair to pay for."""
+    tg_id = 12345
+
+    from src.db.models import Pair
+    mock_pair_1 = MagicMock(spec=Pair)
+    mock_pair_1.id = 1
+    mock_pair_1.status = "trial"
+    mock_pair_2 = MagicMock(spec=Pair)
+    mock_pair_2.id = 2
+    mock_pair_2.status = "active"
+
+    # show_pair_selection handles the UI in this case
+    expected_keyboard = MagicMock()
+    expected_text = get_message("PAY_SELECT_PAIR")
+
+    from unittest.mock import patch, AsyncMock as AsyncMockPatch
+
+    with patch("src.bot.validators.user.validate_user_exists") as mock_validate_user, \
+         patch("src.db.repositories.pairs.PairsRepository.get_all_by_user_tg_id", new_callable=AsyncMockPatch) as mock_get_all_pairs, \
+         patch.object(payment_service, "show_pair_selection", new_callable=AsyncMockPatch) as mock_show_pair_selection:
+        mock_validate_user.return_value = MagicMock(id=111)
+        mock_get_all_pairs.return_value = [mock_pair_1, mock_pair_2]
+        mock_show_pair_selection.return_value = (True, expected_text, expected_keyboard)
+
+        success, text, keyboard = await payment_service.show_currencies(tg_id=tg_id, pair_id=None)
+        assert success is True
+        assert text == expected_text
+        assert keyboard == expected_keyboard
+
+
+@pytest.mark.asyncio
 async def test_show_currencies_success(
     payment_service,
     mock_subscription_status_service,
@@ -119,15 +155,15 @@ async def test_show_currencies_success(
     
     mock_payment_ui.build_currencies_keyboard.return_value = MagicMock()
     
-    from unittest.mock import patch
+    from unittest.mock import patch, AsyncMock as AsyncMockPatch
     
     with patch('src.bot.validators.user.validate_user_exists') as mock_validate_user, \
-         patch('src.bot.validators.pair.validate_user_has_pair') as mock_validate_pair, \
+         patch('src.db.repositories.pairs.PairsRepository.get_all_by_user_tg_id', new_callable=AsyncMockPatch) as mock_get_all_pairs, \
          patch('src.bot.validators.subscription.validate_subscription_exists') as mock_validate_sub:
         
         mock_user = MagicMock()
         mock_validate_user.return_value = mock_user
-        mock_validate_pair.return_value = mock_pair
+        mock_get_all_pairs.return_value = [mock_pair]
         mock_validate_sub.return_value = mock_subscription
         
         # Execute
@@ -168,14 +204,11 @@ async def test_show_currencies_pair_not_found(payment_service):
     from unittest.mock import patch, AsyncMock as AsyncMockPatch
     
     with patch('src.bot.validators.user.validate_user_exists', new_callable=AsyncMockPatch) as mock_validate_user, \
-         patch('src.bot.validators.pair.validate_user_has_pair', new_callable=AsyncMockPatch) as mock_validate_pair:
+         patch('src.db.repositories.pairs.PairsRepository.get_all_by_user_tg_id', new_callable=AsyncMockPatch) as mock_get_all_pairs:
         
         mock_user = MagicMock()
         mock_validate_user.return_value = mock_user
-        mock_validate_pair.side_effect = PairNotFoundError(
-            tg_id=tg_id,
-            message_key="PAY_NO_PAIR",
-        )
+        mock_get_all_pairs.return_value = []
         
         # Execute & Assert
         with pytest.raises(PairNotFoundError):
@@ -190,13 +223,13 @@ async def test_show_currencies_subscription_not_found(payment_service):
     from unittest.mock import patch, AsyncMock as AsyncMockPatch
     
     with patch('src.bot.validators.user.validate_user_exists', new_callable=AsyncMockPatch) as mock_validate_user, \
-         patch('src.bot.validators.pair.validate_user_has_pair', new_callable=AsyncMockPatch) as mock_validate_pair, \
+         patch('src.db.repositories.pairs.PairsRepository.get_all_by_user_tg_id', new_callable=AsyncMockPatch) as mock_get_all_pairs, \
          patch('src.bot.validators.subscription.validate_subscription_exists', new_callable=AsyncMockPatch) as mock_validate_sub:
         
         mock_user = MagicMock()
         mock_pair = MagicMock()
         mock_validate_user.return_value = mock_user
-        mock_validate_pair.return_value = mock_pair
+        mock_get_all_pairs.return_value = [mock_pair]
         mock_validate_sub.side_effect = SubscriptionNotFoundError(
             pair_id=mock_pair.id,
             message_key="PAY_SUBSCRIPTION_NOT_FOUND",
@@ -229,12 +262,12 @@ async def test_show_currencies_subscription_lifetime(
     from unittest.mock import patch
     
     with patch('src.bot.validators.user.validate_user_exists') as mock_validate_user, \
-         patch('src.bot.validators.pair.validate_user_has_pair') as mock_validate_pair, \
+         patch('src.db.repositories.pairs.PairsRepository.get_all_by_user_tg_id') as mock_get_all_pairs, \
          patch('src.bot.validators.subscription.validate_subscription_exists') as mock_validate_sub:
         
         mock_user = MagicMock()
         mock_validate_user.return_value = mock_user
-        mock_validate_pair.return_value = mock_pair
+        mock_get_all_pairs.return_value = [mock_pair]
         mock_validate_sub.return_value = mock_subscription
         
         # Execute & Assert
