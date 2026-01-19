@@ -264,6 +264,10 @@ class Settings(BaseSettings):
         default="wish_request",
         description="Redis key prefix for wish request tracking",
     )
+    redis_key_prefix_active_action_message: str = Field(
+        default="active_action_message",
+        description="Redis key prefix for the latest interactive message per user (buttons cleanup)",
+    )
     
     # Reminder settings
     reminder_hours: str = Field(

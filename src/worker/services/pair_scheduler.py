@@ -21,6 +21,7 @@ from src.worker.services.lock_service import LockService
 from dataclasses import dataclass
 
 from src.services.messaging.ui.wish_request_ui import WishRequestUIService
+from src.services.messaging.active_action_message import activate_message
 
 logger = get_logger(__name__)
 
@@ -282,6 +283,13 @@ class PairScheduler:
                             text=ui.text,
                             reply_markup=ui.reply_markup,
                         )
+                        # Keep only this message interactive for the user (best-effort).
+                        await activate_message(
+                            redis=await self.lock_service.get_redis_client(),
+                            messenger=self.telegram_messenger,
+                            tg_id=tg_id,
+                            message_id=message_id,
+                        )
                         updated += 1
                         succeeded.add(tg_id)
                         delivered_pair_ids.update(pair_ids)
@@ -299,6 +307,12 @@ class PairScheduler:
                     key,
                     str(msg.message_id),
                     _WISH_REQUEST_PROMPT_MESSAGE_TTL_SECONDS,
+                )
+                await activate_message(
+                    redis=await self.lock_service.get_redis_client(),
+                    messenger=self.telegram_messenger,
+                    tg_id=tg_id,
+                    message_id=msg.message_id,
                 )
                 updated += 1
                 succeeded.add(tg_id)

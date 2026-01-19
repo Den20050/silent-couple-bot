@@ -12,6 +12,7 @@ from src.core.logger import get_logger
 from src.core.config import Settings
 from src.db.repositories.daily_state import DailyStateRepository
 from src.services.telegram.messenger import TelegramMessenger
+from src.core.di.container import Container
 from src.bot.handlers.callbacks.validators import (
     parse_callback_data,
     validate_pair_and_user,
@@ -24,6 +25,7 @@ from src.bot.handlers.callbacks.use_cases.schedule_reminders import (
 )
 from src.services.messaging.ui.wish_request_ui import WishRequestUIService
 from src.services.messaging.wish_request_prompt_refresher import refresh_aggregated_wish_prompt
+from src.services.messaging.active_action_message import is_message_active
 
 logger = get_logger(__name__)
 
@@ -75,8 +77,24 @@ async def handle_request_evening(
     session: AsyncSession,
     telegram_messenger: TelegramMessenger,
     settings: Settings,
+    container: Container,
 ) -> None:
     """Handle evening request button."""
+    tg_id = callback.from_user.id
+    if callback.message:
+        ok = await is_message_active(
+            redis=container.redis,
+            tg_id=tg_id,
+            message_id=callback.message.message_id,
+        )
+        if not ok:
+            await telegram_messenger.remove_reply_markup(
+                chat_id=tg_id,
+                message_id=callback.message.message_id,
+            )
+            await callback.answer(get_message("CALLBACK_STALE_MESSAGE"), show_alert=True)
+            return
+
     # Parse callback data: request_evening_{pair_id}_{user_id}
     parsed = parse_callback_data(callback.data, expected_parts=4, prefix="request_evening_")
     if not parsed:
@@ -84,7 +102,6 @@ async def handle_request_evening(
         return
     
     pair_id, user_id = parsed
-    tg_id = callback.from_user.id
     
     logger.info(
         "Processing request_evening callback",

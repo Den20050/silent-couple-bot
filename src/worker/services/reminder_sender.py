@@ -7,6 +7,7 @@ from src.core.logger import get_logger
 from src.core.messages import get_message
 from src.worker.di.context import WorkerContext
 from src.worker.services.reminder_finder import ReminderCandidate
+from src.services.messaging.active_action_message import activate_message
 
 logger = get_logger(__name__)
 
@@ -50,10 +51,18 @@ class ReminderSender:
             target_day=candidate.target_day,
         )
         
-        await self._messenger.send_message(
+        msg = await self._messenger.send_message(
             chat_id=candidate.recipient.tg_id,
             text=reminder_text,
             reply_markup=reply_markup,
+        )
+
+        # Make this reminder the only active interactive message (best-effort).
+        await activate_message(
+            redis=self._worker_context.redis,
+            messenger=self._messenger,
+            tg_id=candidate.recipient.tg_id,
+            message_id=msg.message_id,
         )
         
         # Mark reminder as sent

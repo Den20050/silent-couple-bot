@@ -8,9 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.messages import get_message
 from src.core.logger import get_logger
+from src.core.di.container import Container
 from src.services.telegram.messenger import TelegramMessenger
 from src.bot.handlers.callbacks.validators import parse_callback_data_with_day
 from src.bot.handlers.callbacks.use_cases.respond_to_wish import respond_to_wish
+from src.services.messaging.active_action_message import is_message_active
 
 logger = get_logger(__name__)
 
@@ -22,8 +24,25 @@ async def handle_tap_morning(
     callback: CallbackQuery,
     session: AsyncSession,
     telegram_messenger: TelegramMessenger,
+    container: Container,
 ) -> None:
     """Handle morning tap (response)."""
+    tg_id = callback.from_user.id
+    if callback.message:
+        ok = await is_message_active(
+            redis=container.redis,
+            tg_id=tg_id,
+            message_id=callback.message.message_id,
+        )
+        if not ok:
+            # Best-effort: remove stale buttons so the user stops clicking.
+            await telegram_messenger.remove_reply_markup(
+                chat_id=tg_id,
+                message_id=callback.message.message_id,
+            )
+            await callback.answer(get_message("CALLBACK_STALE_MESSAGE"), show_alert=True)
+            return
+
     # Parse callback data: tap_morning_{pair_id}_{initiator_tg_id}|{day_iso}
     parsed = parse_callback_data_with_day(callback.data, prefix="tap_morning_")
     if not parsed:
@@ -31,7 +50,6 @@ async def handle_tap_morning(
         return
     
     pair_id, initiator_tg_id, day_iso = parsed
-    tg_id = callback.from_user.id
     
     # Determine which day to check
     check_day = date.fromisoformat(day_iso) if day_iso else date.today()
@@ -80,8 +98,24 @@ async def handle_tap_evening(
     callback: CallbackQuery,
     session: AsyncSession,
     telegram_messenger: TelegramMessenger,
+    container: Container,
 ) -> None:
     """Handle evening tap (response)."""
+    tg_id = callback.from_user.id
+    if callback.message:
+        ok = await is_message_active(
+            redis=container.redis,
+            tg_id=tg_id,
+            message_id=callback.message.message_id,
+        )
+        if not ok:
+            await telegram_messenger.remove_reply_markup(
+                chat_id=tg_id,
+                message_id=callback.message.message_id,
+            )
+            await callback.answer(get_message("CALLBACK_STALE_MESSAGE"), show_alert=True)
+            return
+
     # Parse callback data: tap_evening_{pair_id}_{initiator_tg_id}|{day_iso}
     parsed = parse_callback_data_with_day(callback.data, prefix="tap_evening_")
     if not parsed:
@@ -89,7 +123,6 @@ async def handle_tap_evening(
         return
     
     pair_id, initiator_tg_id, day_iso = parsed
-    tg_id = callback.from_user.id
     
     # Determine which day to check
     check_day = date.fromisoformat(day_iso) if day_iso else date.today()
