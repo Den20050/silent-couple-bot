@@ -277,12 +277,18 @@ class PairScheduler:
                 if message_id_raw:
                     try:
                         message_id = int(message_id_raw)
-                        await self.telegram_messenger.edit_message(
-                            chat_id=tg_id,
-                            message_id=message_id,
-                            text=ui.text,
-                            reply_markup=ui.reply_markup,
-                        )
+                        try:
+                            await self.telegram_messenger.edit_message(
+                                chat_id=tg_id,
+                                message_id=message_id,
+                                text=ui.text,
+                                reply_markup=ui.reply_markup,
+                            )
+                        except Exception as e:
+                            # Telegram may reject a no-op edit with "message is not modified".
+                            # Treat it as success to avoid spamming users with new messages.
+                            if "message is not modified" not in str(e).lower():
+                                raise
                         # Keep only this message interactive for the user (best-effort).
                         await activate_message(
                             redis=await self.lock_service.get_redis_client(),
