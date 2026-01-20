@@ -1,7 +1,7 @@
 """Retry policy for Telegram API calls."""
 
 import asyncio
-from typing import Callable, TypeVar, Awaitable
+from typing import Callable, TypeVar, Awaitable, cast
 
 from aiogram.exceptions import TelegramAPIError, TelegramRetryAfter
 
@@ -47,6 +47,14 @@ async def retry_telegram_api(
             )
             await asyncio.sleep(wait_time)
         except TelegramAPIError as e:
+            # Telegram treats "message is not modified" as an error, but for edit operations
+            # it simply means our desired state is already applied. Do not retry and do not log as error.
+            if "message is not modified" in str(e).lower():
+                logger.debug(
+                    f"Telegram {operation_name} is a no-op (message is not modified)",
+                    **context,
+                )
+                return cast(T, None)
             if attempt == TELEGRAM_RETRY_ATTEMPTS - 1:
                 logger.error(
                     f"Failed {operation_name} after retries",
