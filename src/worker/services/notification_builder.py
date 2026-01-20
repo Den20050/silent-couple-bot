@@ -160,29 +160,26 @@ class NotificationBuilder:
         Returns:
             Tuple of (message_text, reply_markup)
         """
-        if hours == 10:
-            # First warning
-            if pair_mode == "chat":
+        # Normalize: some callers pass "@username" already; templates WARNING_*_MODE include "@".
+        username_no_at = recipient_name.lstrip("@")
+
+        if pair_mode == "chat":
+            # Chat mode template does not mention hours, keep it generic.
+            warning_message = get_message(
+                "WARNING_CHAT_MODE",
+                username=username_no_at,
+            )
+        else:
+            # Silent mode: only use the 24h-specific wording when it's actually 24h+.
+            if hours >= 24:
                 warning_message = get_message(
-                    "WARNING_CHAT_MODE",
-                    username=recipient_name,
+                    "WARNING_24H_SILENT",
+                    recipient_name=recipient_name,
                 )
             else:
                 warning_message = get_message(
                     "WARNING_SILENT_MODE",
-                    username=recipient_name,
-                )
-        else:
-            # Subsequent warnings (24h)
-            if pair_mode == "chat":
-                warning_message = get_message(
-                    "WARNING_CHAT_MODE",
-                    username=recipient_name,
-                )
-            else:
-                warning_message = get_message(
-                    "WARNING_24H_SILENT",
-                    recipient_name=recipient_name,
+                    username=username_no_at,
                 )
         
         # Create cancel button
