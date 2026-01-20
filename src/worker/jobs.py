@@ -12,7 +12,6 @@ from src.worker.tasks.morning import morning_sender as morning_sender_task
 from src.worker.tasks.evening import evening_sender as evening_sender_task
 from src.worker.tasks.past_due import dunning_notifications as dunning_notifications_task
 from src.worker.tasks.reminders import (
-    check_unanswered_pictures as check_unanswered_pictures_task,
     send_recipient_reminder as send_recipient_reminder_task,
     send_initiator_warning as send_initiator_warning_task,
 )
@@ -83,12 +82,6 @@ async def cleanup_old_data(ctx: dict[str, Any]) -> None:
     """Wrapper for cleanup old data task."""
     worker_context = await get_worker_context()
     await cleanup_old_data_task(ctx, worker_context)
-
-
-async def check_unanswered_pictures(ctx: dict[str, Any]) -> None:
-    """Wrapper for check unanswered pictures task."""
-    worker_context = await get_worker_context()
-    await check_unanswered_pictures_task(ctx, worker_context)
 
 
 async def send_recipient_reminder(
@@ -167,7 +160,6 @@ class WorkerSettings:
         evening_sender,
         cleanup_old_data,
         dunning_notifications,
-        check_unanswered_pictures,
         send_recipient_reminder,
         send_initiator_warning,
         send_week_summary,
@@ -180,7 +172,6 @@ class WorkerSettings:
         cron(evening_sender, minute=None),  # Every minute
         cron(cleanup_old_data, hour=3, minute=0),  # 03:00 UTC
         cron(dunning_notifications, hour=10, minute=0),  # 10:00 UTC
-        cron(check_unanswered_pictures, hour=None, minute=0),  # Every hour
         cron(send_week_summary, hour=0, minute=0),  # 00:00 UTC
         cron(send_share_nudge, hour=14, minute=0),  # 14:00 UTC
         cron(cleanup_old_messages, hour=None, minute=30),  # Every hour at :30

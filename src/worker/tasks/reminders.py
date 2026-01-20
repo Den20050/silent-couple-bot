@@ -364,6 +364,10 @@ async def send_recipient_reminder(
             
             # Use LockService for tracking
             lock_service = worker_context.lock_service
+
+            already_sent = await lock_service.check_key_exists(reminder_key)
+            if already_sent:
+                return
             
             # Send reminder using sender service
             reminder_sender = ReminderSender(worker_context)
@@ -507,6 +511,14 @@ async def send_initiator_warning(
             warning_key = (
                 f"{settings.redis_key_prefix_warning_last_time}:{pair_id}:{target_day}:{pic_type}"
             )
+
+            # Throttle warnings (idempotency across retries / multiple schedulers)
+            now_utc = datetime.utcnow()
+            last_warning_time = await lock_service.get_last_warning_time(warning_key)
+            if last_warning_time is not None:
+                since_last = now_utc - last_warning_time
+                if since_last < timedelta(hours=settings.warning_interval_hours):
+                    return
             
             # Send warning using sender service
             warning_sender = WarningSender(worker_context)
@@ -516,6 +528,8 @@ async def send_initiator_warning(
                 warning_key=warning_key,
                 lock_service=lock_service,
             )
+
+            await lock_service.set_last_warning_time(warning_key, now_utc)
     finally:
         await worker_context.close_bot()
 
