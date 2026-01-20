@@ -513,11 +513,11 @@ async def send_initiator_warning(
             )
 
             # Throttle warnings (idempotency across retries / multiple schedulers)
-            now_utc = datetime.utcnow()
             last_warning_time = await lock_service.get_last_warning_time(warning_key)
             if last_warning_time is not None:
-                since_last = now_utc - last_warning_time
-                if since_last < timedelta(hours=settings.warning_interval_hours):
+                now_ts = datetime.utcnow().timestamp()
+                hours_since_last_warning = (now_ts - last_warning_time) / 3600
+                if hours_since_last_warning < settings.warning_interval_hours:
                     return
             
             # Send warning using sender service
@@ -529,7 +529,10 @@ async def send_initiator_warning(
                 lock_service=lock_service,
             )
 
-            await lock_service.set_last_warning_time(warning_key, now_utc)
+            await lock_service.set_last_warning_time(
+                warning_key,
+                datetime.utcnow().timestamp(),
+            )
     finally:
         await worker_context.close_bot()
 
