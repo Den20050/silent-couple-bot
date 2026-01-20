@@ -33,8 +33,8 @@ async def schedule_reminder_tasks(
         redis_url = settings.redis_url
         arq_redis = await create_pool(RedisSettings.from_dsn(redis_url))
         
-        # Schedule recipient reminders at 3, 6, 9 hours
-        for reminder_hours in [3, 6, 9]:
+        # Schedule recipient reminders
+        for reminder_hours in settings.get_reminder_hours():
             await arq_redis.enqueue_job(
                 "send_recipient_reminder",
                 pair_id=pair_id,
@@ -44,8 +44,14 @@ async def schedule_reminder_tasks(
                 _defer_by=timedelta(hours=reminder_hours),
             )
         
-        # Schedule initiator warnings starting from 10 hours, then every hour until 24 hours
-        for warning_hours in range(10, 25):  # 10 to 24 hours
+        # Schedule initiator warnings from min hours, then with interval, ensuring 24h is included.
+        warning_hours_set = set(
+            range(settings.warning_min_hours, 25, settings.warning_interval_hours)
+        )
+        if 24 >= settings.warning_min_hours:
+            warning_hours_set.add(24)
+
+        for warning_hours in sorted(warning_hours_set):
             await arq_redis.enqueue_job(
                 "send_initiator_warning",
                 pair_id=pair_id,

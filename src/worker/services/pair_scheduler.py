@@ -21,7 +21,7 @@ from src.worker.services.lock_service import LockService
 from dataclasses import dataclass
 
 from src.services.messaging.ui.wish_request_ui import WishRequestUIService
-from src.services.messaging.active_action_message import activate_message
+from src.services.messaging.active_action_message import activate_message, ActionKind
 
 logger = get_logger(__name__)
 
@@ -289,6 +289,7 @@ class PairScheduler:
                             messenger=self.telegram_messenger,
                             tg_id=tg_id,
                             message_id=message_id,
+                            kind=ActionKind.PROMPT,
                         )
                         updated += 1
                         succeeded.add(tg_id)
@@ -313,6 +314,7 @@ class PairScheduler:
                     messenger=self.telegram_messenger,
                     tg_id=tg_id,
                     message_id=msg.message_id,
+                    kind=ActionKind.PROMPT,
                 )
                 updated += 1
                 succeeded.add(tg_id)
