@@ -290,13 +290,24 @@ class PairScheduler:
                             if "message is not modified" not in str(e).lower():
                                 raise
                         # Keep only this message interactive for the user (best-effort).
-                        await activate_message(
-                            redis=await self.lock_service.get_redis_client(),
-                            messenger=self.telegram_messenger,
-                            tg_id=tg_id,
-                            message_id=message_id,
-                            kind=ActionKind.PROMPT,
-                        )
+                        # IMPORTANT: activation must never be fatal; otherwise we can spam users
+                        # with repeated prompts on every cron tick.
+                        try:
+                            await activate_message(
+                                redis=await self.lock_service.get_redis_client(),
+                                messenger=self.telegram_messenger,
+                                tg_id=tg_id,
+                                message_id=message_id,
+                                kind=ActionKind.PROMPT,
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                "Failed to activate prompt message",
+                                tg_id=tg_id,
+                                pic_type=pic_type,
+                                message_id=message_id,
+                                error=str(e),
+                            )
                         updated += 1
                         succeeded.add(tg_id)
                         delivered_pair_ids.update(pair_ids)
@@ -315,13 +326,23 @@ class PairScheduler:
                     str(msg.message_id),
                     _WISH_REQUEST_PROMPT_MESSAGE_TTL_SECONDS,
                 )
-                await activate_message(
-                    redis=await self.lock_service.get_redis_client(),
-                    messenger=self.telegram_messenger,
-                    tg_id=tg_id,
-                    message_id=msg.message_id,
-                    kind=ActionKind.PROMPT,
-                )
+                # Best-effort: don't let activation errors break idempotency.
+                try:
+                    await activate_message(
+                        redis=await self.lock_service.get_redis_client(),
+                        messenger=self.telegram_messenger,
+                        tg_id=tg_id,
+                        message_id=msg.message_id,
+                        kind=ActionKind.PROMPT,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to activate prompt message",
+                        tg_id=tg_id,
+                        pic_type=pic_type,
+                        message_id=msg.message_id,
+                        error=str(e),
+                    )
                 updated += 1
                 succeeded.add(tg_id)
                 delivered_pair_ids.update(pair_ids)
