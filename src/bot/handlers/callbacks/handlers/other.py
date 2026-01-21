@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.messages import get_message
 from src.core.logger import get_logger
+from src.core.config import settings
 from src.services.telegram.messenger import TelegramMessenger
 from src.services.messaging.ui.wish_request_ui import WishRequestUIService
 
@@ -226,9 +227,12 @@ async def handle_cancel_initiator_warnings(
             redis_client = await create_redis_client(socket_connect_timeout=2, socket_timeout=2)
             
             if redis_client:
-                cancel_key = f"initiator_warning_cancelled:{pair_id}:{day_str}:{pic_type}"
-                # Store for 48 hours (until next day)
-                await redis_client.setex(cancel_key, 48 * 3600, "1")
+                cancel_key = (
+                    f"{settings.redis_key_prefix_warning_cancelled}:{pair_id}:{day_str}:{pic_type}"
+                )
+                # Store at least for the full warning horizon, so warnings don't resume.
+                ttl_seconds = settings.warning_ttl_days * 24 * 3600
+                await redis_client.setex(cancel_key, ttl_seconds, "1")
                 # Verify the key was saved
                 saved_value = await redis_client.get(cancel_key)
                 logger.info(
@@ -249,6 +253,7 @@ async def handle_cancel_initiator_warnings(
             chat_id=tg_id,
             message_id=callback.message.message_id,
             text="✅ Напоминания отменены. Вы больше не будете получать уведомления об этом пожелании.",
+            reply_markup=None,
         )
         
         await callback.answer(get_message("CALLBACK_REMINDERS_CANCELLED_SHORT"))
