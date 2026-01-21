@@ -552,6 +552,20 @@ class Messages:
         "🕒 Утро: <b>{morning_range}</b>\n"
         "🌙 Вечер: <b>{evening_range}</b>"
     )
+    NOTIF_TIME_SET_BY_PARTNER = (
+        "ℹ️ Ваш партнёр установил время уведомлений.\n\n"
+        "{which_icon} {which_label}: <b>{range_text}</b>\n\n"
+        "Изменить время может только партнёр-инициатор."
+    )
+    NOTIF_TIME_ONLY_OWNER = (
+        "ℹ️ В этой паре время уведомлений настраивает только партнёр-инициатор.\n"
+        "Попросите партнёра изменить время, если нужно."
+    )
+    NOTIF_TIME_MULTI_PAIR_NEED_SETTINGS = (
+        "ℹ️ У вас несколько пар.\n"
+        "Настройте время уведомлений в «Настройках» для нужной пары."
+    )
+    NOTIF_TIME_SELECT_PAIR_PROMPT = "Выберите пару, для которой хотите настроить время:"
 
     # Settings
     SETTINGS_CHANGE_TIME_WINDOW = "🕒 Время сообщений"
