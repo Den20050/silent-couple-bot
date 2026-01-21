@@ -51,6 +51,16 @@ class Pair(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     uid_a: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     uid_b: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    # Shared 1-hour notification windows for the pair (user local time).
+    # These values are used only after `notification_window_owner_id` is set.
+    morning_window_start_hour: Mapped[int] = mapped_column(default=7, nullable=False)
+    evening_window_start_hour: Mapped[int] = mapped_column(default=21, nullable=False)
+    # First partner who set notification windows becomes the owner; only they can change later.
+    notification_window_owner_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+    )
     mode: Mapped[str] = mapped_column(
         Text,
         CheckConstraint("mode IN ('silent', 'chat')", name="mode_check"),
@@ -78,6 +88,14 @@ class Pair(Base):
 
     __table_args__ = (
         CheckConstraint("uid_a < uid_b", name="uid_order_check"),  # Prevent duplicates (A,B) and (B,A)
+        CheckConstraint(
+            "morning_window_start_hour >= 0 AND morning_window_start_hour <= 23",
+            name="pairs_morning_window_start_hour_check",
+        ),
+        CheckConstraint(
+            "evening_window_start_hour >= 0 AND evening_window_start_hour <= 23",
+            name="pairs_evening_window_start_hour_check",
+        ),
         Index("idx_pairs_status_mode", "status", "mode"),
     )
 

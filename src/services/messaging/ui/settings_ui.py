@@ -34,6 +34,11 @@ class SettingsUIService:
             # Add pair_id to callback_data if provided
             mode_callback = f"settings_change_mode:{pair_id}" if pair_id else "settings_change_mode"
             nickname_callback = f"settings_change_nickname:{pair_id}" if pair_id else "settings_change_nickname"
+            time_window_callback = (
+                f"settings_change_time_window:{pair_id}"
+                if pair_id
+                else "settings_change_time_window"
+            )
             
             keyboard_buttons.extend([
                 [
@@ -51,7 +56,7 @@ class SettingsUIService:
                 [
                     InlineKeyboardButton(
                         text=get_message("SETTINGS_CHANGE_TIME_WINDOW"),
-                        callback_data="settings_change_time_window",
+                        callback_data=time_window_callback,
                     ),
                 ],
             ])

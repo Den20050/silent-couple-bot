@@ -307,6 +307,7 @@ async def handle_settings_change_nickname(
 @router.callback_query(F.data == "settings_change_time_window")
 async def handle_settings_change_time_window(
     callback: CallbackQuery,
+    session: AsyncSession,
     state: FSMContext,
 ) -> None:
     """Open notification window selection from Settings.
@@ -314,9 +315,140 @@ async def handle_settings_change_time_window(
     Selection itself is handled by start router callback `notif_time:*`.
     """
     await state.clear()
+    tg_id = callback.from_user.id
+    from src.db.repositories.users import UsersRepository
+    from src.db.repositories.pairs import PairsRepository
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    from src.services.messaging.templates import ButtonTemplates, MessageTemplates
+
+    users_repo = UsersRepository(session)
+    pairs_repo = PairsRepository(session)
+    user = await users_repo.get_by_tg_id(tg_id)
+    if not user:
+        await callback.answer(get_message("SETTINGS_NO_PAIR"), show_alert=True)
+        return
+
+    pairs = await pairs_repo.get_all_by_user_tg_id(tg_id)
+    active_pairs = [p for p in pairs if p.status in ("trial", "active")]
+    if len(active_pairs) == 1:
+        pair = active_pairs[0]
+        await callback.message.edit_text(
+            get_message("NOTIF_TIME_MORNING_PROMPT"),
+            reply_markup=get_notif_time_morning_keyboard(pair_id=pair.id),
+            parse_mode=ParseMode.HTML,
+        )
+    elif len(active_pairs) > 1:
+        # Ask which pair to configure.
+        buttons = []
+        for pair in active_pairs:
+            nickname = pairs_repo.get_my_nickname_for_partner(pair, user.id)
+            button_text = (
+                MessageTemplates.partner_with_name(nickname)
+                if nickname
+                else MessageTemplates.partner_without_name()
+            )
+            buttons.append(
+                [
+                    InlineKeyboardButton(
+                        text=button_text,
+                        callback_data=f"settings_select_pair_for_time_window:{pair.id}",
+                    )
+                ]
+            )
+        buttons.append([ButtonTemplates.back_button("settings_back_to_menu")])
+        await callback.message.edit_text(
+            get_message("NOTIF_TIME_SELECT_PAIR_PROMPT"),
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+            parse_mode=ParseMode.HTML,
+        )
+    else:
+        await callback.answer(get_message("SETTINGS_NO_PAIR"), show_alert=True)
+        return
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("settings_change_time_window:"))
+async def handle_settings_change_time_window_for_pair(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
+    """Open time window selection for a specific pair from Settings."""
+    await state.clear()
+    tg_id = callback.from_user.id
+    try:
+        pair_id = int(callback.data.split(":")[1])
+    except (ValueError, IndexError):
+        await callback.answer(get_message("SETTINGS_ERROR"), show_alert=True)
+        return
+
+    from src.db.repositories.users import UsersRepository
+    from src.db.repositories.pairs import PairsRepository
+
+    users_repo = UsersRepository(session)
+    pairs_repo = PairsRepository(session)
+    user = await users_repo.get_by_tg_id(tg_id)
+    pair = await pairs_repo.get_by_id(pair_id)
+    if not user or not pair or user.id not in (pair.uid_a, pair.uid_b):
+        await callback.answer(get_message("SETTINGS_NO_PAIR"), show_alert=True)
+        return
+
+    # If owner is already set and user isn't the owner, block settings change.
+    if getattr(pair, "notification_window_owner_id", None) not in (None, user.id):
+        await callback.message.edit_text(
+            get_message("NOTIF_TIME_ONLY_OWNER"),
+            reply_markup=None,
+            parse_mode=ParseMode.HTML,
+        )
+        await callback.answer()
+        return
+
     await callback.message.edit_text(
         get_message("NOTIF_TIME_MORNING_PROMPT"),
-        reply_markup=get_notif_time_morning_keyboard(),
+        reply_markup=get_notif_time_morning_keyboard(pair_id=pair.id),
+        parse_mode=ParseMode.HTML,
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("settings_select_pair_for_time_window:"))
+async def handle_settings_select_pair_for_time_window(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
+    """Select a pair and open time window selection."""
+    await state.clear()
+    tg_id = callback.from_user.id
+    try:
+        pair_id = int(callback.data.replace("settings_select_pair_for_time_window:", ""))
+    except ValueError:
+        await callback.answer(get_message("SETTINGS_ERROR"), show_alert=True)
+        return
+
+    from src.db.repositories.users import UsersRepository
+    from src.db.repositories.pairs import PairsRepository
+
+    users_repo = UsersRepository(session)
+    pairs_repo = PairsRepository(session)
+    user = await users_repo.get_by_tg_id(tg_id)
+    pair = await pairs_repo.get_by_id(pair_id)
+    if not user or not pair or user.id not in (pair.uid_a, pair.uid_b):
+        await callback.answer(get_message("SETTINGS_NO_PAIR"), show_alert=True)
+        return
+
+    if getattr(pair, "notification_window_owner_id", None) not in (None, user.id):
+        await callback.message.edit_text(
+            get_message("NOTIF_TIME_ONLY_OWNER"),
+            reply_markup=None,
+            parse_mode=ParseMode.HTML,
+        )
+        await callback.answer()
+        return
+
+    await callback.message.edit_text(
+        get_message("NOTIF_TIME_MORNING_PROMPT"),
+        reply_markup=get_notif_time_morning_keyboard(pair_id=pair.id),
         parse_mode=ParseMode.HTML,
     )
     await callback.answer()

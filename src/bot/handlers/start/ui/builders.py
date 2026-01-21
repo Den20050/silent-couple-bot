@@ -130,52 +130,62 @@ def get_welcome_accept_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def get_notif_time_morning_keyboard() -> InlineKeyboardMarkup:
-    """Get keyboard for selecting preferred morning notification time window."""
+def get_notif_time_morning_keyboard(pair_id: int | None = None) -> InlineKeyboardMarkup:
+    """Get keyboard for selecting preferred morning notification time window.
+
+    Args:
+        pair_id: Optional pair id (recommended for multi-pair and shared-window logic).
+    """
+    suffix = f":{pair_id}" if pair_id is not None else ""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="06–07",
-                    callback_data="notif_time:morning:6",
+                    callback_data=f"notif_time:morning:6{suffix}",
                 )
             ],
             [
                 InlineKeyboardButton(
                     text="07–08",
-                    callback_data="notif_time:morning:7",
+                    callback_data=f"notif_time:morning:7{suffix}",
                 )
             ],
             [
                 InlineKeyboardButton(
                     text="08–09",
-                    callback_data="notif_time:morning:8",
+                    callback_data=f"notif_time:morning:8{suffix}",
                 )
             ],
         ]
     )
 
 
-def get_notif_time_evening_keyboard() -> InlineKeyboardMarkup:
-    """Get keyboard for selecting preferred evening notification time window."""
+def get_notif_time_evening_keyboard(pair_id: int | None = None) -> InlineKeyboardMarkup:
+    """Get keyboard for selecting preferred evening notification time window.
+
+    Args:
+        pair_id: Optional pair id (recommended for multi-pair and shared-window logic).
+    """
+    suffix = f":{pair_id}" if pair_id is not None else ""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="20–21",
-                    callback_data="notif_time:evening:20",
+                    callback_data=f"notif_time:evening:20{suffix}",
                 )
             ],
             [
                 InlineKeyboardButton(
                     text="21–22",
-                    callback_data="notif_time:evening:21",
+                    callback_data=f"notif_time:evening:21{suffix}",
                 )
             ],
             [
                 InlineKeyboardButton(
                     text="22–23",
-                    callback_data="notif_time:evening:22",
+                    callback_data=f"notif_time:evening:22{suffix}",
                 )
             ],
         ]

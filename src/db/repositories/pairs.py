@@ -3,7 +3,7 @@
 from datetime import date, timedelta
 from typing import Optional
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.constants import DeliveryChat, PairMode, PairStatus
@@ -284,6 +284,60 @@ class PairsRepository:
             )
         
         return updated_pair
+
+    async def update_notification_window(
+        self,
+        *,
+        pair_id: int,
+        user_id: int,
+        which: str,
+        start_hour: int,
+    ) -> Optional[Pair]:
+        """Update shared notification window for pair.
+
+        Rules:
+        - The first user who sets a window becomes `notification_window_owner_id`.
+        - Only the owner can change windows later.
+
+        Args:
+            pair_id: Pair ID
+            user_id: User ID of caller
+            which: "morning" or "evening"
+            start_hour: Start hour (0-23)
+
+        Returns:
+            Updated Pair or None if pair not found / access denied.
+        """
+        if which not in ("morning", "evening"):
+            raise ValueError("which must be 'morning' or 'evening'")
+
+        values: dict[str, object] = {
+            "notification_window_owner_id": func.coalesce(
+                Pair.notification_window_owner_id, user_id
+            ),
+        }
+        if which == "morning":
+            values["morning_window_start_hour"] = start_hour
+        else:
+            values["evening_window_start_hour"] = start_hour
+
+        # Allow update only if:
+        # - user is in pair, and
+        # - owner is not set OR user is the owner
+        stmt = (
+            update(Pair)
+            .where(Pair.id == pair_id)
+            .where((Pair.uid_a == user_id) | (Pair.uid_b == user_id))
+            .where(
+                (Pair.notification_window_owner_id.is_(None))
+                | (Pair.notification_window_owner_id == user_id)
+            )
+            .values(**values)
+            .returning(Pair)
+        )
+        result = await self.session.execute(stmt)
+        await self.session.flush()
+        return result.scalar_one_or_none()
     
     async def set_nickname(
         self, pair_id: int, user_id: int, nickname: str

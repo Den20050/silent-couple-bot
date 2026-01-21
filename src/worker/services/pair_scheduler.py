@@ -141,10 +141,19 @@ class PairScheduler:
         user_b_local_time = TimeWindowService.get_user_local_time(now_utc, user_b.utc_offset)
         
         def _window_for_user(user_obj, which: str) -> tuple[time_type, time_type]:
-            if which == "morning":
-                start_hour = getattr(user_obj, "morning_window_start_hour", None)
+            # If pair has a window owner, windows become shared for the pair.
+            # Otherwise, keep backward-compatible behavior: per-user windows.
+            shared_owner_id = getattr(pair, "notification_window_owner_id", None)
+            if shared_owner_id is not None:
+                if which == "morning":
+                    start_hour = getattr(pair, "morning_window_start_hour", None)
+                else:
+                    start_hour = getattr(pair, "evening_window_start_hour", None)
             else:
-                start_hour = getattr(user_obj, "evening_window_start_hour", None)
+                if which == "morning":
+                    start_hour = getattr(user_obj, "morning_window_start_hour", None)
+                else:
+                    start_hour = getattr(user_obj, "evening_window_start_hour", None)
 
             # Fallback to global config windows if field is missing (e.g., before migration)
             if start_hour is None:
