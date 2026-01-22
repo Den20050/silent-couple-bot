@@ -143,6 +143,7 @@ async def handle_request_morning(
         pic_type="morning",
         today=today,
         telegram_messenger=telegram_messenger,
+        redis=container.redis,
     )
     
     if not success:

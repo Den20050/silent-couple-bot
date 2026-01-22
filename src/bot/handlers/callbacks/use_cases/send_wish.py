@@ -20,6 +20,7 @@ async def send_wish_to_partner(
     pic_type: str,
     today: date,
     telegram_messenger: TelegramMessenger,
+    redis=None,
 ) -> tuple[bool, Optional[str]]:
     """Send wish to a single partner.
     
@@ -35,7 +36,7 @@ async def send_wish_to_partner(
     Returns:
         Tuple of (success: bool, partner_nickname: Optional[str])
     """
-    wish_sender = WishSenderService(session, telegram_messenger)
+    wish_sender = WishSenderService(session, telegram_messenger, redis=redis)
     return await wish_sender.send_wish_to_partner(
         pair=pair,
         user_id=user_id,
