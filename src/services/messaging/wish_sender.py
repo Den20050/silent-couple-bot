@@ -4,11 +4,13 @@ from datetime import date
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from redis.asyncio import Redis
 
 from src.core.constants import PicType, PairStatus
 from src.core.logger import get_logger
 from src.core.messages import get_message
 from src.services.messaging.wish_request_prompt_refresher import refresh_aggregated_wish_prompt
+from src.services.messaging.wish_photo_message_id import wish_photo_message_id_key
 from src.db.repositories.daily_state import DailyStateRepository
 from src.db.repositories.pairs import PairsRepository
 from src.db.repositories.users import UsersRepository
@@ -18,6 +20,8 @@ from src.core.protocols.messenger import MessengerProtocol
 
 logger = get_logger(__name__)
 
+_WISH_PHOTO_MESSAGE_ID_TTL_SECONDS = 72 * 3600
+
 class WishSenderService:
     """Service for sending wishes to partners."""
 
@@ -25,15 +29,18 @@ class WishSenderService:
         self,
         session: AsyncSession,
         telegram_messenger: MessengerProtocol,
+        redis: Redis | None = None,
     ):
         """Initialize wish sender service.
 
         Args:
             session: Database session
             telegram_messenger: Telegram messenger instance
+            redis: Optional Redis client (used for tracking wish photo message_id)
         """
         self.session = session
         self.telegram_messenger = telegram_messenger
+        self._redis = redis
         self.pairs_repo = PairsRepository(session)
         self.daily_state_repo = DailyStateRepository(session)
         self.users_repo = UsersRepository(session)
@@ -145,12 +152,30 @@ class WishSenderService:
         }
 
         # Send photo to partner
-        await self.telegram_messenger.send_photo(
+        msg = await self.telegram_messenger.send_photo(
             chat_id=partner.tg_id,
             photo=file_id,
             caption=caption,
             reply_markup=reply_markup,
         )
+
+        # Store wish photo message_id so reminders can disable the old respond button later.
+        if self._redis is not None:
+            try:
+                key = wish_photo_message_id_key(
+                    tg_id=partner.tg_id,
+                    pair_id=pair.id,
+                    pic_type=pic_type,
+                    day=today,
+                )
+                await self._redis.setex(key, _WISH_PHOTO_MESSAGE_ID_TTL_SECONDS, str(msg.message_id))
+            except Exception as e:
+                logger.debug(
+                    "Failed to store wish photo message_id (ignored)",
+                    pair_id=pair.id,
+                    pic_type=pic_type,
+                    error=str(e),
+                )
 
         # Best-effort: refresh partner's aggregated prompt so "send wish" CTA is gone for this pair.
         await refresh_aggregated_wish_prompt(

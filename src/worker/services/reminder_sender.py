@@ -9,6 +9,7 @@ from src.worker.di.context import WorkerContext
 from src.worker.services.reminder_finder import ReminderCandidate
 from src.services.messaging.active_action_message import activate_message, ActionKind
 from src.services.messaging.partner_label import format_partner_label
+from src.services.messaging.wish_photo_message_id import wish_photo_message_id_key
 
 logger = get_logger(__name__)
 
@@ -72,6 +73,10 @@ class ReminderSender:
             target_day=candidate.target_day,
             initiator_label=initiator_label,
         )
+
+        # Best-effort: disable the old respond button on the original wish photo,
+        # so the user sees only the latest reminder button.
+        await self._disable_wish_photo_reply_button(candidate)
         
         msg = await self._messenger.send_message(
             chat_id=candidate.recipient.tg_id,
@@ -143,6 +148,10 @@ class ReminderSender:
             items=items,
         )
 
+        # Best-effort: disable reply buttons on all underlying wish photo messages.
+        for c in candidates:
+            await self._disable_wish_photo_reply_button(c)
+
         # Edit in place if we have a stored message_id, otherwise send new.
         redis = self._worker_context.redis
         msg_id: int | None = None
@@ -209,6 +218,47 @@ class ReminderSender:
             pic_type=pic_type,
             items_count=len(items),
         )
+
+    async def _disable_wish_photo_reply_button(self, candidate: ReminderCandidate) -> None:
+        """Remove reply_markup from the original wish photo message (best-effort).
+
+        This prevents confusion when multiple reminder messages arrive: only the latest reminder
+        message should keep an active "respond" button.
+        """
+        redis = self._worker_context.redis
+        if redis is None:
+            return
+
+        key = wish_photo_message_id_key(
+            tg_id=candidate.recipient.tg_id,
+            pair_id=candidate.pair.id,
+            pic_type=candidate.pic_type,
+            day=candidate.target_day,
+        )
+        try:
+            raw = await redis.get(key)
+            if not raw:
+                return
+            if isinstance(raw, bytes):
+                raw = raw.decode()
+            msg_id = int(raw)
+        except Exception:
+            return
+
+        try:
+            edited = await self._messenger.remove_reply_markup(
+                chat_id=candidate.recipient.tg_id,
+                message_id=msg_id,
+            )
+            # If edit succeeded, drop the key to avoid repeated edits.
+            if edited is not None:
+                try:
+                    await redis.delete(key)
+                except Exception:
+                    pass
+        except Exception:
+            # ignore
+            return
 
 
 class WarningSender:
