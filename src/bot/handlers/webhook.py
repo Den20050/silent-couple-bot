@@ -154,151 +154,179 @@ async def get_db_session() -> AsyncSession:
 #     return {"status": "ok"}
 
 
-@webhook_router.post("/webhook/robokassa")
+@webhook_router.api_route("/webhook/robokassa", methods=["POST", "GET"])
 async def robokassa_webhook(
     request: Request,
     session: AsyncSession = Depends(get_db_session),
-    OutSum: str = Form(...),
-    InvId: str = Form(...),
-    SignatureValue: str = Form(...),
 ) -> str:
     """Handle Robokassa ResultURL webhook."""
-    # Извлекаем Shp_ параметры из query string
-    query_params = dict(request.query_params)
-    shp_params = {
-        k.replace("Shp_", ""): v
-        for k, v in query_params.items()
-        if k.startswith("Shp_")
-    }
-    
-    # Create Redis client for payment service
-    redis_client = await create_redis_client()
-    # Get settings for PaymentService
-    from src.core.config import settings as settings_module
-    payment_service = PaymentService(redis_client, settings_module)
-    
-    # Process webhook
-    result = await payment_service.process_webhook(
-        out_sum=OutSum,
-        inv_id=InvId,
-        signature=SignatureValue,
-        shp_params=shp_params,
-    )
-    
-    if not result or result["status"] != "succeeded":
-        logger.warning(
-            "Robokassa webhook processing failed",
-            inv_id=InvId,
-            out_sum=OutSum,
+    try:
+        query_params = dict(request.query_params)
+        form_params: dict[str, str] = {}
+        if request.method.upper() == "POST":
+            try:
+                form = await request.form()
+                form_params = dict(form)
+            except Exception:
+                # If parsing fails, fall back to query-only handling.
+                form_params = {}
+
+        # Form params should override query params if both present
+        params: dict[str, str] = {**query_params, **form_params}
+
+        out_sum = params.get("OutSum")
+        inv_id = params.get("InvId")
+        signature = params.get("SignatureValue")
+
+        if not out_sum or not inv_id or not signature:
+            logger.warning(
+                "Robokassa webhook missing required parameters",
+                has_out_sum=bool(out_sum),
+                has_inv_id=bool(inv_id),
+                has_signature=bool(signature),
+                params_keys=list(params.keys()),
+            )
+            return "ERROR"
+
+        # Extract Shp_ parameters (may arrive via POST or GET)
+        shp_params = {
+            k.replace("Shp_", ""): v for k, v in params.items() if k.startswith("Shp_")
+        }
+
+        # Create Redis client for payment service
+        redis_client = await create_redis_client()
+        # Get settings for PaymentService
+        from src.core.config import settings as settings_module
+
+        payment_service = PaymentService(redis_client, settings_module)
+
+        # Process webhook
+        result = await payment_service.process_webhook(
+            out_sum=out_sum,
+            inv_id=inv_id,
+            signature=signature,
+            shp_params=shp_params,
         )
-        return "ERROR"
-    
-    # Update subscription and pair
-    pair_id = result["pair_id"]
-    payment_id = result["payment_id"]  # Это inv_id
-    is_lifetime = result.get("is_lifetime", False)
-    period_days = result.get("period_days")  # Can be None for lifetime
-    
-    pairs_repo = PairsRepository(session)
-    subs_repo = SubscriptionsRepository(session)
-    
-    pair = await pairs_repo.get_by_id(pair_id)
-    if not pair:
-        logger.error("Pair not found", pair_id=pair_id)
-        return "ERROR"
-    
-    subscription = await subs_repo.get_by_pair_id(pair_id)
-    if not subscription:
-        logger.error("Subscription not found", pair_id=pair_id)
-        return "ERROR"
-    
-    # Calculate period_end with remaining days added if subscription is still active
-    from src.services.payment.subscription_calculator import calculate_subscription_period_end
-    
-    period_days = period_days or SUBSCRIPTION_PERIOD_DAYS
-    period_end = calculate_subscription_period_end(
-        subscription=subscription,
-        new_period_days=period_days,
-        is_lifetime=is_lifetime,
-        standard_month_days=30,
-    )
-    
-    # Update subscription (используем payment_id как yoo_id для совместимости)
-    updated_subscription = await subs_repo.update_payment(
-        subscription_id=subscription.id,
-        yoo_id=payment_id,  # Сохраняем inv_id в поле yoo_id для совместимости
-        period_end=period_end,
-        is_lifetime=is_lifetime,
-    )
-    
-    # Use updated subscription if available, otherwise use original
-    if updated_subscription:
-        subscription = updated_subscription
-    
-    # Update pair status
-    await pairs_repo.update_status(pair.id, PairStatus.ACTIVE)
-    
-    # Reset daily_state for today to start fresh after payment
-    # This clears any previous states (initiators, responses, etc.)
-    daily_state_repo = DailyStateRepository(session)
-    today = date.today()
-    daily_state = await daily_state_repo.get_by_pair_and_day(pair.id, today)
-    
-    if daily_state:
-        # Reset all daily state fields to start fresh
-        daily_state.morning_initiator = None
-        daily_state.morning_file_id = None
-        daily_state.morning_sent_at = None
-        daily_state.morning_responded_at = None
-        daily_state.evening_initiator = None
-        daily_state.evening_file_id = None
-        daily_state.evening_sent_at = None
-        daily_state.evening_responded_at = None
-        daily_state.last_surprise_at = None
+
+        if not result or result["status"] != "succeeded":
+            logger.warning(
+                "Robokassa webhook processing failed",
+                inv_id=inv_id,
+                out_sum=out_sum,
+            )
+            return "ERROR"
+
+        # Update subscription and pair
+        pair_id = result["pair_id"]
+        payment_id = result["payment_id"]  # Это inv_id
+        is_lifetime = result.get("is_lifetime", False)
+        period_days = result.get("period_days")  # Can be None for lifetime
+
+        pairs_repo = PairsRepository(session)
+        subs_repo = SubscriptionsRepository(session)
+
+        pair = await pairs_repo.get_by_id(pair_id)
+        if not pair:
+            logger.error("Pair not found", pair_id=pair_id)
+            return "ERROR"
+
+        subscription = await subs_repo.get_by_pair_id(pair_id)
+        if not subscription:
+            logger.error("Subscription not found", pair_id=pair_id)
+            return "ERROR"
+
+        # Calculate period_end with remaining days added if subscription is still active
+        from src.services.payment.subscription_calculator import (
+            calculate_subscription_period_end,
+        )
+
+        period_days = period_days or SUBSCRIPTION_PERIOD_DAYS
+        period_end = calculate_subscription_period_end(
+            subscription=subscription,
+            new_period_days=period_days,
+            is_lifetime=is_lifetime,
+            standard_month_days=30,
+        )
+
+        # Update subscription (используем payment_id как yoo_id для совместимости)
+        updated_subscription = await subs_repo.update_payment(
+            subscription_id=subscription.id,
+            yoo_id=payment_id,  # Сохраняем inv_id в поле yoo_id для совместимости
+            period_end=period_end,
+            is_lifetime=is_lifetime,
+        )
+
+        # Use updated subscription if available, otherwise use original
+        if updated_subscription:
+            subscription = updated_subscription
+
+        # Update pair status
+        await pairs_repo.update_status(pair.id, PairStatus.ACTIVE)
+
+        # Reset daily_state for today to start fresh after payment
+        # This clears any previous states (initiators, responses, etc.)
+        daily_state_repo = DailyStateRepository(session)
+        today = date.today()
+        daily_state = await daily_state_repo.get_by_pair_and_day(pair.id, today)
+
+        if daily_state:
+            # Reset all daily state fields to start fresh
+            daily_state.morning_initiator = None
+            daily_state.morning_file_id = None
+            daily_state.morning_sent_at = None
+            daily_state.morning_responded_at = None
+            daily_state.evening_initiator = None
+            daily_state.evening_file_id = None
+            daily_state.evening_sent_at = None
+            daily_state.evening_responded_at = None
+            daily_state.last_surprise_at = None
+            logger.info(
+                "Daily state reset after payment",
+                pair_id=pair.id,
+                day=today.isoformat(),
+            )
+
+        # Reset last_past_due_notification_date to allow fresh notifications if needed
+        subscription.last_past_due_notification_date = None
+
+        # Notify both users
+        user_a_result = await session.execute(select(User).where(User.id == pair.uid_a))
+        user_a = user_a_result.scalar_one()
+        user_b_result = await session.execute(select(User).where(User.id == pair.uid_b))
+        user_b = user_b_result.scalar_one()
+
+        period_text = (
+            get_message("WEBHOOK_LIFETIME_TEXT")
+            if is_lifetime
+            else period_end.strftime("%d.%m.%Y")
+        )
+        await send_message_with_retry(
+            chat_id=user_a.tg_id,
+            text=get_message("PAY_SUBSCRIPTION_ACTIVE_UNTIL", period_text=period_text),
+        )
+        await send_message_with_retry(
+            chat_id=user_b.tg_id,
+            text=get_message("PAY_SUBSCRIPTION_ACTIVE_UNTIL", period_text=period_text),
+        )
+
+        await session.commit()
+
         logger.info(
-            "Daily state reset after payment",
-            pair_id=pair.id,
-            day=today.isoformat(),
+            "Robokassa payment processed",
+            pair_id=pair_id,
+            inv_id=payment_id,
+            period_days=period_days,
+            period_end=period_end,
+            is_lifetime=is_lifetime,
         )
-    
-    # Reset last_past_due_notification_date to allow fresh notifications if needed
-    subscription.last_past_due_notification_date = None
-    
-    # Notify both users
-    user_a_result = await session.execute(
-        select(User).where(User.id == pair.uid_a)
-    )
-    user_a = user_a_result.scalar_one()
-    user_b_result = await session.execute(
-        select(User).where(User.id == pair.uid_b)
-    )
-    user_b = user_b_result.scalar_one()
-    
-    period_text = (
-        get_message("WEBHOOK_LIFETIME_TEXT")
-        if is_lifetime
-        else period_end.strftime('%d.%m.%Y')
-    )
-    await send_message_with_retry(
-        chat_id=user_a.tg_id,
-        text=get_message("PAY_SUBSCRIPTION_ACTIVE_UNTIL", period_text=period_text),
-    )
-    await send_message_with_retry(
-        chat_id=user_b.tg_id,
-        text=get_message("PAY_SUBSCRIPTION_ACTIVE_UNTIL", period_text=period_text),
-    )
-    
-    await session.commit()
-    
-    logger.info(
-        "Robokassa payment processed",
-        pair_id=pair_id,
-        inv_id=payment_id,
-        period_days=period_days,
-        period_end=period_end,
-        is_lifetime=is_lifetime,
-    )
-    
-    # Робокасса ожидает ответ "OK" в случае успеха
-    return "OK"
+
+        # Robokassa expects "OK<InvId>" on success (no spaces).
+        return f"OK{payment_id}"
+    except Exception as exc:
+        logger.exception(
+            "Robokassa webhook unhandled error",
+            error=str(exc),
+        )
+        # Return 200 with error body to avoid Robokassa seeing HTTP 500.
+        return "ERROR"
 

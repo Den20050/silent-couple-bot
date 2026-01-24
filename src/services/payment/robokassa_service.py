@@ -141,7 +141,13 @@ class RobokassaService(PaymentProvider):
         return hashlib.md5(signature_string.encode()).hexdigest().upper()
     
     def _verify_result_signature(
-        self, out_sum: str, inv_id: str, signature: str, password: str
+        self,
+        out_sum: str,
+        inv_id: str,
+        signature: str,
+        password: str,
+        shp_params: Optional[dict[str, str]] = None,
+        shp_kv_separator: str = "=",
     ) -> bool:
         """Verify Robokassa ResultURL signature (MD5).
         
@@ -154,7 +160,18 @@ class RobokassaService(PaymentProvider):
         Returns:
             True if signature is valid, False otherwise
         """
+        # ResultURL signature format:
+        #   OutSum:InvId:Password#2[:Shp_key=value...]
         signature_string = f"{out_sum}:{inv_id}:{password}"
+        if shp_params:
+            normalized_items: list[tuple[str, str]] = []
+            for key, value in shp_params.items():
+                normalized_key = key if key.startswith("Shp_") else f"Shp_{key}"
+                normalized_items.append((normalized_key, value))
+
+            for key, value in sorted(normalized_items, key=lambda kv: kv[0]):
+                signature_string += f":{key}{shp_kv_separator}{value}"
+
         expected_signature = hashlib.md5(signature_string.encode()).hexdigest().upper()
         return hmac.compare_digest(expected_signature, signature.upper())
     
@@ -390,13 +407,16 @@ class RobokassaService(PaymentProvider):
             # Build URL parameters
             # CRITICAL: SuccessURL, Culture, Encoding, IsTest are added to URL
             # but MUST NOT be included in signature calculation!
-            # IMPORTANT: Description is URL-encoded automatically by urlencode()
-            # Robokassa expects UTF-8 encoding for Description parameter
+            # IMPORTANT: Desc is URL-encoded automatically by urlencode()
+            # Robokassa expects UTF-8 encoding for Desc parameter
             params = {
-                "MerchantLogin": self.settings.robokassa_merchant_login,
+                # Robokassa classic parameter names:
+                # - MrchLogin (merchant login)
+                # - Desc (payment description)
+                "MrchLogin": self.settings.robokassa_merchant_login,
                 "OutSum": out_sum,
                 "InvId": inv_id,
-                "Description": f"Подписка Silent Couple Bot (пара {pair_id})",
+                "Desc": f"Подписка Silent Couple Bot (пара {pair_id})",
                 "SignatureValue": signature,
                 "Culture": "ru",  # NOT in signature!
                 "Encoding": "utf-8",  # NOT in signature!
@@ -404,8 +424,8 @@ class RobokassaService(PaymentProvider):
             
             # Validate critical parameters before building URL
             if not self.settings.robokassa_merchant_login:
-                logger.error("MerchantLogin is empty")
-                raise ValueError("MerchantLogin cannot be empty")
+                logger.error("MrchLogin is empty")
+                raise ValueError("MrchLogin cannot be empty")
             if not out_sum or not out_sum.replace(".", "").isdigit():
                 logger.error("Invalid OutSum format", out_sum=out_sum)
                 raise ValueError(f"Invalid OutSum format: {out_sum}")
@@ -490,7 +510,7 @@ class RobokassaService(PaymentProvider):
             # Log actual parameter values for debugging (except password)
             logger.debug(
                 "Payment URL parameters",
-                MerchantLogin=params.get("MerchantLogin"),
+                MrchLogin=params.get("MrchLogin"),
                 OutSum=params.get("OutSum"),
                 InvId=params.get("InvId"),
                 SignatureValue=signature[:20] + "..." if len(signature) > 20 else signature,
@@ -510,7 +530,14 @@ class RobokassaService(PaymentProvider):
                 payment_url_full=payment_url,  # Full URL for manual testing - copy this and test in browser
                 # Log key parameters for manual verification
                 manual_verification_hint={
-                    "expected_signature_string": f"{self.settings.robokassa_merchant_login}:{out_sum}:{inv_id}:***PASSWORD***:{':'.join(f'{k}={v}' for k, v in sorted(shp_params.items()))}",
+                    "expected_signature_base": (
+                        f"{self.settings.robokassa_merchant_login}:{out_sum}:{inv_id}"
+                        + (f":{currency}" if currency != "RUB" else "")
+                        + ":***PASSWORD***"
+                    ),
+                    "expected_signature_shp_sorted": [
+                        f"{k}={v}" for k, v in sorted(shp_params.items())
+                    ],
                     "actual_signature": signature,
                     "merchant_login": self.settings.robokassa_merchant_login,
                     "out_sum": out_sum,
@@ -552,7 +579,13 @@ class RobokassaService(PaymentProvider):
             )
             return None
     
-    async def verify_webhook(self, out_sum: str, inv_id: str, signature: str) -> bool:
+    async def verify_webhook(
+        self,
+        out_sum: str,
+        inv_id: str,
+        signature: str,
+        shp_params: Optional[dict[str, str]] = None,
+    ) -> bool:
         """Verify Robokassa ResultURL webhook signature.
         
         Args:
@@ -568,6 +601,8 @@ class RobokassaService(PaymentProvider):
             inv_id=inv_id,
             signature=signature,
             password=self.settings.robokassa_password_2,  # Password #2 for ResultURL
+            shp_params=shp_params,
+            shp_kv_separator=self.settings.robokassa_shp_kv_separator,
         )
     
     async def process_webhook(
@@ -593,7 +628,7 @@ class RobokassaService(PaymentProvider):
             None if webhook processing failed
         """
         # Verify signature
-        if not await self.verify_webhook(out_sum, inv_id, signature):
+        if not await self.verify_webhook(out_sum, inv_id, signature, shp_params=shp_params):
             logger.warning(
                 "Invalid Robokassa webhook signature",
                 inv_id=inv_id,
