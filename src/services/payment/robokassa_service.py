@@ -5,7 +5,7 @@ import hmac
 import random
 import time
 from typing import Optional
-from urllib.parse import quote_plus, urlencode
+from urllib.parse import urlencode
 
 from redis.asyncio import Redis
 
@@ -44,10 +44,6 @@ class RobokassaService(PaymentProvider):
         currency: str = "RUB",
         shp_params: Optional[dict] = None,
         shp_kv_separator: str = "=",
-        success_url2: str | None = None,
-        success_url2_method: str | None = None,
-        fail_url2: str | None = None,
-        fail_url2_method: str | None = None,
     ) -> str:
         """Generate Robokassa payment signature (MD5).
         
@@ -70,49 +66,22 @@ class RobokassaService(PaymentProvider):
             - IsTest
             Including these will cause Robokassa to return 500 error.
             
-            IMPORTANT:
-            - If ReturnURL parameters (SuccessUrl2/FailUrl2) are used, they MUST be included
-              in the signature in URL-encoded form along with their Method parameters.
-              (See Robokassa docs: "Дополнительная переадресация ... SuccessUrl2/FailUrl2".)
-            
             Only these parameters are included:
             - MerchantLogin
             - OutSum
             - InvId
             - Currency (only if not RUB)
-            - SuccessUrl2 / SuccessUrl2Method (if provided)
-            - FailUrl2 / FailUrl2Method (if provided)
             - Password#1
             - Shp_ parameters (if any, sorted alphabetically)
         """
         # Base signature string:
         #   MerchantLogin:OutSum:InvId[:Currency]:Password#1
-        #
-        # If ReturnURL parameters are used (SuccessUrl2/FailUrl2), Robokassa expects them
-        # in an extended signature format with placeholders for optional fields:
-        #   MerchantLogin:OutSum:InvId:Receipt:StepByStep:ResultUrl2:
-        #     SuccessUrl2:SuccessUrl2Method:FailUrl2:FailUrl2Method:Password#1
-        #
-        # In our integration we don't use Receipt / StepByStep / ResultUrl2, so we pass
-        # empty placeholders for these positions.
         # CRITICAL: Do NOT include SuccessURL, Culture, Encoding, IsTest in signature!
         # IMPORTANT: For non-RUB currencies, use OutSumCurrency value in signature
         # The currency parameter in signature must match OutSumCurrency parameter in URL
         signature_parts: list[str] = [merchant_login, out_sum, inv_id]
-
-        if success_url2 or fail_url2:
-            # Receipt, StepByStep, ResultUrl2 placeholders (not used).
-            signature_parts.extend(["", "", ""])
-
-            # IMPORTANT: URL is included URL-encoded in the signature.
-            # Method must be upper-case (GET/POST).
-            signature_parts.append(quote_plus(success_url2 or "", safe=""))
-            signature_parts.append(str(success_url2_method or "GET").upper())
-            signature_parts.append(quote_plus(fail_url2 or "", safe=""))
-            signature_parts.append(str(fail_url2_method or "GET").upper())
-        else:
-            if currency != "RUB":
-                signature_parts.append(currency)
+        if currency != "RUB":
+            signature_parts.append(currency)
 
         signature_parts.append(password)
         signature_string = ":".join(signature_parts)
@@ -366,10 +335,9 @@ class RobokassaService(PaymentProvider):
             )
             
             # Prepare Shp_ parameters
-            # TEMPORARY: Shp_ parameters are EXCLUDED from signature for testing
-            # They will still be sent in URL parameters (added below)
-            # This helps diagnose if Shp_ params in signature cause 500 errors
-            # According to Robokassa docs example, Shp_ params are optional in signature
+            # These will be returned back to us in ResultURL (webhook).
+            # IMPORTANT: If Shp_ parameters are sent, Robokassa expects them to be included
+            # in SignatureValue (sorted by key) when robokassa_include_shp_in_signature=true.
             shp_params = {
                 "Shp_currency": currency,
                 "Shp_is_lifetime": "true" if is_lifetime else "false",
@@ -429,11 +397,6 @@ class RobokassaService(PaymentProvider):
                     shp_params if self.settings.robokassa_include_shp_in_signature else None
                 ),
                 shp_kv_separator=self.settings.robokassa_shp_kv_separator,
-                # ReturnURL parameters used by Robokassa payment interface buttons.
-                success_url2=return_url or None,
-                success_url2_method="GET",
-                fail_url2=return_url or None,
-                fail_url2_method="GET",
             )
             
             logger.info(
@@ -502,21 +465,8 @@ class RobokassaService(PaymentProvider):
             
             # Add Shp_ parameters to URL
             # These will be returned in ResultURL webhook
-            # TEMPORARY: Shp_ parameters are NOT in signature (excluded for testing)
-            # They are still sent in URL so webhook can receive them
+            # NOTE: Shp_ are included in SignatureValue depending on settings.
             params.update(shp_params)
-            
-            # Add SuccessURL if provided
-            # CRITICAL: SuccessURL is NOT included in signature!
-            if return_url:
-                params["SuccessURL"] = return_url
-
-                # Additional redirect parameters (ReturnURL) for Robokassa interface:
-                # SuccessUrl2/FailUrl2 MUST be included in SignatureValue (see signature code).
-                params["SuccessUrl2"] = return_url
-                params["SuccessUrl2Method"] = "GET"
-                params["FailUrl2"] = return_url
-                params["FailUrl2Method"] = "GET"
             
             # IMPORTANT: Do NOT sort parameters alphabetically for URL
             # Robokassa may expect parameters in a specific order
