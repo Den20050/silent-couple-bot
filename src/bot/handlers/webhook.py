@@ -1,11 +1,12 @@
 """Robokassa webhook handler."""
 
-from datetime import date, timedelta
+from datetime import date
 
-from aiogram import Router
-from fastapi import APIRouter, Request, HTTPException, Form, Depends
+from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from urllib.parse import quote
 
 from src.core.constants import PairStatus
 from src.core.messages import get_message
@@ -15,7 +16,6 @@ from src.core.redis_client import create_redis_client
 from src.db.models import User
 from src.db.repositories.pairs import PairsRepository
 from src.db.repositories.subscriptions import SubscriptionsRepository
-from src.db.repositories.users import UsersRepository
 from src.db.repositories.daily_state import DailyStateRepository
 from src.services.payment import PaymentService
 from src.services.telegram import send_message_with_retry
@@ -329,4 +329,80 @@ async def robokassa_webhook(
         )
         # Return 200 with error body to avoid Robokassa seeing HTTP 500.
         return "ERROR"
+
+
+@webhook_router.get("/webhook/robokassa/return", response_class=HTMLResponse)
+async def robokassa_return_page(
+    bot: str = Query(..., min_length=3, max_length=64),
+    start: str | None = Query(default=None, max_length=64),
+) -> HTMLResponse:
+    """Payment success return page for Telegram in-app browser.
+
+    Telegram in-app browser on mobile cannot be closed programmatically.
+    This page attempts to open the bot chat via tg:// deep link and provides
+    a visible fallback button to t.me.
+    """
+    safe_bot = "".join(ch for ch in bot if ch.isalnum() or ch == "_")
+    if safe_bot != bot:
+        # Avoid open redirect / XSS vectors: only allow valid bot usernames.
+        return HTMLResponse("Invalid bot", status_code=400)
+
+    start_q = quote(start) if start else ""
+    tme_url = (
+        f"https://t.me/{safe_bot}?start={start_q}"
+        if start_q
+        else f"https://t.me/{safe_bot}"
+    )
+    tg_url = (
+        f"tg://resolve?domain={safe_bot}&start={start_q}"
+        if start_q
+        else f"tg://resolve?domain={safe_bot}"
+    )
+
+    html_lines = [
+        "<!doctype html>",
+        '<html lang="ru">',
+        "  <head>",
+        '    <meta charset="utf-8" />',
+        '    <meta name="viewport" content="width=device-width, initial-scale=1" />',
+        "    <title>Возврат в бота</title>",
+        f'    <meta http-equiv="refresh" content="2;url={tme_url}" />',
+        "    <style>",
+        "      body {",
+        "        font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto,",
+        "          Arial, sans-serif;",
+        "        padding: 24px;",
+        "      }",
+        "      .btn {",
+        "        display: inline-block;",
+        "        padding: 14px 16px;",
+        "        border-radius: 12px;",
+        "        background: #2aabee;",
+        "        color: #fff;",
+        "        text-decoration: none;",
+        "        font-weight: 600;",
+        "      }",
+        "      .muted { margin-top: 12px; color: #6b7280; }",
+        "      code { background: #f3f4f6; padding: 2px 6px; border-radius: 6px; }",
+        "    </style>",
+        "  </head>",
+        "  <body>",
+        "    <h2>Оплата прошла успешно</h2>",
+        "    <p>Возвращаем вас в Telegram…</p>",
+        f'    <p><a class="btn" href="{tme_url}">Вернуться в бот</a></p>',
+        '    <p class="muted">',
+        "      Если окно оплаты не закрывается, нажмите <code>×</code> (крестик) и",
+        "      закройте встроенный браузер Telegram.",
+        "    </p>",
+        "    <script>",
+        f"      window.location.href = {tg_url!r};",
+        "      setTimeout(function () {",
+        f"        window.location.href = {tme_url!r};",
+        "      }, 900);",
+        "    </script>",
+        "  </body>",
+        "</html>",
+    ]
+    html = "\n".join(html_lines) + "\n"
+    return HTMLResponse(content=html, status_code=200)
 
