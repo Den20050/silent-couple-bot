@@ -336,6 +336,13 @@ class RobokassaService(PaymentProvider):
             else:
                 # For currencies without decimals, format as integer with .00
                 out_sum = f"{int(amount_decimal)}.00"
+
+            # Robokassa test mode nuance:
+            # Documentation notes that for test payments OutSum is passed as an integer
+            # without a fractional part. If we send "299.00" in test mode, Robokassa may
+            # normalize it to "299" when validating SignatureValue, causing error 29.
+            if not self.settings.robokassa_is_production:
+                out_sum = str(int(round(amount_decimal)))
             
             # Ensure out_sum is not empty and is valid
             if not out_sum or not out_sum.replace(".", "").isdigit():
