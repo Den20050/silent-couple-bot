@@ -1,0 +1,31 @@
+4	"trial"	80282239920	3	246653408	3
+
+scp root@91.222.237.94:/root/worker_24h.log .
+scp root@91.222.237.94:/root/webhook_24h.log .
+
+
+scp root@91.222.237.94:/root/webhook_24h.log .
+
+На сервере:
+cd /root/silent-couple-bot
+
+sudo journalctl -u silent-couple-bot-worker  --since "24 hours ago" --no-pager > worker_24h.log
+sudo journalctl -u silent-couple-bot-webhook --since "24 hours ago" --no-pager > webhook_24h.log
+
+
+
+в windows:
+scp root@91.222.237.94:/root/silent-couple-bot/worker_24h.log C:\Silent-Couple-Bot\
+scp root@91.222.237.94:/root/silent-couple-bot/webhook_24h.log C:\Silent-Couple-Bot\
+
+Команда на сутки (worker + webhook)
+Замените даты/время под себя (пример: последние 24 часа от текущего момента):
+sudo journalctl -u silent-couple-bot-worker --since "24 hours ago" --no-pager > /root/worker_24h.log
+sudo journalctl -u silent-couple-bot-webhook --since "24 hours ago" --no-pager > /root/webhook_24h.log
+ls -lh /root/*_24h.log
+
+
+Если хотите именно “календарные сутки” (с 00:00 до 23:59), используйте:
+
+sudo journalctl -u silent-couple-bot-worker --since "today" --no-pager > /root/worker_today.log
+sudo journalctl -u silent-couple-bot-webhook --since "today" --no-pager > /root/webhook_today.log
