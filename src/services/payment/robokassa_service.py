@@ -5,7 +5,7 @@ import hmac
 import random
 import time
 from typing import Optional
-from urllib.parse import urlencode
+from urllib.parse import quote_plus, urlencode
 
 from redis.asyncio import Redis
 
@@ -44,6 +44,10 @@ class RobokassaService(PaymentProvider):
         currency: str = "RUB",
         shp_params: Optional[dict] = None,
         shp_kv_separator: str = "=",
+        success_url2: str | None = None,
+        success_url2_method: str | None = None,
+        fail_url2: str | None = None,
+        fail_url2_method: str | None = None,
     ) -> str:
         """Generate Robokassa payment signature (MD5).
         
@@ -66,25 +70,42 @@ class RobokassaService(PaymentProvider):
             - IsTest
             Including these will cause Robokassa to return 500 error.
             
+            IMPORTANT:
+            - If ReturnURL parameters (SuccessUrl2/FailUrl2) are used, they MUST be included
+              in the signature in URL-encoded form along with their Method parameters.
+              (See Robokassa docs: "Дополнительная переадресация ... SuccessUrl2/FailUrl2".)
+            
             Only these parameters are included:
             - MerchantLogin
             - OutSum
             - InvId
             - Currency (only if not RUB)
+            - SuccessUrl2 / SuccessUrl2Method (if provided)
+            - FailUrl2 / FailUrl2Method (if provided)
             - Password#1
             - Shp_ parameters (if any, sorted alphabetically)
         """
-        # Base signature string: MerchantLogin:OutSum:InvId:Password#1
-        # If currency is not RUB, add it: MerchantLogin:OutSum:InvId:Currency:Password#1
+        # Base signature string:
+        #   MerchantLogin:OutSum:InvId[:Currency][:SuccessUrl2:SuccessUrl2Method][:FailUrl2:FailUrl2Method]:Password#1
         # CRITICAL: Do NOT include SuccessURL, Culture, Encoding, IsTest in signature!
         # IMPORTANT: For non-RUB currencies, use OutSumCurrency value in signature
         # The currency parameter in signature must match OutSumCurrency parameter in URL
+        signature_parts: list[str] = [merchant_login, out_sum, inv_id]
         if currency != "RUB":
-            # For non-RUB currencies, currency code goes BEFORE password in signature
-            signature_string = f"{merchant_login}:{out_sum}:{inv_id}:{currency}:{password}"
-        else:
-            # For RUB, no currency parameter in signature
-            signature_string = f"{merchant_login}:{out_sum}:{inv_id}:{password}"
+            signature_parts.append(currency)
+
+        # ReturnURL parameters for redirect buttons.
+        # IMPORTANT: URL is included URL-encoded in the signature.
+        # Method must be upper-case (GET/POST).
+        if success_url2:
+            signature_parts.append(quote_plus(success_url2, safe=""))
+            signature_parts.append(str(success_url2_method or "GET").upper())
+        if fail_url2:
+            signature_parts.append(quote_plus(fail_url2, safe=""))
+            signature_parts.append(str(fail_url2_method or "GET").upper())
+
+        signature_parts.append(password)
+        signature_string = ":".join(signature_parts)
         
         # Add Shp_ parameters to signature string (optional)
         # CRITICAL FORMAT REQUIREMENTS:
@@ -391,6 +412,11 @@ class RobokassaService(PaymentProvider):
                     shp_params if self.settings.robokassa_include_shp_in_signature else None
                 ),
                 shp_kv_separator=self.settings.robokassa_shp_kv_separator,
+                # ReturnURL parameters used by Robokassa payment interface buttons.
+                success_url2=return_url or None,
+                success_url2_method="GET",
+                fail_url2=return_url or None,
+                fail_url2_method="GET",
             )
             
             logger.info(
@@ -467,6 +493,13 @@ class RobokassaService(PaymentProvider):
             # CRITICAL: SuccessURL is NOT included in signature!
             if return_url:
                 params["SuccessURL"] = return_url
+
+                # Additional redirect parameters (ReturnURL) for Robokassa interface:
+                # SuccessUrl2/FailUrl2 MUST be included in SignatureValue (see signature code).
+                params["SuccessUrl2"] = return_url
+                params["SuccessUrl2Method"] = "GET"
+                params["FailUrl2"] = return_url
+                params["FailUrl2Method"] = "GET"
             
             # IMPORTANT: Do NOT sort parameters alphabetically for URL
             # Robokassa may expect parameters in a specific order
