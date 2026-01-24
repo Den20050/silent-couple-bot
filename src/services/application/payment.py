@@ -1,5 +1,7 @@
 """Application service for payment management."""
 
+from urllib.parse import urlsplit
+
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -425,8 +427,10 @@ class PaymentApplicationService:
         bot_info = await bot.get_me()
         bot_username = bot_info.username or "your_bot"
 
-        # Generate return URL (user will be redirected here after payment)
-        return_url = f"https://t.me/{bot_username}"
+        # Generate return URL (user will be redirected here after payment).
+        # On mobile Telegram in-app browser, "return to shop" won't close the browser.
+        # We send users to our return page which attempts tg:// deep-link + provides fallback.
+        return_url = self._build_robokassa_return_url(bot_username=bot_username)
 
         # Create payment
         # For lifetime, use a large number (will be handled specially in webhook)
@@ -493,4 +497,16 @@ class PaymentApplicationService:
                 tg_id=tg_id,
                 pair_id=pair.id,
             )
+
+    def _build_robokassa_return_url(self, bot_username: str) -> str:
+        """Build SuccessURL for Robokassa that works in Telegram in-app browser."""
+        webhook_url = getattr(self._settings, "webhook_url", None)
+        if isinstance(webhook_url, str) and webhook_url:
+            parts = urlsplit(webhook_url)
+            if parts.scheme and parts.netloc:
+                public_base = f"{parts.scheme}://{parts.netloc}"
+                return f"{public_base}/webhook/robokassa/return?bot={bot_username}"
+
+        # Fallback for local/dev if public URL is not configured.
+        return f"https://t.me/{bot_username}"
 
