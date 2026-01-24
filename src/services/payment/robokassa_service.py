@@ -86,23 +86,33 @@ class RobokassaService(PaymentProvider):
             - Shp_ parameters (if any, sorted alphabetically)
         """
         # Base signature string:
-        #   MerchantLogin:OutSum:InvId[:Currency][:SuccessUrl2:SuccessUrl2Method][:FailUrl2:FailUrl2Method]:Password#1
+        #   MerchantLogin:OutSum:InvId[:Currency]:Password#1
+        #
+        # If ReturnURL parameters are used (SuccessUrl2/FailUrl2), Robokassa expects them
+        # in an extended signature format with placeholders for optional fields:
+        #   MerchantLogin:OutSum:InvId:Receipt:StepByStep:ResultUrl2:
+        #     SuccessUrl2:SuccessUrl2Method:FailUrl2:FailUrl2Method:Password#1
+        #
+        # In our integration we don't use Receipt / StepByStep / ResultUrl2, so we pass
+        # empty placeholders for these positions.
         # CRITICAL: Do NOT include SuccessURL, Culture, Encoding, IsTest in signature!
         # IMPORTANT: For non-RUB currencies, use OutSumCurrency value in signature
         # The currency parameter in signature must match OutSumCurrency parameter in URL
         signature_parts: list[str] = [merchant_login, out_sum, inv_id]
-        if currency != "RUB":
-            signature_parts.append(currency)
 
-        # ReturnURL parameters for redirect buttons.
-        # IMPORTANT: URL is included URL-encoded in the signature.
-        # Method must be upper-case (GET/POST).
-        if success_url2:
-            signature_parts.append(quote_plus(success_url2, safe=""))
+        if success_url2 or fail_url2:
+            # Receipt, StepByStep, ResultUrl2 placeholders (not used).
+            signature_parts.extend(["", "", ""])
+
+            # IMPORTANT: URL is included URL-encoded in the signature.
+            # Method must be upper-case (GET/POST).
+            signature_parts.append(quote_plus(success_url2 or "", safe=""))
             signature_parts.append(str(success_url2_method or "GET").upper())
-        if fail_url2:
-            signature_parts.append(quote_plus(fail_url2, safe=""))
+            signature_parts.append(quote_plus(fail_url2 or "", safe=""))
             signature_parts.append(str(fail_url2_method or "GET").upper())
+        else:
+            if currency != "RUB":
+                signature_parts.append(currency)
 
         signature_parts.append(password)
         signature_string = ":".join(signature_parts)
