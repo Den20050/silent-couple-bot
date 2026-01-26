@@ -144,6 +144,7 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
             admin_commands = user_commands + [
                 BotCommand(command="admin_stats", description="👑 Статистика"),
                 BotCommand(command="admin_reset_demo", description="👑 Сброс демо"),
+                BotCommand(command="admin_subscription_status", description="👑 Статус подписки"),
                 BotCommand(command="admin_gift", description="👑 Подарить подписку"),
                 BotCommand(command="admin_broadcast", description="👑 Рассылка"),
             ]

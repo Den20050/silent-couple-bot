@@ -190,6 +190,13 @@ class Messages:
     PAY_SUBSCRIPTION_ACTIVE_UNTIL = "✅ Подписка активна до {period_text}"
     PAY_ERROR = "Произошла ошибка. Попробуйте позже."
     PAY_LINK_CREATED = "Ссылка на оплату создана"
+    PAYMENT_NOT_CONFIRMED_TEST = (
+        "⚠️ <b>Оплата не подтверждена (тестовый режим)</b>\n\n"
+        "Подписка не активирована. Если оплата прошла, проверьте /subscription "
+        "через пару минут.\n\n"
+        "InvId: {inv_id}\n"
+        "Сумма: {out_sum}"
+    )
 
     # =============================================================================
     # Callbacks / Interactions
@@ -442,6 +449,13 @@ class Messages:
         "Отправьте Telegram ID пользователя для сброса демо режима.\n\n"
         "Если пользователь состоит в паре, демо будет сброшено для обоих пользователей пары.\n\n"
         "Для отмены отправьте /cancel"
+    )
+    ADMIN_SUBSCRIPTION_STATUS_USAGE = (
+        "Использование: /admin_subscription_status <tg_id>\n\n"
+        "Пример: /admin_subscription_status 123456789"
+    )
+    ADMIN_SUBSCRIPTION_STATUS_NO_PAIRS = (
+        "ℹ️ Пользователь {tg_id} не состоит ни в одной паре."
     )
     ADMIN_GIFT_PROMPT = (
         "🎁 <b>Подарить подписку</b>\n\n"

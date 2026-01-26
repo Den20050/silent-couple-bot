@@ -33,6 +33,53 @@ async def get_db_session() -> AsyncSession:
         yield session
 
 
+async def _notify_payment_not_confirmed(
+    session: AsyncSession,
+    *,
+    shp_params: dict[str, str],
+    inv_id: str | None,
+    out_sum: str | None,
+    is_production: bool,
+) -> None:
+    """Notify users about unconfirmed test payment (best-effort)."""
+    if is_production:
+        return
+
+    pair_id_value = shp_params.get("pair_id")
+    if not pair_id_value or not pair_id_value.isdigit():
+        return
+
+    pair_id = int(pair_id_value)
+    pairs_repo = PairsRepository(session)
+    pair = await pairs_repo.get_by_id(pair_id)
+    if not pair:
+        return
+
+    user_a_result = await session.execute(select(User).where(User.id == pair.uid_a))
+    user_a = user_a_result.scalar_one_or_none()
+    user_b_result = await session.execute(select(User).where(User.id == pair.uid_b))
+    user_b = user_b_result.scalar_one_or_none()
+
+    if not user_a or not user_b:
+        return
+
+    message_text = get_message(
+        "PAYMENT_NOT_CONFIRMED_TEST",
+        inv_id=inv_id or "-",
+        out_sum=out_sum or "-",
+    )
+
+    await send_message_with_retry(chat_id=user_a.tg_id, text=message_text)
+    await send_message_with_retry(chat_id=user_b.tg_id, text=message_text)
+
+    logger.info(
+        "Sent payment not confirmed notice (test mode)",
+        pair_id=pair_id,
+        inv_id=inv_id,
+        out_sum=out_sum,
+    )
+
+
 # =============================================================================
 # YooKassa webhook (DEPRECATED - закомментировано)
 # =============================================================================
@@ -178,6 +225,16 @@ async def robokassa_webhook(
         inv_id = params.get("InvId")
         signature = params.get("SignatureValue")
 
+        logger.info(
+            "Robokassa webhook received",
+            method=request.method.upper(),
+            params_keys=list(params.keys()),
+            out_sum=out_sum,
+            inv_id=inv_id,
+            signature_preview=f"{signature[:8]}..." if signature else None,
+            shp_params_keys=[k for k in params.keys() if k.startswith("Shp_")],
+        )
+
         if not out_sum or not inv_id or not signature:
             logger.warning(
                 "Robokassa webhook missing required parameters",
@@ -213,6 +270,13 @@ async def robokassa_webhook(
                 "Robokassa webhook processing failed",
                 inv_id=inv_id,
                 out_sum=out_sum,
+            )
+            await _notify_payment_not_confirmed(
+                session,
+                shp_params=shp_params,
+                inv_id=inv_id,
+                out_sum=out_sum,
+                is_production=settings_module.robokassa_is_production,
             )
             return "ERROR"
 
