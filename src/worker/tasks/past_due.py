@@ -43,6 +43,7 @@ async def check_and_update_expired_subscriptions(
         )
         
         updated_count = 0
+        today = date.today()
         for sub in past_due_subs:
             try:
                 pair = await pairs_repo.get_by_id(sub.pair_id)
@@ -70,6 +71,21 @@ async def check_and_update_expired_subscriptions(
                 
                 # Send notifications if requested
                 if send_notifications:
+                    lock_service = worker_context.lock_service
+                    dunning_key = f"dunning_notification:{pair.id}:{today.isoformat()}"
+                    can_send = await lock_service.set_key_if_not_exists(
+                        dunning_key,
+                        "1",
+                        86400,
+                    )
+                    if not can_send:
+                        logger.debug(
+                            "Dunning notification already sent today",
+                            pair_id=pair.id,
+                        )
+                        await session.commit()
+                        continue
+
                     # Get users
                     user_a_result = await session.execute(
                         select(User).where(User.id == pair.uid_a)
@@ -177,6 +193,29 @@ async def send_past_due_notification(
         if not should_send:
             return
         
+        # Reserve notification slot atomically to avoid duplicates
+        days_since_expiry = (today - subscription.period_end).days
+        if days_since_expiry <= 3:
+            past_due_notification_key = (
+                f"past_due_notification_{pic_type}:{pair.id}:{today.isoformat()}"
+            )
+            reserved = await lock_service.set_key_if_not_exists(
+                past_due_notification_key,
+                "1",
+                86400,
+            )
+            if not reserved:
+                return
+        else:
+            last_notification_key = f"past_due_last_notification_{pic_type}:{pair.id}"
+            reserved = await lock_service.set_key_if_not_exists(
+                last_notification_key,
+                today.isoformat(),
+                7 * 86400,
+            )
+            if not reserved:
+                return
+
         # Get users
         user_a_result = await session.execute(
             select(User).where(User.id == pair.uid_a)
@@ -221,42 +260,13 @@ async def send_past_due_notification(
             reply_markup=reply_markup,
         )
         
-        # Mark notification as sent
-        days_since_expiry = (today - subscription.period_end).days
-        
-        if days_since_expiry <= 3:
-            # First 3 days: mark as sent today (for both morning and evening)
-            past_due_notification_key = (
-                f"past_due_notification_{pic_type}:{pair.id}:{today.isoformat()}"
-            )
-            await lock_service.set_key_with_ttl(past_due_notification_key, "1", 86400)
-            
-            # Update subscription
-            from src.db.repositories.subscriptions import SubscriptionsRepository
-            subs_repo = SubscriptionsRepository(session)
-            await subs_repo.update_last_past_due_notification_date(
-                subscription.id,
-                today,
-            )
-        else:
-            # After 3 days: mark last notification date for this pic_type
-            # Use separate keys for morning and evening to allow both in the same day
-            last_notification_key = f"past_due_last_notification_{pic_type}:{pair.id}"
-            await lock_service.set_key_with_ttl(
-                last_notification_key,
-                today.isoformat(),
-                7 * 86400,
-            )
-            
-            # Update subscription
-            # Note: We update last_past_due_notification_date to today
-            # This allows tracking when any notification was sent
-            from src.db.repositories.subscriptions import SubscriptionsRepository
-            subs_repo = SubscriptionsRepository(session)
-            await subs_repo.update_last_past_due_notification_date(
-                subscription.id,
-                today,
-            )
+        # Update subscription
+        from src.db.repositories.subscriptions import SubscriptionsRepository
+        subs_repo = SubscriptionsRepository(session)
+        await subs_repo.update_last_past_due_notification_date(
+            subscription.id,
+            today,
+        )
         
         await session.commit()
         

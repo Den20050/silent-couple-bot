@@ -116,6 +116,37 @@ class LockService:
         redis_client = await self.get_redis_client()
         if redis_client is None:
             return False
+
+    async def set_key_if_not_exists(
+        self,
+        key: str,
+        value: str,
+        ttl_seconds: int,
+    ) -> bool:
+        """Atomically set Redis key if it does not exist (SET NX).
+
+        Args:
+            key: Redis key
+            value: Value to set
+            ttl_seconds: TTL in seconds
+
+        Returns:
+            True if key was set, False if already exists or error
+        """
+        redis_client = await self.get_redis_client()
+        if redis_client is None:
+            return False
+
+        try:
+            result = await redis_client.set(key, value, ex=ttl_seconds, nx=True)
+            return bool(result)
+        except Exception as e:
+            logger.warning(
+                "Failed to set Redis key atomically",
+                key=key,
+                error=str(e),
+            )
+            return False
         
         try:
             await redis_client.setex(key, ttl_seconds, value)
