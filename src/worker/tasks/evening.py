@@ -57,9 +57,7 @@ async def evening_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> 
             scheduler = worker_context.create_pair_scheduler(session)
             
             from src.db.repositories.pairs import PairsRepository
-            from src.db.repositories.subscriptions import SubscriptionsRepository
             pairs_repo = PairsRepository(session)
-            subs_repo = SubscriptionsRepository(session)
             
             # Get active pairs
             pairs = await pairs_repo.get_active_pairs()
@@ -124,34 +122,8 @@ async def evening_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> 
                 )
                 notified_users_count = updated_count
             
-            # Process past_due pairs - send subscription notifications instead of wishes
-            from src.worker.tasks.past_due import send_past_due_notification
-            
-            for pair in past_due_pairs:
-                try:
-                    # Get subscription
-                    subscription = await subs_repo.get_by_pair_id(pair.id)
-                    if not subscription:
-                        continue
-                    
-                    # Send past due notification if needed
-                    # This will check if morning notification was already sent today
-                    # and skip if it was (to avoid duplicate notifications)
-                    await send_past_due_notification(
-                        worker_context=worker_context,
-                        pair=pair,
-                        subscription=subscription,
-                        today=today,
-                        pic_type="evening",
-                    )
-                except Exception as e:
-                    logger.error(
-                        "Error sending past due notification",
-                        pair_id=pair.id,
-                        error=str(e),
-                        exc_info=True,
-                    )
-                    continue
+            # Past due notifications are sent only in the morning.
+            # Evening notifications are disabled to avoid duplicate reminders.
             
             logger.info(
                 "Evening sender completed",

@@ -142,6 +142,9 @@ async def check_past_due_notification_needed(
     """
     if not subscription:
         return False
+
+    if pic_type == "evening":
+        return False
     
     days_since_expiry = (today - subscription.period_end).days
     
