@@ -64,12 +64,7 @@ SUPPORTED_CURRENCIES = {
     "EUR": {"name": "Евро", "symbol": "€", "decimals": 2},
     "USD": {"name": "Доллар США", "symbol": "$", "decimals": 2},
     "UAH": {"name": "Украинская гривна", "symbol": "₴", "decimals": 2},
-    "BYN": {"name": "Белорусский рубль", "symbol": "Br", "decimals": 2},
     "KZT": {"name": "Казахстанский тенге", "symbol": "₸", "decimals": 2},
-    "AED": {"name": "Дирхам ОАЭ", "symbol": "د.إ", "decimals": 2},
-    "THB": {"name": "Тайский бат", "symbol": "฿", "decimals": 2},
-    "TRY": {"name": "Турецкая лира", "symbol": "₺", "decimals": 2},
-    "CNY": {"name": "Китайский юань", "symbol": "¥", "decimals": 2},
 }
 
 # Subscription plans (period in days)
