@@ -1,9 +1,8 @@
 """Service for validating reminder conditions."""
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from src.core.logger import get_logger
-from src.db.models import DailyState
 from src.db.repositories.daily_state import DailyStateRepository
 from src.worker.services.reminder_finder import ReminderCandidate
 
@@ -39,6 +38,27 @@ class ReminderValidator:
         pic_type = candidate.pic_type
         current_state = candidate.daily_state
         
+        sent_at = (
+            current_state.morning_sent_at
+            if pic_type == "morning"
+            else current_state.evening_sent_at
+        )
+        other_sent_at = (
+            current_state.evening_sent_at
+            if pic_type == "morning"
+            else current_state.morning_sent_at
+        )
+
+        # If a newer wish was sent on the same day, ignore older one.
+        if sent_at and other_sent_at and other_sent_at > sent_at:
+            logger.info(
+                "Skipping reminder: newer wish sent on same day",
+                pair_id=candidate.pair.id,
+                target_day=str(candidate.target_day),
+                pic_type=pic_type,
+            )
+            return False
+
         # Check if recipient has already responded to the other picture type
         if pic_type == "morning":
             if current_state.evening_responded_at is not None:
@@ -57,32 +77,24 @@ class ReminderValidator:
                 )
                 return False
         
-        # Check if recipient initiated a picture on the next day
+        # Check if any picture was initiated on the next day (new cycle started)
         next_day = candidate.target_day + timedelta(days=1)
         next_day_state = await self._daily_state_repo.get_by_pair_and_day(
             candidate.pair.id,
             next_day,
         )
         
-        if next_day_state:
-            if pic_type == "morning":
-                if next_day_state.morning_initiator is not None:
-                    logger.info(
-                        "Skipping reminder: recipient initiated morning picture on next day",
-                        pair_id=candidate.pair.id,
-                        target_day=str(candidate.target_day),
-                        next_day=str(next_day),
-                    )
-                    return False
-            else:  # evening
-                if next_day_state.evening_initiator is not None:
-                    logger.info(
-                        "Skipping reminder: recipient initiated evening picture on next day",
-                        pair_id=candidate.pair.id,
-                        target_day=str(candidate.target_day),
-                        next_day=str(next_day),
-                    )
-                    return False
+        if next_day_state and (
+            next_day_state.morning_initiator is not None
+            or next_day_state.evening_initiator is not None
+        ):
+            logger.info(
+                "Skipping reminder: newer wish exists on next day",
+                pair_id=candidate.pair.id,
+                target_day=str(candidate.target_day),
+                next_day=str(next_day),
+            )
+            return False
         
         return True
     

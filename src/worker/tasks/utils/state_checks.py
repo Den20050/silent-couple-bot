@@ -70,6 +70,27 @@ async def should_send_reminder(
         if hours_passed < hours_after_send - 0.5:  # Allow 30 min tolerance
             continue
         
+        sent_at = (
+            current_state.morning_sent_at
+            if pic_type == "morning"
+            else current_state.evening_sent_at
+        )
+        other_sent_at = (
+            current_state.evening_sent_at
+            if pic_type == "morning"
+            else current_state.morning_sent_at
+        )
+
+        # If a newer wish was sent on the same day, ignore older one.
+        if sent_at and other_sent_at and other_sent_at > sent_at:
+            logger.info(
+                "Skipping reminder: newer wish sent on same day",
+                pair_id=pair_id,
+                check_day=str(check_day),
+                pic_type=pic_type,
+            )
+            return False, None
+
         # Check if recipient has already responded to the other picture type
         if pic_type == "morning":
             if current_state.evening_responded_at is not None:
@@ -88,32 +109,24 @@ async def should_send_reminder(
                 )
                 return False, None
         
-        # Check if recipient initiated a picture on the next day
+        # Check if any picture was initiated on the next day (new cycle started)
         next_day = check_day + timedelta(days=1)
         next_day_state = await daily_state_repo.get_by_pair_and_day(
             pair_id,
             next_day,
         )
         
-        if next_day_state:
-            if pic_type == "morning":
-                if next_day_state.morning_initiator is not None:
-                    logger.info(
-                        "Skipping evening reminder: recipient initiated morning picture on next day",
-                        pair_id=pair_id,
-                        check_day=str(check_day),
-                        next_day=str(next_day),
-                    )
-                    return False, None
-            else:  # evening
-                if next_day_state.evening_initiator is not None:
-                    logger.info(
-                        "Skipping evening reminder: recipient initiated evening picture on next day",
-                        pair_id=pair_id,
-                        check_day=str(check_day),
-                        next_day=str(next_day),
-                    )
-                    return False, None
+        if next_day_state and (
+            next_day_state.morning_initiator is not None
+            or next_day_state.evening_initiator is not None
+        ):
+            logger.info(
+                "Skipping reminder: newer wish exists on next day",
+                pair_id=pair_id,
+                check_day=str(check_day),
+                next_day=str(next_day),
+            )
+            return False, None
         
         return True, check_day
     
