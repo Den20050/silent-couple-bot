@@ -357,6 +357,10 @@ async def send_recipient_reminder(
             candidate = await reminder_finder.build_reminder_candidate(state, pic_type)
             if not candidate:
                 return
+
+            reminder_validator = ReminderValidator(daily_state_repo)
+            if not await reminder_validator.should_send_reminder(candidate):
+                return
             
             reminder_key = (
                 f"{settings.redis_key_prefix_reminder_sent}:{pair_id}:{target_day}:{pic_type}:{hours}"
@@ -494,6 +498,10 @@ async def send_initiator_warning(
             
             candidate = await warning_finder.build_warning_candidate(state, pic_type)
             if not candidate:
+                return
+
+            warning_validator = ReminderValidator(daily_state_repo)
+            if not await warning_validator.should_send_warning(candidate):
                 return
             
             # Use LockService for tracking
