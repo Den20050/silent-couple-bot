@@ -72,6 +72,14 @@ async def handle_admin_stats_callback(
         return
     
     try:
+        pair_demo_repo = PairDemoRepository(session)
+        removed_orphans = await pair_demo_repo.cleanup_missing_users()
+        if removed_orphans:
+            logger.info(
+                "Cleaned orphaned pair_demo records",
+                removed_orphans=removed_orphans,
+            )
+
         # Get total users count
         users_count_result = await session.execute(select(func.count(User.id)))
         total_users = users_count_result.scalar() or 0
@@ -80,8 +88,13 @@ async def handle_admin_stats_callback(
         pairs_count_result = await session.execute(select(func.count(Pair.id)))
         total_pairs = pairs_count_result.scalar() or 0
 
-        # Get pairs with demo
-        demo_count_result = await session.execute(select(func.count(PairDemo.uid_a)))
+        # Get pairs with demo (only existing pairs)
+        demo_count_result = await session.execute(
+            select(func.count(PairDemo.uid_a)).join(
+                Pair,
+                (Pair.uid_a == PairDemo.uid_a) & (Pair.uid_b == PairDemo.uid_b),
+            )
+        )
         pairs_with_demo = demo_count_result.scalar() or 0
 
         # Get users with active subscriptions
