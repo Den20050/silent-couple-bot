@@ -64,3 +64,22 @@ class PairDemoRepository:
         result = await self.session.execute(stmt)
         await self.session.flush()
         return result.scalar_one_or_none() is not None
+
+    async def cleanup_missing_users(self) -> int:
+        """Remove demo records where one of the users no longer exists."""
+        from sqlalchemy import delete, exists, or_
+        from src.db.models import User
+
+        stmt = (
+            delete(PairDemo)
+            .where(
+                or_(
+                    ~exists().where(User.id == PairDemo.uid_a),
+                    ~exists().where(User.id == PairDemo.uid_b),
+                )
+            )
+            .returning(PairDemo.uid_a)
+        )
+        result = await self.session.execute(stmt)
+        await self.session.flush()
+        return len(result.scalars().all())
