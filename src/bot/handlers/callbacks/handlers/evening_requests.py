@@ -192,6 +192,12 @@ async def handle_request_evening(
         pic_type="evening",
         day=today,
     )
+
+    # Notify initiator that the wish was delivered
+    await telegram_messenger.send_message(
+        chat_id=tg_id,
+        text=get_message("CALLBACK_WISH_DELIVERED"),
+    )
     
     # Schedule reminder tasks
     partner_tg_id = user_b.tg_id if user_a.tg_id == tg_id else user_a.tg_id

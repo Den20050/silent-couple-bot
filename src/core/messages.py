@@ -207,6 +207,8 @@ class Messages:
     CALLBACK_PARTNER_ALREADY_SENT = "Ваш партнёр уже отправил пожелание"
     CALLBACK_WISH_SENT = "✅ Вы отправили пожелание"
     CALLBACK_WISH_RESPONDED = "✅ Вы ответили на пожелание"
+    CALLBACK_WISH_DELIVERED = "✅ Пожелание доставлено пользователю"
+    CALLBACK_RESPONSE_DELIVERED = "✅ Ответ доставлен пользователю"
     RESPOND_BUTTON_TEXT = "Нажмите кнопку ниже, чтобы ответить:"
     CALLBACK_RESPONSE_SENT = "Ответ отправлен!"
     CALLBACK_STALE_MESSAGE = (
