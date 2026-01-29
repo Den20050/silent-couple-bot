@@ -28,10 +28,13 @@ async def get_admin_statistics(session: AsyncSession) -> dict[str, int]:
     try:
         pair_demo_repo = PairDemoRepository(session)
         removed_orphans = await pair_demo_repo.cleanup_missing_users()
-        if removed_orphans:
+        removed_missing_pairs = await pair_demo_repo.cleanup_missing_pairs()
+        removed_total = removed_orphans + removed_missing_pairs
+        if removed_total:
             logger.info(
                 "Cleaned orphaned pair_demo records",
                 removed_orphans=removed_orphans,
+                removed_missing_pairs=removed_missing_pairs,
             )
 
         # Get total users count
