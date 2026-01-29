@@ -90,6 +90,10 @@ async def handle_tap_morning(
         chat_id=tg_id,
         text=get_message("CALLBACK_WISH_RESPONDED"),
     )
+    await telegram_messenger.send_message(
+        chat_id=tg_id,
+        text=get_message("CALLBACK_RESPONSE_DELIVERED"),
+    )
     
     await callback.answer(get_message("CALLBACK_RESPONSE_SENT"))
 
@@ -163,6 +167,10 @@ async def handle_tap_evening(
     await telegram_messenger.send_message(
         chat_id=tg_id,
         text=get_message("CALLBACK_WISH_RESPONDED"),
+    )
+    await telegram_messenger.send_message(
+        chat_id=tg_id,
+        text=get_message("CALLBACK_RESPONSE_DELIVERED"),
     )
     
     await callback.answer(get_message("CALLBACK_RESPONSE_SENT"))
