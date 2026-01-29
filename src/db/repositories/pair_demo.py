@@ -83,3 +83,21 @@ class PairDemoRepository:
         result = await self.session.execute(stmt)
         await self.session.flush()
         return len(result.scalars().all())
+
+    async def cleanup_missing_pairs(self) -> int:
+        """Remove demo records where the pair no longer exists."""
+        from sqlalchemy import delete, exists
+        from src.db.models import Pair
+
+        stmt = (
+            delete(PairDemo)
+            .where(
+                ~exists().where(
+                    (Pair.uid_a == PairDemo.uid_a) & (Pair.uid_b == PairDemo.uid_b)
+                )
+            )
+            .returning(PairDemo.uid_a)
+        )
+        result = await self.session.execute(stmt)
+        await self.session.flush()
+        return len(result.scalars().all())
