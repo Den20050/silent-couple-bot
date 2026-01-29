@@ -323,42 +323,6 @@ async def handle_menu_feedback(
         )
 
 
-@router.callback_query(lambda c: c.data == "menu_delete")
-async def handle_menu_delete(
-    callback: CallbackQuery,
-    session: AsyncSession,  # noqa: ARG001
-    state: FSMContext,
-) -> None:
-    """Handle delete menu item."""
-    try:
-        # Clear any active FSM state (e.g., waiting_nickname)
-        await state.clear()
-        text = get_message("MENU_DELETE_TITLE")
-
-        from src.services.messaging.templates import KeyboardTemplates
-        keyboard = KeyboardTemplates.confirm_cancel(
-            confirm_text=get_message("MENU_DELETE_CONFIRM_YES"),
-            confirm_callback="delete_confirm",
-        )
-
-        await callback.message.edit_text(
-            text,
-            reply_markup=keyboard,
-            parse_mode="HTML",
-        )
-        await callback.answer()
-    except Exception as e:
-        logger.error(
-            "Error in handle_menu_delete",
-            error=str(e),
-            exc_info=True,
-        )
-        await callback.answer(
-            get_message("MENU_ERROR"),
-            show_alert=True,
-        )
-
-
 @router.callback_query(lambda c: c.data == "menu_back")
 async def handle_menu_back(
     callback: CallbackQuery,
