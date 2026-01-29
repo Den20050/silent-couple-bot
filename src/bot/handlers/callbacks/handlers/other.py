@@ -271,26 +271,3 @@ async def handle_cancel_initiator_warnings(
         except Exception:
             pass  # Ignore errors when answering callback
 
-
-@router.callback_query(F.data == "delete_confirm")
-async def handle_delete_confirm(
-    callback: CallbackQuery,
-    session: AsyncSession,
-) -> None:
-    """Handle delete confirmation."""
-    try:
-        from src.bot.handlers.delete import cmd_delete
-
-        # Create a fake message from callback
-        message = callback.message
-        message.text = "/delete"
-        message.from_user = callback.from_user
-
-        await cmd_delete(message, session)
-        await callback.answer()
-    except Exception as e:
-        logger.error(
-            "Error in handle_delete_confirm", error=str(e), exc_info=True
-        )
-        await callback.answer(get_message("MENU_ERROR"), show_alert=True)
-
