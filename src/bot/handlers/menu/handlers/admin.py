@@ -21,6 +21,7 @@ from src.db.repositories.subscriptions import SubscriptionsRepository
 from src.db.repositories.users import UsersRepository
 from src.services.telegram.messenger import TelegramMessenger
 from src.services.messaging.ui.menu_ui import MenuUIService
+from src.services.messaging.ui.admin_ui import AdminUIService
 from src.bot.handlers.menu.states import AdminStates
 
 logger = get_logger(__name__)
@@ -72,63 +73,10 @@ async def handle_admin_stats_callback(
         return
     
     try:
-        pair_demo_repo = PairDemoRepository(session)
-        removed_orphans = await pair_demo_repo.cleanup_missing_users()
-        removed_missing_pairs = await pair_demo_repo.cleanup_missing_pairs()
-        removed_total = removed_orphans + removed_missing_pairs
-        if removed_total:
-            logger.info(
-                "Cleaned orphaned pair_demo records",
-                removed_orphans=removed_orphans,
-                removed_missing_pairs=removed_missing_pairs,
-            )
+        from src.bot.handlers.admin.use_cases.stats import get_admin_statistics
 
-        # Get total users count
-        users_count_result = await session.execute(select(func.count(User.id)))
-        total_users = users_count_result.scalar() or 0
-
-        # Get total pairs count
-        pairs_count_result = await session.execute(select(func.count(Pair.id)))
-        total_pairs = pairs_count_result.scalar() or 0
-
-        # Get pairs with demo (only existing pairs)
-        demo_count_result = await session.execute(
-            select(func.count(PairDemo.uid_a)).join(
-                Pair,
-                (Pair.uid_a == PairDemo.uid_a) & (Pair.uid_b == PairDemo.uid_b),
-            )
-        )
-        pairs_with_demo = demo_count_result.scalar() or 0
-
-        # Get users with active subscriptions
-        from src.core.constants import SubscriptionStatus
-        active_subs_result = await session.execute(
-            select(func.count(func.distinct(Subscription.payer_id))).where(
-                Subscription.status == SubscriptionStatus.ACTIVE.value
-            )
-        )
-        users_with_subscription = active_subs_result.scalar() or 0
-
-        # Get single users
-        uid_a_subquery = select(Pair.uid_a.label("user_id"))
-        uid_b_subquery = select(Pair.uid_b.label("user_id"))
-        users_in_pairs_union = union_all(uid_a_subquery, uid_b_subquery).subquery()
-        
-        users_in_pairs_result = await session.execute(
-            select(func.count(func.distinct(users_in_pairs_union.c.user_id)))
-        )
-        users_in_pairs_count = users_in_pairs_result.scalar() or 0
-        
-        single_users = total_users - users_in_pairs_count
-
-        stats_message = (
-            "📊 <b>Статистика бота</b>\n\n"
-            f"👥 Всего пользователей: <b>{total_users}</b>\n"
-            f"💑 Всего пар: <b>{total_pairs}</b>\n"
-            f"👤 Одиночных пользователей: <b>{single_users}</b>\n"
-            f"🎁 Пары с демо: <b>{pairs_with_demo}</b>\n"
-            f"💳 Пользователи на подписке: <b>{users_with_subscription}</b>"
-        )
+        stats = await get_admin_statistics(session)
+        stats_message = AdminUIService().format_statistics_message(stats)
 
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -147,11 +95,7 @@ async def handle_admin_stats_callback(
         logger.info(
             "Admin statistics requested",
             admin_tg_id=callback.from_user.id,
-            total_users=total_users,
-            total_pairs=total_pairs,
-            single_users=single_users,
-            pairs_with_demo=pairs_with_demo,
-            users_with_subscription=users_with_subscription,
+            **stats,
         )
     except Exception as e:
         logger.error("Error getting admin statistics", error=str(e), exc_info=True)
@@ -280,58 +224,17 @@ async def cmd_admin_stats(
         return
     
     try:
-        # Get total users count
-        users_count_result = await session.execute(select(func.count(User.id)))
-        total_users = users_count_result.scalar() or 0
+        from src.bot.handlers.admin.use_cases.stats import get_admin_statistics
 
-        # Get total pairs count
-        pairs_count_result = await session.execute(select(func.count(Pair.id)))
-        total_pairs = pairs_count_result.scalar() or 0
-
-        # Get pairs with demo
-        demo_count_result = await session.execute(select(func.count(PairDemo.uid_a)))
-        pairs_with_demo = demo_count_result.scalar() or 0
-
-        # Get users with active subscriptions
-        from src.core.constants import SubscriptionStatus
-        active_subs_result = await session.execute(
-            select(func.count(func.distinct(Subscription.payer_id))).where(
-                Subscription.status == SubscriptionStatus.ACTIVE.value
-            )
-        )
-        users_with_subscription = active_subs_result.scalar() or 0
-
-        # Get single users
-        uid_a_subquery = select(Pair.uid_a.label("user_id"))
-        uid_b_subquery = select(Pair.uid_b.label("user_id"))
-        users_in_pairs_union = union_all(uid_a_subquery, uid_b_subquery).subquery()
-        
-        users_in_pairs_result = await session.execute(
-            select(func.count(func.distinct(users_in_pairs_union.c.user_id)))
-        )
-        users_in_pairs_count = users_in_pairs_result.scalar() or 0
-        
-        single_users = total_users - users_in_pairs_count
-
-        stats_message = (
-            "📊 <b>Статистика бота</b>\n\n"
-            f"👥 Всего пользователей: <b>{total_users}</b>\n"
-            f"💑 Всего пар: <b>{total_pairs}</b>\n"
-            f"👤 Одиночных пользователей: <b>{single_users}</b>\n"
-            f"🎁 Пары с демо: <b>{pairs_with_demo}</b>\n"
-            f"💳 Пользователи на подписке: <b>{users_with_subscription}</b>"
-        )
+        stats = await get_admin_statistics(session)
+        stats_message = AdminUIService().format_statistics_message(stats)
 
         await message.answer(stats_message, parse_mode="HTML")
         
         logger.info(
             "Admin statistics requested",
             admin_tg_id=message.from_user.id,
-            total_users=total_users,
-            total_pairs=total_pairs,
-            single_users=single_users,
-            pairs_with_demo=pairs_with_demo,
-            users_with_subscription=users_with_subscription,
+            **stats,
         )
     except Exception as e:
         logger.error("Error getting admin statistics", error=str(e), exc_info=True)
