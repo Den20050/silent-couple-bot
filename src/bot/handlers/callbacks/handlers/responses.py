@@ -9,15 +9,43 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.messages import get_message
 from src.core.logger import get_logger
 from src.core.di.container import Container
+from src.db.repositories.pairs import PairsRepository
+from src.db.repositories.users import UsersRepository
 from src.services.telegram.messenger import TelegramMessenger
 from src.bot.handlers.callbacks.validators import parse_callback_data_with_day
 from src.bot.handlers.callbacks.use_cases.respond_to_wish import respond_to_wish
 from src.services.messaging.active_action_message import is_message_active, ActionKind
+from src.bot.handlers.start.services.pair_service import format_partner_text
 
 logger = get_logger(__name__)
 
 router = Router(name="responses")
 
+
+async def _build_partner_text_for_response(
+    session: AsyncSession,
+    pair_id: int,
+    responder_tg_id: int,
+    initiator_tg_id: int,
+) -> str:
+    pairs_repo = PairsRepository(session)
+    users_repo = UsersRepository(session)
+    pair = await pairs_repo.get_by_id(pair_id)
+    if not pair:
+        return get_message("START_PARTNER_FALLBACK")
+
+    responder = await users_repo.get_by_tg_id(responder_tg_id)
+    initiator = await users_repo.get_by_tg_id(initiator_tg_id)
+    responder_id = responder.id if responder else None
+    partner_nickname = (
+        pairs_repo.get_my_nickname_for_partner(pair, responder_id)
+        if responder_id
+        else None
+    )
+    return format_partner_text(
+        initiator.username if initiator else None,
+        partner_nickname,
+    )
 
 @router.callback_query(F.data.startswith("tap_morning_"))
 async def handle_tap_morning(
@@ -85,6 +113,13 @@ async def handle_tap_morning(
         message_id=callback.message.message_id,
     )
     
+    partner_text = await _build_partner_text_for_response(
+        session=session,
+        pair_id=pair_id,
+        responder_tg_id=tg_id,
+        initiator_tg_id=initiator_tg_id,
+    )
+
     # Send confirmation message
     await telegram_messenger.send_message(
         chat_id=tg_id,
@@ -92,7 +127,7 @@ async def handle_tap_morning(
     )
     await telegram_messenger.send_message(
         chat_id=tg_id,
-        text=get_message("CALLBACK_RESPONSE_DELIVERED"),
+        text=get_message("CALLBACK_RESPONSE_DELIVERED", partner_text=partner_text),
     )
     
     await callback.answer(get_message("CALLBACK_RESPONSE_SENT"))
@@ -163,6 +198,13 @@ async def handle_tap_evening(
         message_id=callback.message.message_id,
     )
     
+    partner_text = await _build_partner_text_for_response(
+        session=session,
+        pair_id=pair_id,
+        responder_tg_id=tg_id,
+        initiator_tg_id=initiator_tg_id,
+    )
+
     # Send confirmation message
     await telegram_messenger.send_message(
         chat_id=tg_id,
@@ -170,7 +212,7 @@ async def handle_tap_evening(
     )
     await telegram_messenger.send_message(
         chat_id=tg_id,
-        text=get_message("CALLBACK_RESPONSE_DELIVERED"),
+        text=get_message("CALLBACK_RESPONSE_DELIVERED", partner_text=partner_text),
     )
     
     await callback.answer(get_message("CALLBACK_RESPONSE_SENT"))
