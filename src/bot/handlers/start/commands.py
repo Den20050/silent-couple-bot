@@ -338,7 +338,7 @@ async def handle_start_logic(
     
     # Check if user has consent
     # Users without consent are treated as new users and see welcome messages
-    if not user.consent:
+    if not user.consent and not all_pairs:
         logger.info(
             "User has no consent - showing welcome messages (new user)",
             tg_id=tg_id,
@@ -750,11 +750,14 @@ async def handle_notif_time_selection(
         active_pairs = [
             p for p in all_pairs if p.status in ("trial", "active")
         ]
+        if len(active_pairs) == 0:
+            await callback.answer(get_message("SETTINGS_NO_PAIR"), show_alert=True)
+            return
         if len(active_pairs) == 1:
             target_pair = active_pairs[0]
             pair_id = target_pair.id
         else:
-            # Multiple pairs or none: require pair-specific settings flow.
+            # Multiple pairs: require pair-specific settings flow.
             await callback.answer(
                 get_message("NOTIF_TIME_MULTI_PAIR_NEED_SETTINGS"), show_alert=True
             )

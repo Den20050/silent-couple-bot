@@ -73,16 +73,25 @@ class ModeSelectionFlow:
         # Ask once about preferred notification windows (soft onboarding step)
         try:
             from src.db.repositories.users import UsersRepository
+            from src.db.repositories.pairs import PairsRepository
 
             users_repo = UsersRepository(session)
             if not getattr(user, "notification_windows_prompted", False):
-                await users_repo.update_notification_windows_prompted(tg_id, True)
-                await session.commit()
-                await callback.message.answer(
-                    get_message("NOTIF_TIME_MORNING_PROMPT"),
-                    reply_markup=get_notif_time_morning_keyboard(),
-                    parse_mode=ParseMode.HTML,
-                )
+                pairs_repo = PairsRepository(session)
+                all_pairs = await pairs_repo.get_all_by_user_tg_id(tg_id)
+                active_pairs = [
+                    p for p in all_pairs if p.status in ("trial", "active")
+                ]
+                if len(active_pairs) == 1:
+                    await users_repo.update_notification_windows_prompted(tg_id, True)
+                    await session.commit()
+                    await callback.message.answer(
+                        get_message("NOTIF_TIME_MORNING_PROMPT"),
+                        reply_markup=get_notif_time_morning_keyboard(
+                            pair_id=active_pairs[0].id
+                        ),
+                        parse_mode=ParseMode.HTML,
+                    )
         except Exception as e:
             logger.warning(
                 "Failed to send notification windows prompt",

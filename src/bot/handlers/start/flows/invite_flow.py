@@ -124,13 +124,16 @@ class InviteFlow:
                 return False
             
             users_repo = UsersRepository(session)
+            from src.db.repositories.pairs import PairsRepository
+            pairs_repo = PairsRepository(session)
             partner = await users_repo.get_by_tg_id(partner_tg_id)
             if not partner:
                 await message.answer(get_message("START_PARTNER_NOT_FOUND"))
                 return False
             
-            # Partner must have consent and preferred mode
-            if not partner.consent:
+            # Partner must have consent unless they already have any pairs
+            partner_pairs = await pairs_repo.get_all_by_user_tg_id(partner_tg_id)
+            if not partner.consent and not partner_pairs:
                 await message.answer(get_message("START_PARTNER_NO_CONSENT"))
                 return False
             
@@ -138,8 +141,9 @@ class InviteFlow:
                 await message.answer(get_message("START_PARTNER_NO_MODE"))
                 return False
             
-            # Current user must have consent
-            if not user.consent:
+            # Current user must have consent unless they already have any pairs
+            user_pairs = await pairs_repo.get_all_by_user_tg_id(tg_id)
+            if not user.consent and not user_pairs:
                 from src.bot.handlers.start.ui.builders import get_policy_keyboard
                 await message.answer(
                     get_message("START_WELCOME"),
