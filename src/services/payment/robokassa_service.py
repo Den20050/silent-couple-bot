@@ -427,6 +427,19 @@ class RobokassaService(PaymentProvider):
                 "Culture": "ru",  # NOT in signature!
                 "Encoding": "utf-8",  # NOT in signature!
             }
+
+            # ResultURL: prefer explicit setting, otherwise derive from webhook_url.
+            result_url = self.settings.robokassa_result_url
+            if not result_url and self.settings.webhook_url:
+                base = self.settings.webhook_url.rsplit("/", 1)[0]
+                result_url = f"{base}/robokassa"
+            if result_url:
+                params["ResultURL"] = result_url
+
+            # Success/Fail URLs for returning user back to bot (not in signature).
+            if return_url:
+                params["SuccessURL"] = return_url
+                params["FailURL"] = return_url
             
             # Validate critical parameters before building URL
             if not self.settings.robokassa_merchant_login:

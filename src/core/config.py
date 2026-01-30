@@ -88,6 +88,10 @@ class Settings(BaseSettings):
         default="robokassa.ru",
         description="Домен Робокассы: robokassa.ru (Россия), robokassa.kz (Казахстан), robokassa.com (международный)",
     )
+    robokassa_result_url: Optional[str] = Field(
+        default=None,
+        description="Полный ResultURL для Robokassa (если не задан, берется из webhook_url)",
+    )
     robokassa_include_shp_in_signature: bool = Field(
         default=True,
         description=(
