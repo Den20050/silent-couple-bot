@@ -162,6 +162,25 @@ class RobokassaService(PaymentProvider):
         """
         # ResultURL signature format:
         #   OutSum:InvId:Password#2[:Shp_key=value...]
+        signature_string = self._build_result_signature_string(
+            out_sum=out_sum,
+            inv_id=inv_id,
+            password=password,
+            shp_params=shp_params,
+            shp_kv_separator=shp_kv_separator,
+        )
+        expected_signature = hashlib.md5(signature_string.encode()).hexdigest().upper()
+        return hmac.compare_digest(expected_signature, signature.upper())
+
+    def _build_result_signature_string(
+        self,
+        out_sum: str,
+        inv_id: str,
+        password: str,
+        shp_params: Optional[dict[str, str]] = None,
+        shp_kv_separator: str = "=",
+    ) -> str:
+        """Build ResultURL signature string (without hashing)."""
         signature_string = f"{out_sum}:{inv_id}:{password}"
         if shp_params:
             normalized_items: list[tuple[str, str]] = []
@@ -172,8 +191,7 @@ class RobokassaService(PaymentProvider):
             for key, value in sorted(normalized_items, key=lambda kv: kv[0]):
                 signature_string += f":{key}{shp_kv_separator}{value}"
 
-        expected_signature = hashlib.md5(signature_string.encode()).hexdigest().upper()
-        return hmac.compare_digest(expected_signature, signature.upper())
+        return signature_string
     
     async def create_payment(
         self,
@@ -609,14 +627,43 @@ class RobokassaService(PaymentProvider):
         Returns:
             True if signature is valid, False otherwise
         """
-        return self._verify_result_signature(
+        password_2 = self.settings.robokassa_password_2.strip()
+        if password_2 != self.settings.robokassa_password_2:
+            logger.warning(
+                "Password #2 had leading/trailing whitespace - stripped",
+                original_length=len(self.settings.robokassa_password_2),
+                stripped_length=len(password_2),
+            )
+
+        is_valid = self._verify_result_signature(
             out_sum=out_sum,
             inv_id=inv_id,
             signature=signature,
-            password=self.settings.robokassa_password_2,  # Password #2 for ResultURL
+            password=password_2,  # Password #2 for ResultURL (stripped)
             shp_params=shp_params,
             shp_kv_separator=self.settings.robokassa_shp_kv_separator,
         )
+        if not is_valid:
+            signature_string = self._build_result_signature_string(
+                out_sum=out_sum,
+                inv_id=inv_id,
+                password=password_2,
+                shp_params=shp_params,
+                shp_kv_separator=self.settings.robokassa_shp_kv_separator,
+            )
+            signature_string_for_log = signature_string.replace(password_2, "***PASSWORD***")
+            expected_signature = hashlib.md5(signature_string.encode()).hexdigest().upper()
+            logger.warning(
+                "Robokassa signature mismatch",
+                inv_id=inv_id,
+                out_sum=out_sum,
+                signature_received=signature,
+                signature_expected=expected_signature,
+                signature_string=signature_string_for_log,
+                shp_params=shp_params,
+                shp_kv_separator=self.settings.robokassa_shp_kv_separator,
+            )
+        return is_valid
     
     async def process_webhook(
         self, out_sum: str, inv_id: str, signature: str, shp_params: dict
