@@ -11,6 +11,7 @@ from src.core.messages import get_message
 from src.core.logger import get_logger
 from src.core.config import Settings
 from src.db.repositories.daily_state import DailyStateRepository
+from src.db.repositories.pairs import PairsRepository
 from src.services.telegram.messenger import TelegramMessenger
 from src.core.di.container import Container
 from src.bot.handlers.callbacks.validators import (
@@ -26,6 +27,7 @@ from src.bot.handlers.callbacks.use_cases.schedule_reminders import (
 from src.services.messaging.ui.wish_request_ui import WishRequestUIService
 from src.services.messaging.wish_request_prompt_refresher import refresh_aggregated_wish_prompt
 from src.services.messaging.active_action_message import is_message_active, ActionKind
+from src.bot.handlers.start.services.pair_service import format_partner_text
 
 logger = get_logger(__name__)
 
@@ -194,9 +196,16 @@ async def handle_request_evening(
     )
 
     # Notify initiator that the wish was delivered
+    pairs_repo = PairsRepository(session)
+    partner_user = user_b if user_a.id == user_id else user_a
+    partner_nickname = pairs_repo.get_my_nickname_for_partner(pair, user_id)
+    partner_text = format_partner_text(
+        partner_user.username if partner_user else None,
+        partner_nickname,
+    )
     await telegram_messenger.send_message(
         chat_id=tg_id,
-        text=get_message("CALLBACK_WISH_DELIVERED"),
+        text=get_message("CALLBACK_WISH_DELIVERED", partner_text=partner_text),
     )
     
     # Schedule reminder tasks
