@@ -94,6 +94,17 @@ async def update_user_consent(
     )
     
     if user:
+        from datetime import datetime
+        from src.db.models import ConsentAudit
+
+        session.add(
+            ConsentAudit(
+                tg_id=tg_id,
+                consented_at=user.consent_dt or datetime.utcnow(),
+                consent_ip=consent_ip,
+            )
+        )
+        await session.flush()
         logger.info("Consent saved", tg_id=tg_id)
     else:
         logger.error("Failed to save consent", tg_id=tg_id)

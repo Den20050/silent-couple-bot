@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.logger import get_logger
 from src.core.messages import get_message
+from src.db.repositories.pairs import PairsRepository
 from src.db.repositories.users import UsersRepository
 from src.domain.services.pair_onboarding import PairOnboardingService
 
@@ -33,6 +34,7 @@ class PairApplicationService:
         self._session = session
         self._pair_onboarding_service = pair_onboarding_service
         self._users_repo = UsersRepository(session)
+        self._pairs_repo = PairsRepository(session)
     
     async def handle_create_pair_command(
         self,
@@ -54,8 +56,9 @@ class PairApplicationService:
             if not user:
                 return False, get_message("MENU_USER_NOT_FOUND"), None
             
-            # Check if user has consent
-            if not user.consent:
+            # Check if user has consent (skip if user already has any pairs)
+            user_pairs = await self._pairs_repo.get_all_by_user_tg_id(tg_id)
+            if not user.consent and not user_pairs:
                 return False, (
                     "Для создания пары необходимо принять пользовательское соглашение. "
                     "Используйте команду /start"

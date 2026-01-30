@@ -43,6 +43,22 @@ class User(Base):
     )
 
 
+class ConsentAudit(Base):
+    """Consent acceptance history."""
+
+    __tablename__ = "consent_audit"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    tg_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    consented_at: Mapped[datetime] = mapped_column(default=func.now(), nullable=False)
+    consent_ip: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("idx_consent_audit_tg_id", "tg_id"),
+        Index("idx_consent_audit_consented_at", "consented_at"),
+    )
+
+
 class Pair(Base):
     """Pair relationship model."""
 
