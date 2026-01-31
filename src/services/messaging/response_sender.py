@@ -75,18 +75,21 @@ class ResponseSenderService:
             return False, "CALLBACK_ACCESS_DENIED"
 
         # Get daily state
-        daily_state = await self.daily_state_repo.get_by_pair_and_day(pair_id, check_day)
+        daily_state = await self.daily_state_repo.get_by_pair_and_day(
+            pair_id,
+            check_day,
+        )
         if not daily_state:
-            return False, "CALLBACK_WISH_NOT_SENT_YET"
+            return False, "CALLBACK_STALE_MESSAGE"
 
         # Check if wish exists
         if pic_type == "morning":
             if daily_state.morning_initiator is None:
-                return False, "CALLBACK_WISH_NOT_SENT_YET"
+                return False, "CALLBACK_STALE_MESSAGE"
             initiator_user_id = daily_state.morning_initiator
         else:  # evening
             if daily_state.evening_initiator is None:
-                return False, "CALLBACK_WISH_NOT_SENT_YET"
+                return False, "CALLBACK_STALE_MESSAGE"
             initiator_user_id = daily_state.evening_initiator
 
         # Check if already responded
@@ -112,29 +115,39 @@ class ResponseSenderService:
 
         # Verify that the initiator from callback_data is still the current initiator
         if initiator_user_id != initiator_user.id:
-            # The initiator has changed - partner might have sent their own wish
+            # Initiator changed; partner may have sent their own wish.
             if initiator_user_id == current_user.id:
                 return False, "CALLBACK_PARTNER_ALREADY_SENT"
             else:
-                return False, "CALLBACK_WISH_NOT_SENT_YET"
+                return False, "CALLBACK_STALE_MESSAGE"
 
         # Mark response
         if pic_type == "morning":
-            success = await self.daily_state_repo.set_morning_response(pair_id, check_day)
+            success = await self.daily_state_repo.set_morning_response(
+                pair_id,
+                check_day,
+            )
         else:  # evening
-            success = await self.daily_state_repo.set_evening_response(pair_id, check_day)
+            success = await self.daily_state_repo.set_evening_response(
+                pair_id,
+                check_day,
+            )
 
         if not success:
             return False, "CALLBACK_SAVE_RESPONSE_ERROR"
 
         # Get random image for response
-        pic_type_enum = PicType.MORNING if pic_type == "morning" else PicType.EVENING
+        pic_type_enum = (
+            PicType.MORNING if pic_type == "morning" else PicType.EVENING
+        )
         file_id = await self.image_service.get_random_image(pair_id, pic_type_enum)
         if not file_id:
             return False, "CALLBACK_NO_IMAGES_AVAILABLE"
 
         # Send response photo to initiator
-        initiator_user_obj = user_a if initiator_user_id == user_a.id else user_b
+        initiator_user_obj = (
+            user_a if initiator_user_id == user_a.id else user_b
+        )
         initiator_tg_id_final = initiator_user_obj.tg_id
 
         # Build caption for response
@@ -155,4 +168,3 @@ class ResponseSenderService:
         )
 
         return True, None
-
