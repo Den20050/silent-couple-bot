@@ -28,9 +28,8 @@ async def cmd_pay(
     from src.db.repositories.pairs import PairsRepository
     pairs_repo = PairsRepository(session)
     all_pairs = await pairs_repo.get_all_by_user_tg_id(tg_id)
-    active_pairs = [p for p in all_pairs if p.status in ("trial", "active")]
     
-    if len(active_pairs) > 1:
+    if len(all_pairs) > 1:
         # Show pair selection
         success, message_text, keyboard = await payment_application_service.show_pair_selection(tg_id=tg_id)
         if success:
@@ -59,9 +58,8 @@ async def handle_pay_now_callback(
     from src.db.repositories.pairs import PairsRepository
     pairs_repo = PairsRepository(session)
     all_pairs = await pairs_repo.get_all_by_user_tg_id(tg_id)
-    active_pairs = [p for p in all_pairs if p.status in ("trial", "active")]
     
-    if len(active_pairs) > 1:
+    if len(all_pairs) > 1:
         # Show pair selection
         success, message_text, keyboard = await payment_application_service.show_pair_selection(tg_id=tg_id)
         if success:
@@ -148,9 +146,8 @@ async def handle_select_tariff_from_expired(
     from src.db.repositories.pairs import PairsRepository
     pairs_repo = PairsRepository(session)
     all_pairs = await pairs_repo.get_all_by_user_tg_id(tg_id)
-    active_pairs = [p for p in all_pairs if p.status in ("trial", "active")]
     
-    if len(active_pairs) > 1:
+    if len(all_pairs) > 1:
         # Show pair selection
         success, message_text, keyboard = await payment_application_service.show_pair_selection(tg_id=tg_id)
         if success:
