@@ -10,6 +10,7 @@ from src.core.constants import PairStatus
 from src.core.logger import get_logger
 from src.core.messages import get_message
 from src.db.models import LifetimePairHistory
+from src.db.repositories.pair_demo import PairDemoRepository
 from src.db.repositories.pairs import PairsRepository
 from src.db.repositories.subscriptions import SubscriptionsRepository
 from src.db.repositories.users import UsersRepository
@@ -301,6 +302,7 @@ async def handle_delete_confirm_pair(
     users_repo = UsersRepository(session)
     pairs_repo = PairsRepository(session)
     subs_repo = SubscriptionsRepository(session)
+    pair_demo_repo = PairDemoRepository(session)
 
     user = await users_repo.get_by_tg_id(callback.from_user.id)
     pair = await pairs_repo.get_by_id(pair_id)
@@ -336,6 +338,11 @@ async def handle_delete_confirm_pair(
         user.username if user else None,
         partner_nickname_for_user,
     )
+
+    if partner:
+        legacy_used = await pair_demo_repo.is_used_legacy(pair.uid_a, pair.uid_b)
+        if legacy_used:
+            await pair_demo_repo.mark_pair(user.tg_id, partner.tg_id)
 
     await session.delete(pair)
     await session.flush()

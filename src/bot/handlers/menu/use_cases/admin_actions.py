@@ -129,7 +129,7 @@ async def handle_reset_demo_for_pair(
         user_b = user_b_result.scalar_one()
         
         # Reset demo for this specific pair
-        removed = await pair_demo_repo.remove_pair(pair.uid_a, pair.uid_b)
+        removed = await pair_demo_repo.remove_pair(user_a.tg_id, user_b.tg_id)
         
         # If demo was reset, restore trial period for the pair
         if removed:

@@ -13,7 +13,7 @@ from src.core.config import Settings
 from src.core.constants import PairStatus, SUBSCRIPTION_PLANS
 from src.core.logger import get_logger
 from src.core.messages import get_message
-from src.db.models import Pair, Subscription, User, PairDemo
+from src.db.models import Pair, Subscription, User
 from src.db.repositories.daily_state import DailyStateRepository
 from src.db.repositories.pairs import PairsRepository
 from src.db.repositories.pair_demo import PairDemoRepository

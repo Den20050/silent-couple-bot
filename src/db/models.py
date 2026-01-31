@@ -203,6 +203,15 @@ class PairDemo(Base):
     )
 
 
+class PairDemoHash(Base):
+    """Pair demo blocklist (hashed by tg_id)."""
+
+    __tablename__ = "pair_demo_hash"
+
+    pair_hash: Mapped[str] = mapped_column(Text, primary_key=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=func.now(), nullable=False)
+
+
 class LifetimePairHistory(Base):
     """History of broken pairs with lifetime subscriptions."""
 

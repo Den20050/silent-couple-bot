@@ -1,12 +1,14 @@
 """Use case for admin statistics."""
 
 from sqlalchemy import func, select, union_all
+from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.constants import SubscriptionStatus
 from src.core.logger import get_logger
-from src.db.models import Pair, Subscription, User, PairDemo
+from src.db.models import Pair, Subscription, User
 from src.db.repositories.pair_demo import PairDemoRepository
+from src.services.demo_hash import build_pair_demo_hash
 
 logger = get_logger(__name__)
 
@@ -27,15 +29,6 @@ async def get_admin_statistics(session: AsyncSession) -> dict[str, int]:
     """
     try:
         pair_demo_repo = PairDemoRepository(session)
-        removed_orphans = await pair_demo_repo.cleanup_missing_users()
-        removed_missing_pairs = await pair_demo_repo.cleanup_missing_pairs()
-        removed_total = removed_orphans + removed_missing_pairs
-        if removed_total:
-            logger.info(
-                "Cleaned orphaned pair_demo records",
-                removed_orphans=removed_orphans,
-                removed_missing_pairs=removed_missing_pairs,
-            )
 
         # Get total users count
         users_count_result = await session.execute(select(func.count(User.id)))
@@ -46,13 +39,23 @@ async def get_admin_statistics(session: AsyncSession) -> dict[str, int]:
         total_pairs = pairs_count_result.scalar() or 0
 
         # Get pairs with demo (only existing pairs)
-        demo_count_result = await session.execute(
-            select(func.count(PairDemo.uid_a)).join(
-                Pair,
-                (Pair.uid_a == PairDemo.uid_a) & (Pair.uid_b == PairDemo.uid_b),
+        pair_hashes = await pair_demo_repo.get_all_hashes()
+        if pair_hashes:
+            user_a = aliased(User)
+            user_b = aliased(User)
+            pairs_result = await session.execute(
+                select(user_a.tg_id, user_b.tg_id)
+                .select_from(Pair)
+                .join(user_a, Pair.uid_a == user_a.id)
+                .join(user_b, Pair.uid_b == user_b.id)
             )
-        )
-        pairs_with_demo = demo_count_result.scalar() or 0
+            pairs_with_demo = sum(
+                1
+                for tg_id_a, tg_id_b in pairs_result.all()
+                if build_pair_demo_hash(tg_id_a, tg_id_b) in pair_hashes
+            )
+        else:
+            pairs_with_demo = 0
 
         # Get users with active subscriptions
         active_subs_result = await session.execute(
