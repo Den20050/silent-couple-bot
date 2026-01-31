@@ -176,14 +176,31 @@ async def handle_select_pair(
     tg_id = callback.from_user.id
     pair_id = int(callback.data.replace("pay_select_pair_", ""))
     
-    # Show currency selection for selected pair
-    success, message_text, keyboard = await payment_application_service.show_currencies(
-        tg_id=tg_id,
-        pair_id=pair_id,
-    )
-    
-    await callback.message.edit_text(message_text, reply_markup=keyboard)
-    await callback.answer()
+    try:
+        # Show currency selection for selected pair
+        success, message_text, keyboard = (
+            await payment_application_service.show_currencies(
+                tg_id=tg_id,
+                pair_id=pair_id,
+            )
+        )
+        await callback.message.edit_text(message_text, reply_markup=keyboard)
+        await callback.answer()
+    except Exception as exc:
+        from src.bot.exceptions import BotException
+
+        if isinstance(exc, BotException):
+            message_text = exc.message or get_message(exc.message_key)
+            await callback.answer(message_text, show_alert=True)
+            return
+        logger.error(
+            "Error in handle_select_pair",
+            tg_id=tg_id,
+            pair_id=pair_id,
+            error=str(exc),
+            exc_info=True,
+        )
+        await callback.answer(get_message("PAY_ERROR"), show_alert=True)
 
 
 @router.callback_query(F.data.startswith("select_tariff_"))
