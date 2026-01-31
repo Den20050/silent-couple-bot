@@ -47,22 +47,22 @@ async def reset_demo_for_user(
         elif len(pairs) == 1:
             # Only one pair - reset demo immediately
             pair = pairs[0]
-            removed = await pair_demo_repo.remove_pair(pair.uid_a, pair.uid_b)
+            # Get both users from pair
+            user_a_result = await session.execute(
+                select(User).where(User.id == pair.uid_a)
+            )
+            user_a = user_a_result.scalar_one()
+
+            user_b_result = await session.execute(
+                select(User).where(User.id == pair.uid_b)
+            )
+            user_b = user_b_result.scalar_one()
+
+            removed = await pair_demo_repo.remove_pair(user_a.tg_id, user_b.tg_id)
             
             await session.commit()
 
             if removed:
-                # Get both users from pair
-                user_a_result = await session.execute(
-                    select(User).where(User.id == pair.uid_a)
-                )
-                user_a = user_a_result.scalar_one()
-                
-                user_b_result = await session.execute(
-                    select(User).where(User.id == pair.uid_b)
-                )
-                user_b = user_b_result.scalar_one()
-                
                 message_text = (
                     f"✅ Демо режим сброшен для пары:\n"
                     f"  • {user_a.tg_id}\n"

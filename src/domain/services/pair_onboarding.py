@@ -35,6 +35,9 @@ class PairOnboardingService:
         self._pairs_repo = PairsRepository(session)
         self._subs_repo = SubscriptionsRepository(session)
         self._pair_demo_repo = PairDemoRepository(session)
+        from src.db.repositories.users import UsersRepository
+
+        self._users_repo = UsersRepository(session)
     
     async def validate_pair_creation(
         self,
@@ -68,8 +71,22 @@ class PairOnboardingService:
         if lifetime_history.scalar_one_or_none():
             return False, get_message("START_LIFETIME_PAIR_BROKEN")
         
+        user = await self._users_repo.get_by_id(user_id)
+        partner = await self._users_repo.get_by_id(partner_id)
+        if not user or not partner:
+            return False, get_message("MENU_USER_NOT_FOUND")
+
         # Check if THIS PAIR already used demo
-        pair_used_demo = await self._pair_demo_repo.is_used(user_id, partner_id)
+        pair_used_demo = await self._pair_demo_repo.is_used(
+            user.tg_id,
+            partner.tg_id,
+        )
+        if not pair_used_demo and await self._pair_demo_repo.is_used_legacy(
+            user_id,
+            partner_id,
+        ):
+            await self._pair_demo_repo.mark_pair(user.tg_id, partner.tg_id)
+            pair_used_demo = True
         if pair_used_demo:
             return False, get_message("START_BOTH_DEMO_USED")
         
@@ -109,8 +126,11 @@ class PairOnboardingService:
             period_end=trial_end,
         )
         
-        # Mark this pair as demo used
-        await self._pair_demo_repo.mark_pair(invited_id, inviter_id)
+        inviter = await self._users_repo.get_by_id(inviter_id)
+        invited = await self._users_repo.get_by_id(invited_id)
+        if inviter and invited:
+            # Mark this pair as demo used (by tg_id hash)
+            await self._pair_demo_repo.mark_pair(invited.tg_id, inviter.tg_id)
         
         # Explicitly commit to ensure pair is saved before sending messages
         await self._session.commit()
@@ -172,10 +192,20 @@ class PairOnboardingService:
             True if demo was restored, False otherwise
         """
         # Check if demo was reset by admin (pair status is PAST_DUE and no demo record exists)
-        demo_was_reset = (
-            pair.status == PairStatus.PAST_DUE.value
-            and not await self._pair_demo_repo.is_used(user_id, partner_id)
-        )
+        user = await self._users_repo.get_by_id(user_id)
+        partner = await self._users_repo.get_by_id(partner_id)
+        if not user or not partner:
+            return False
+
+        demo_used = await self._pair_demo_repo.is_used(user.tg_id, partner.tg_id)
+        if not demo_used and await self._pair_demo_repo.is_used_legacy(
+            user_id,
+            partner_id,
+        ):
+            await self._pair_demo_repo.mark_pair(user.tg_id, partner.tg_id)
+            demo_used = True
+
+        demo_was_reset = pair.status == PairStatus.PAST_DUE.value and not demo_used
         
         if not demo_was_reset:
             return False
@@ -208,7 +238,7 @@ class PairOnboardingService:
         await self._pairs_repo.update_status(pair.id, PairStatus.TRIAL)
         
         # Create new demo record
-        await self._pair_demo_repo.mark_pair(user_id, partner_id)
+        await self._pair_demo_repo.mark_pair(user.tg_id, partner.tg_id)
         
         await self._session.commit()
         

@@ -78,10 +78,20 @@ async def check_and_restore_demo(
     """
     # Check if demo was reset by admin (pair status is PAST_DUE and no demo record exists)
     pair_demo_repo = PairDemoRepository(session)
-    demo_was_reset = (
-        pair.status == PairStatus.PAST_DUE.value
-        and not await pair_demo_repo.is_used(user_id, partner_id)
-    )
+    users_repo = UsersRepository(session)
+    user = await users_repo.get_by_id(user_id)
+    partner = await users_repo.get_by_id(partner_id)
+    if not user or not partner:
+        return False
+
+    demo_used = await pair_demo_repo.is_used(user.tg_id, partner.tg_id)
+    if not demo_used:
+        legacy_used = await pair_demo_repo.is_used_legacy(user_id, partner_id)
+        if legacy_used:
+            await pair_demo_repo.mark_pair(user.tg_id, partner.tg_id)
+            demo_used = True
+
+    demo_was_reset = pair.status == PairStatus.PAST_DUE.value and not demo_used
     
     if not demo_was_reset:
         return False
@@ -115,7 +125,7 @@ async def check_and_restore_demo(
     await pairs_repo.update_status(pair.id, PairStatus.TRIAL)
     
     # Create new demo record
-    await pair_demo_repo.mark_pair(user_id, partner_id)
+    await pair_demo_repo.mark_pair(user.tg_id, partner.tg_id)
     
     await session.commit()
     
@@ -140,6 +150,7 @@ async def validate_pair_creation(
     """
     pairs_repo = PairsRepository(session)
     pair_demo_repo = PairDemoRepository(session)
+    users_repo = UsersRepository(session)
     
     # Check if pair already exists
     existing_pair = await pairs_repo.get_by_user_ids(user_id, partner_id)
@@ -159,8 +170,16 @@ async def validate_pair_creation(
     if lifetime_history.scalar_one_or_none():
         return False, get_message("START_LIFETIME_PAIR_BROKEN")
     
+    user = await users_repo.get_by_id(user_id)
+    partner = await users_repo.get_by_id(partner_id)
+    if not user or not partner:
+        return False, get_message("MENU_USER_NOT_FOUND")
+
     # Check if THIS PAIR already used demo
-    pair_used_demo = await pair_demo_repo.is_used(user_id, partner_id)
+    pair_used_demo = await pair_demo_repo.is_used(user.tg_id, partner.tg_id)
+    if not pair_used_demo and await pair_demo_repo.is_used_legacy(user_id, partner_id):
+        await pair_demo_repo.mark_pair(user.tg_id, partner.tg_id)
+        pair_used_demo = True
     if pair_used_demo:
         return False, get_message("START_BOTH_DEMO_USED")
     
@@ -190,6 +209,7 @@ async def create_pair_from_invite(
     pairs_repo = PairsRepository(session)
     subs_repo = SubscriptionsRepository(session)
     pair_demo_repo = PairDemoRepository(session)
+    users_repo = UsersRepository(session)
     
     # Create pair with inviter's preferred mode
     pair = await pairs_repo.create(
@@ -207,8 +227,11 @@ async def create_pair_from_invite(
         period_end=trial_end,
     )
     
-    # Mark this pair as demo used
-    await pair_demo_repo.mark_pair(invited_id, inviter_id)
+    inviter = await users_repo.get_by_id(inviter_id)
+    invited = await users_repo.get_by_id(invited_id)
+    if inviter and invited:
+        # Mark this pair as demo used (by tg_id hash)
+        await pair_demo_repo.mark_pair(invited.tg_id, inviter.tg_id)
     
     # Explicitly commit to ensure pair is saved before sending messages
     await session.commit()

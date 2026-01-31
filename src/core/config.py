@@ -243,6 +243,13 @@ class Settings(BaseSettings):
         le=365,
         description="Duration of trial period in days (default: 7)",
     )
+
+    # Demo protection (pair hash salt)
+    demo_pair_hash_salt: str = Field(
+        description=(
+            "Salt for demo pair hash (used to prevent demo reuse after account deletion)"
+        ),
+    )
     
     # Redis key prefixes
     redis_key_prefix_reminder_sent: str = Field(
