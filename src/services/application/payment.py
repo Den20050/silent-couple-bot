@@ -85,13 +85,7 @@ class PaymentApplicationService:
                 message=get_message("PAY_NO_PAIR"),
             )
         
-        # Filter active pairs (trial or active status)
-        active_pairs = [
-            p for p in all_pairs 
-            if p.status in ("trial", "active")
-        ]
-        
-        if not active_pairs:
+        if not all_pairs:
             from src.bot.exceptions import PairNotFoundError
             raise PairNotFoundError(
                 tg_id=tg_id,
@@ -100,21 +94,46 @@ class PaymentApplicationService:
             )
         
         # Get partner information for each pair
+        from src.db.repositories.subscriptions import SubscriptionsRepository
         from src.db.repositories.users import UsersRepository
         from src.bot.handlers.start.services.pair_service import format_partner_text
         users_repo = UsersRepository(self._session)
+        subs_repo = SubscriptionsRepository(self._session)
         
         pairs_with_info = []
-        for pair in active_pairs:
+        for pair in all_pairs:
             partner_id = (
                 pair.uid_b if pair.uid_a == user.id else pair.uid_a
             )
             partner = await users_repo.get_by_id(partner_id)
-            
-            if partner:
-                partner_nickname = pairs_repo.get_my_nickname_for_partner(pair, user.id)
-                partner_text = format_partner_text(partner.username, partner_nickname)
-                pairs_with_info.append((pair, partner_text))
+            subscription = await subs_repo.get_by_pair_id(pair.id)
+            if not partner:
+                continue
+
+            partner_nickname = pairs_repo.get_my_nickname_for_partner(pair, user.id)
+            partner_text = format_partner_text(partner.username, partner_nickname)
+
+            status_label = ""
+            if pair.status == "trial":
+                status_label = "🟢 демо"
+            elif pair.status == "active":
+                if subscription and subscription.is_lifetime:
+                    status_label = "✅ активна • навсегда"
+                elif subscription and subscription.period_end:
+                    status_label = (
+                        f"✅ активна до {subscription.period_end.strftime('%d.%m.%Y')}"
+                    )
+                else:
+                    status_label = "✅ активна"
+            else:
+                if subscription and subscription.status == "trial":
+                    status_label = "🔴 не активна • демо закончено"
+                elif subscription and subscription.period_end:
+                    status_label = "🔴 не активна • подписка закончилась"
+                else:
+                    status_label = "🔴 не активна"
+
+            pairs_with_info.append((pair, f"{partner_text} ({status_label})"))
         
         if not pairs_with_info:
             from src.bot.exceptions import PairNotFoundError
@@ -171,7 +190,7 @@ class PaymentApplicationService:
             all_pairs = await pairs_repo.get_all_by_user_tg_id(tg_id)
             active_pairs = [p for p in all_pairs if p.status in ("trial", "active")]
 
-            if len(active_pairs) > 1:
+            if len(all_pairs) > 1:
                 return await self.show_pair_selection(tg_id=tg_id)
 
             if not active_pairs:
