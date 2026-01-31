@@ -69,7 +69,8 @@ class PairOnboardingService:
             )
         )
         if lifetime_history.scalar_one_or_none():
-            return False, get_message("START_LIFETIME_PAIR_BROKEN")
+            # Lifetime pairs can be restored without demo restrictions.
+            return True, None
         
         user = await self._users_repo.get_by_id(user_id)
         partner = await self._users_repo.get_by_id(partner_id)
@@ -110,6 +111,19 @@ class PairOnboardingService:
         Returns:
             Created Pair object
         """
+        uid_a, uid_b = (
+            (inviter_id, invited_id)
+            if inviter_id < invited_id
+            else (invited_id, inviter_id)
+        )
+        lifetime_history = await self._session.execute(
+            select(LifetimePairHistory).where(
+                LifetimePairHistory.uid_a == uid_a,
+                LifetimePairHistory.uid_b == uid_b,
+            )
+        )
+        restore_lifetime = lifetime_history.scalar_one_or_none() is not None
+
         # Create pair with inviter's preferred mode
         pair = await self._pairs_repo.create(
             uid_a=inviter_id,  # Inviter is uid_a
@@ -120,17 +134,30 @@ class PairOnboardingService:
         
         # Create subscription (trial) - 7 days
         trial_end = date.today() + timedelta(days=TRIAL_PERIOD_DAYS)
-        await self._subs_repo.create(
+        subscription = await self._subs_repo.create(
             pair_id=pair.id,
             payer_id=inviter_id,  # Inviter is the payer
             period_end=trial_end,
         )
-        
-        inviter = await self._users_repo.get_by_id(inviter_id)
-        invited = await self._users_repo.get_by_id(invited_id)
-        if inviter and invited:
-            # Mark this pair as demo used (by tg_id hash)
-            await self._pair_demo_repo.mark_pair(invited.tg_id, inviter.tg_id)
+
+        if restore_lifetime and subscription:
+            # Restore lifetime subscription for re-registered pair.
+            await self._subs_repo.update_payment(
+                subscription_id=subscription.id,
+                yoo_id=f"lifetime_restore_{pair.id}",
+                period_end=date(2099, 12, 31),
+                is_lifetime=True,
+            )
+            await self._pairs_repo.update_status(pair.id, PairStatus.ACTIVE)
+        else:
+            inviter = await self._users_repo.get_by_id(inviter_id)
+            invited = await self._users_repo.get_by_id(invited_id)
+            if inviter and invited:
+                # Mark this pair as demo used (by tg_id hash)
+                await self._pair_demo_repo.mark_pair(
+                    invited.tg_id,
+                    inviter.tg_id,
+                )
         
         # Explicitly commit to ensure pair is saved before sending messages
         await self._session.commit()

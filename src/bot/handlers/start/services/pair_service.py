@@ -168,7 +168,8 @@ async def validate_pair_creation(
         )
     )
     if lifetime_history.scalar_one_or_none():
-        return False, get_message("START_LIFETIME_PAIR_BROKEN")
+        # Lifetime pairs can be restored without demo restrictions.
+        return True, None
     
     user = await users_repo.get_by_id(user_id)
     partner = await users_repo.get_by_id(partner_id)
@@ -211,6 +212,19 @@ async def create_pair_from_invite(
     pair_demo_repo = PairDemoRepository(session)
     users_repo = UsersRepository(session)
     
+    uid_a, uid_b = (
+        (inviter_id, invited_id)
+        if inviter_id < invited_id
+        else (invited_id, inviter_id)
+    )
+    lifetime_history = await session.execute(
+        select(LifetimePairHistory).where(
+            LifetimePairHistory.uid_a == uid_a,
+            LifetimePairHistory.uid_b == uid_b,
+        )
+    )
+    restore_lifetime = lifetime_history.scalar_one_or_none() is not None
+
     # Create pair with inviter's preferred mode
     pair = await pairs_repo.create(
         uid_a=inviter_id,  # Inviter is uid_a
@@ -221,17 +235,27 @@ async def create_pair_from_invite(
     
     # Create subscription (trial) - 7 days
     trial_end = date.today() + timedelta(days=TRIAL_PERIOD_DAYS)
-    await subs_repo.create(
+    subscription = await subs_repo.create(
         pair_id=pair.id,
         payer_id=inviter_id,  # Inviter is the payer
         period_end=trial_end,
     )
-    
-    inviter = await users_repo.get_by_id(inviter_id)
-    invited = await users_repo.get_by_id(invited_id)
-    if inviter and invited:
-        # Mark this pair as demo used (by tg_id hash)
-        await pair_demo_repo.mark_pair(invited.tg_id, inviter.tg_id)
+
+    if restore_lifetime and subscription:
+        # Restore lifetime subscription for re-registered pair.
+        await subs_repo.update_payment(
+            subscription_id=subscription.id,
+            yoo_id=f"lifetime_restore_{pair.id}",
+            period_end=date(2099, 12, 31),
+            is_lifetime=True,
+        )
+        await pairs_repo.update_status(pair.id, PairStatus.ACTIVE)
+    else:
+        inviter = await users_repo.get_by_id(inviter_id)
+        invited = await users_repo.get_by_id(invited_id)
+        if inviter and invited:
+            # Mark this pair as demo used (by tg_id hash)
+            await pair_demo_repo.mark_pair(invited.tg_id, inviter.tg_id)
     
     # Explicitly commit to ensure pair is saved before sending messages
     await session.commit()
