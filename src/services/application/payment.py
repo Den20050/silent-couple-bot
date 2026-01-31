@@ -118,13 +118,13 @@ class PaymentApplicationService:
                 status_label = "🟢 демо"
             elif pair.status == "active":
                 if subscription and subscription.is_lifetime:
-                    status_label = "✅ активна • навсегда"
+                    status_label = "✅ навсегда"
                 elif subscription and subscription.period_end:
                     status_label = (
-                        f"✅ активна до {subscription.period_end.strftime('%d.%m.%Y')}"
+                        f"✅ до {subscription.period_end.strftime('%d.%m.%Y')}"
                     )
                 else:
-                    status_label = "✅ активна"
+                    status_label = "✅"
             else:
                 if subscription and subscription.status == "trial":
                     status_label = "🔴 не активна • демо закончено"
