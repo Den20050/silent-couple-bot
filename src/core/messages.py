@@ -477,13 +477,6 @@ class Messages:
         "Если пользователь состоит в паре, демо будет сброшено для обоих пользователей пары.\n\n"
         "Для отмены отправьте /cancel"
     )
-    ADMIN_SUBSCRIPTION_STATUS_USAGE = (
-        "Использование: /admin_subscription_status <tg_id>\n\n"
-        "Пример: /admin_subscription_status 123456789"
-    )
-    ADMIN_SUBSCRIPTION_STATUS_NO_PAIRS = (
-        "ℹ️ Пользователь {tg_id} не состоит ни в одной паре."
-    )
     ADMIN_GIFT_PROMPT = (
         "🎁 <b>Подарить подписку</b>\n\n"
         "Отправьте Telegram ID пользователя для подарка подписки.\n\n"
