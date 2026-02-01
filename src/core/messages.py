@@ -467,9 +467,9 @@ class Messages:
         "📊 <b>Статистика бота</b>\n\n"
         "👥 Всего пользователей: <b>{total_users}</b>\n"
         "💑 Всего пар: <b>{total_pairs}</b>\n"
-        "👤 Одиночных пользователей: <b>{single_users}</b>\n"
-        "🎁 Пользователи с демо: <b>{users_with_demo}</b>\n"
-        "💳 Пользователи на подписке: <b>{users_with_subscription}</b>"
+        "👤 Пользователи без пар: <b>{users_without_pairs}</b>\n"
+        "🎁 Пары с демо: <b>{pairs_with_demo}</b>\n"
+        "💳 Пары на подписке: <b>{pairs_with_subscription}</b>"
     )
     ADMIN_RESET_DEMO_PROMPT = (
         "🔄 <b>Сброс демо режима</b>\n\n"
