@@ -205,28 +205,45 @@ async def pair_creation_nickname_check_handler(
             pairs_repo = PairsRepository(session)
             user_pair = await pairs_repo.get_by_user_tg_id(tg_id)
             
+            state_value = None
             if user_pair:
                 # Try to get state for this pair
                 state_key = f"pair_creation_nickname:{user_pair.id}:{tg_id}"
                 state_value = await redis_client.get(state_key)
-                
-                if state_value:
-                    # Found Redis key - set FSM state and process
-                    logger.info(
-                        "Found Redis nickname request, setting FSM state",
-                        tg_id=tg_id,
-                        pair_id=user_pair.id,
+
+            # If not found (user has multiple pairs), scan by tg_id suffix
+            if not state_value:
+                cursor = 0
+                pattern = f"pair_creation_nickname:*:{tg_id}"
+                while True:
+                    cursor, keys = await redis_client.scan(
+                        cursor=cursor,
+                        match=pattern,
+                        count=100,
                     )
-                    await state.set_state(PairCreationStates.waiting_nickname)
-                    # Parse and store pair_id and user_id in FSM data
-                    parts = state_value.decode('utf-8').split(':')
-                    if len(parts) == 2:
-                        pair_id = int(parts[0])
-                        user_id = int(parts[1])
-                        await state.update_data(pair_id=pair_id, user_id=user_id)
-                    # Process the nickname input
-                    await handle_pair_creation_nickname_input(message, session, state)
-                    return
+                    if keys:
+                        # Use first matching key
+                        state_value = await redis_client.get(keys[0])
+                        break
+                    if cursor == 0:
+                        break
+
+            if state_value:
+                # Found Redis key - set FSM state and process
+                logger.info(
+                    "Found Redis nickname request, setting FSM state",
+                    tg_id=tg_id,
+                )
+                await state.set_state(PairCreationStates.waiting_nickname)
+                # Parse and store pair_id and user_id in FSM data
+                parts = state_value.decode("utf-8").split(":")
+                if len(parts) == 2:
+                    pair_id = int(parts[0])
+                    user_id = int(parts[1])
+                    await state.update_data(pair_id=pair_id, user_id=user_id)
+                # Process the nickname input
+                await handle_pair_creation_nickname_input(message, session, state)
+                return
     except Exception as e:
         logger.debug(
             "Error checking Redis for nickname request",
