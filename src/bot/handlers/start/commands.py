@@ -913,22 +913,37 @@ async def handle_pair_creation_nickname_input(
             if redis_client:
                 # Try to find nickname request key for this user
                 # Pattern: pair_creation_nickname:{pair_id}:{tg_id}
-                # We need to scan for keys, but for efficiency, try common patterns
-                # Or get from pairs_repo first
                 pairs_repo = PairsRepository(session)
                 user_pair = await pairs_repo.get_by_user_tg_id(tg_id)
-                
+
+                state_value = None
                 if user_pair:
                     # Try to get state for this pair
                     state_key = f"pair_creation_nickname:{user_pair.id}:{tg_id}"
                     state_value = await redis_client.get(state_key)
-                    
-                    if state_value:
-                        # Parse pair_id:user_id
-                        parts = state_value.decode('utf-8').split(':')
-                        if len(parts) == 2:
-                            pair_id = int(parts[0])
-                            user_id = int(parts[1])
+
+                # If not found (user has multiple pairs), scan by tg_id suffix
+                if not state_value:
+                    cursor = 0
+                    pattern = f"pair_creation_nickname:*:{tg_id}"
+                    while True:
+                        cursor, keys = await redis_client.scan(
+                            cursor=cursor,
+                            match=pattern,
+                            count=100,
+                        )
+                        if keys:
+                            state_value = await redis_client.get(keys[0])
+                            break
+                        if cursor == 0:
+                            break
+
+                if state_value:
+                    # Parse pair_id:user_id
+                    parts = state_value.decode("utf-8").split(":")
+                    if len(parts) == 2:
+                        pair_id = int(parts[0])
+                        user_id = int(parts[1])
         except Exception as e:
             logger.warning("Failed to check Redis for nickname state", error=str(e))
         
