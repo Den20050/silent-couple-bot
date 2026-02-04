@@ -143,25 +143,20 @@ class SettingsUIService:
     
     def build_pair_selection_keyboard(
         self,
-        pairs_with_nicknames: list[tuple[Pair, str | None]],
+        pairs_with_labels: list[tuple[Pair, str]],
     ) -> InlineKeyboardMarkup:
         """Build keyboard for selecting pair for settings.
         
         Args:
-            pairs_with_nicknames: List of tuples (pair, nickname) where nickname is what user gave to partner
+            pairs_with_labels: List of tuples (pair, partner_text) for buttons
             
         Returns:
             InlineKeyboardMarkup with pair selection buttons
         """
         keyboard_buttons = []
         
-        for pair, current_nickname in pairs_with_nicknames:
-            # Format button text
-            if current_nickname:
-                button_text = MessageTemplates.partner_with_name(current_nickname)
-            else:
-                button_text = MessageTemplates.partner_without_name()
-            
+        for pair, partner_text in pairs_with_labels:
+            button_text = f"👤 {partner_text}"
             keyboard_buttons.append([
                 ButtonTemplates.confirm_button(
                     button_text,

@@ -87,14 +87,23 @@ class SettingsApplicationService:
         
         # If user has multiple active pairs, show pair selection
         if len(active_pairs) > 1:
-            # Get nicknames for each pair
-            pairs_with_nicknames = []
+            from src.bot.handlers.start.services.pair_service import format_partner_text
+            from src.db.repositories.users import UsersRepository
+
+            users_repo = UsersRepository(self._session)
+            pairs_with_labels: list[tuple[Pair, str]] = []
             for pair in active_pairs:
+                partner_id = pair.uid_b if pair.uid_a == user.id else pair.uid_a
+                partner = await users_repo.get_by_id(partner_id)
                 nickname = self._pairs_repo.get_my_nickname_for_partner(pair, user.id)
-                pairs_with_nicknames.append((pair, nickname))
+                partner_text = format_partner_text(
+                    partner.username if partner else None,
+                    nickname,
+                )
+                pairs_with_labels.append((pair, partner_text))
             
             text = "Выберите пару для настройки:"
-            keyboard = self._settings_ui.build_pair_selection_keyboard(pairs_with_nicknames)
+            keyboard = self._settings_ui.build_pair_selection_keyboard(pairs_with_labels)
             return True, text, keyboard.model_dump()
         
         # Single active pair - show settings directly
