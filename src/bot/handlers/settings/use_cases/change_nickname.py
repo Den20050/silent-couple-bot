@@ -57,6 +57,7 @@ async def show_partner_selection(
     """
     try:
         pairs_repo = PairsRepository(session)
+        users_repo = UsersRepository(session)
         all_pairs = await pairs_repo.get_all_by_user_tg_id(tg_id)
         
         if not all_pairs:
@@ -70,7 +71,25 @@ async def show_partner_selection(
         # If user has multiple pairs, show partner selection
         if len(all_pairs) > 1:
             text = "Выберите партнёра, для которого хотите изменить имя:"
-            keyboard = settings_ui.build_partner_selection_keyboard(all_pairs, user.id, pairs_repo)
+            from src.bot.handlers.start.services.pair_service import format_partner_text
+
+            pairs_with_labels: list[tuple[object, str]] = []
+            for pair in all_pairs:
+                partner_id = (
+                    pair.uid_b if pair.uid_a == user.id else pair.uid_a
+                )
+                partner = await users_repo.get_by_id(partner_id)
+                current_nickname = pairs_repo.get_my_nickname_for_partner(
+                    pair,
+                    user.id,
+                )
+                partner_text = format_partner_text(
+                    partner.username if partner else None,
+                    current_nickname,
+                )
+                pairs_with_labels.append((pair, partner_text))
+
+            keyboard = settings_ui.build_partner_selection_keyboard(pairs_with_labels)
             return True, text, keyboard.model_dump()
         
         # Single pair - proceed directly to nickname input
