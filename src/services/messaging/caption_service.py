@@ -2,8 +2,6 @@
 
 import random
 from datetime import datetime
-from typing import Optional
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.constants import (
@@ -15,12 +13,13 @@ from src.core.logger import get_logger
 from src.core.messages import get_message
 from src.db.repositories.daily_state import DailyStateRepository
 from src.db.repositories.pairs import PairsRepository
+from src.db.repositories.users import UsersRepository
 
 logger = get_logger(__name__)
 
 
 class CaptionService:
-    """Service for building captions with surprise logic and nickname formatting."""
+    """Service for building captions with surprise logic and nicknames."""
 
     def __init__(self, session: AsyncSession):
         """Initialize caption service.
@@ -31,6 +30,7 @@ class CaptionService:
         self.session = session
         self.pairs_repo = PairsRepository(session)
         self.daily_state_repo = DailyStateRepository(session)
+        self.users_repo = UsersRepository(session)
 
     async def build_wish_caption(
         self,
@@ -47,7 +47,8 @@ class CaptionService:
             sender_user_id: User ID of the sender
             pic_type: Picture type ("morning" or "evening")
             daily_state: DailyState object with last_surprise_at
-            include_surprise: Whether to include Micro-Surprise logic (default: True)
+            include_surprise: Whether to include Micro-Surprise logic
+                (default: True)
 
         Returns:
             Tuple of (caption, is_surprise_used)
@@ -67,7 +68,7 @@ class CaptionService:
             is_surprise = False
 
         # Format caption with nickname
-        caption = self._format_caption_with_nickname(
+        caption = await self._format_caption_with_nickname(
             caption=caption,
             pair=pair,
             sender_user_id=sender_user_id,
@@ -101,7 +102,7 @@ class CaptionService:
                 caption = get_message("RESPONSE_EVENING_SILENT")
 
         # Format caption with nickname
-        caption = self._format_caption_with_nickname(
+        caption = await self._format_caption_with_nickname(
             caption=caption,
             pair=pair,
             sender_user_id=sender_user_id,
@@ -140,7 +141,8 @@ class CaptionService:
             standard_caption = get_message("CAPTION_CHAT_EVENING")
             surprise_captions = MICRO_SURPRISE_EVENING_CAPTIONS
 
-        # Check if we should use surprise (1 in 4 chance, but only if >= 72 hours passed)
+        # Check if we should use surprise (1 in 4 chance, but only if
+        # >= 72 hours passed)
         use_surprise = False
         if random.randint(1, 4) == 1:
             if daily_state.last_surprise_at is None:
@@ -149,7 +151,8 @@ class CaptionService:
             else:
                 # Check if >= 72 hours passed
                 hours_passed = (
-                    (datetime.utcnow() - daily_state.last_surprise_at).total_seconds() / 3600
+                    (datetime.utcnow() - daily_state.last_surprise_at)
+                    .total_seconds() / 3600
                 )
                 if hours_passed >= MICRO_SURPRISE_MIN_HOURS:
                     use_surprise = True
@@ -185,29 +188,34 @@ class CaptionService:
             else:
                 return get_message("CAPTION_SILENT_EVENING")
 
-    def _format_caption_with_nickname(
+    async def _format_caption_with_nickname(
         self,
         caption: str,
         pair,
         sender_user_id: int,
     ) -> str:
-        """Format caption with partner nickname at the beginning.
+        """Format caption with partner nickname or username at the beginning.
 
         Args:
             caption: Original caption text
             pair: Pair object
-            sender_user_id: User ID of the sender (to determine which nickname to use)
+            sender_user_id: User ID of the sender (to determine which
+                nickname to use)
 
         Returns:
             Formatted caption with nickname prefix
         """
         # Get partner nickname (how recipient calls sender)
-        partner_nickname = self.pairs_repo.get_partner_nickname(pair, sender_user_id)
-
+        partner_nickname = self.pairs_repo.get_partner_nickname(
+            pair,
+            sender_user_id,
+        )
         if partner_nickname:
             # Add nickname at the beginning: "от мама. Доброе утро!"
             return f"от {partner_nickname}. {caption}"
-        else:
-            # No nickname set, return original caption
-            return caption
 
+        sender_user = await self.users_repo.get_by_id(sender_user_id)
+        if sender_user and sender_user.username:
+            return f"от @{sender_user.username}. {caption}"
+
+        return f"от близкого человека. {caption}"
