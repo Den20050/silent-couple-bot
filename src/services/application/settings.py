@@ -374,14 +374,24 @@ class SettingsApplicationService:
             return True, text, keyboard.model_dump(), (pair.id, user.id)
         
         # Multiple pairs - show partner selection
-        # Get nicknames for each pair
-        pairs_with_nicknames = []
+        # Build partner labels with username and current nickname (if any)
+        from src.bot.handlers.start.services.pair_service import format_partner_text
+        from src.db.repositories.users import UsersRepository
+
+        users_repo = UsersRepository(self._session)
+        pairs_with_labels: list[tuple[Pair, str]] = []
         for pair in all_pairs:
+            partner_id = pair.uid_b if pair.uid_a == user.id else pair.uid_a
+            partner = await users_repo.get_by_id(partner_id)
             nickname = self._pairs_repo.get_my_nickname_for_partner(pair, user.id)
-            pairs_with_nicknames.append((pair, nickname))
+            partner_text = format_partner_text(
+                partner.username if partner else None,
+                nickname,
+            )
+            pairs_with_labels.append((pair, partner_text))
         
         text = "Выберите партнёра, для которого хотите изменить имя:"
-        keyboard = self._settings_ui.build_partner_selection_keyboard(pairs_with_nicknames)
+        keyboard = self._settings_ui.build_partner_selection_keyboard(pairs_with_labels)
         
         return True, text, keyboard.model_dump(), None
     
