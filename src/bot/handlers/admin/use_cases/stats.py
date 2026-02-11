@@ -18,15 +18,17 @@ async def get_admin_statistics(session: AsyncSession) -> dict[str, int]:
         
     Returns:
         Dictionary with statistics:
-        - total_users: Total number of users
+        - total_users: Total number of users who accepted consent
         - total_pairs: Total number of pairs
         - users_without_pairs: Number of users without pairs
         - pairs_with_demo: Number of pairs with demo
         - pairs_with_subscription: Number of pairs with active subscriptions
     """
     try:
-        # Get total users count
-        users_count_result = await session.execute(select(func.count(User.id)))
+        # Get total users count (only users who accepted consent)
+        users_count_result = await session.execute(
+            select(func.count(User.id)).where(User.consent.is_(True))
+        )
         total_users = users_count_result.scalar() or 0
 
         # Get total pairs count
@@ -47,9 +49,17 @@ async def get_admin_statistics(session: AsyncSession) -> dict[str, int]:
         )
         pairs_with_subscription = active_pairs_result.scalar() or 0
 
-        # Get single users
-        uid_a_subquery = select(Pair.uid_a.label("user_id"))
-        uid_b_subquery = select(Pair.uid_b.label("user_id"))
+        # Get single users (only users who accepted consent)
+        uid_a_subquery = (
+            select(Pair.uid_a.label("user_id"))
+            .join(User, User.id == Pair.uid_a)
+            .where(User.consent.is_(True))
+        )
+        uid_b_subquery = (
+            select(Pair.uid_b.label("user_id"))
+            .join(User, User.id == Pair.uid_b)
+            .where(User.consent.is_(True))
+        )
         users_in_pairs_union = union_all(uid_a_subquery, uid_b_subquery).subquery()
         
         users_in_pairs_result = await session.execute(
