@@ -116,6 +116,17 @@ class LockService:
         redis_client = await self.get_redis_client()
         if redis_client is None:
             return False
+            
+        try:
+            await redis_client.setex(key, ttl_seconds, value)
+            return True
+        except Exception as e:
+            logger.warning(
+                "Failed to set Redis key",
+                key=key,
+                error=str(e),
+            )
+            return False
 
     async def set_key_if_not_exists(
         self,
