@@ -216,6 +216,4 @@ class CaptionService:
 
         sender_user = await self.users_repo.get_by_id(sender_user_id)
         if sender_user and sender_user.username:
-            return f"от @{sender_user.username}. {caption}"
-
-        return f"от близкого человека. {caption}"
+            return f"от @{sender_user.username}. {caption}"        return f"от близкого человека. {caption}"

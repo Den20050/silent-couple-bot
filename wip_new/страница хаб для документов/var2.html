@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Юридическая информация — 24PolicyBot</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #1a202c;
+            background: #f7fafc;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .hero {
+            background: linear-gradient(135deg, #FFD93D 0%, #FFD93D 50%, #C4B5FD 50%, #C4B5FD 100%);
+            padding: 60px 20px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .hero::before {
+            content: "";
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: repeating-linear-gradient(
+                45deg,
+                transparent,
+                transparent 10px,
+                rgba(255,255,255,0.1) 10px,
+                rgba(255,255,255,0.1) 20px
+            );
+            animation: slide 20s linear infinite;
+        }
+        
+        @keyframes slide {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(50px, 50px); }
+        }
+        
+        .hero-content {
+            position: relative;
+            z-index: 1;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        .logo-container {
+            width: 200px;
+            height: 200px;
+            margin: 0 auto 24px;
+            background: white;
+            border-radius: 32px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 6px solid #1a202c;
+            position: relative;
+        }
+        
+        .logo-container img {
+            width: 90%;
+            height: 90%;
+            object-fit: contain;
+        }
+        
+        .logo-emoji {
+            font-size: 100px;
+        }
+        
+        h1 {
+            font-size: 32px;
+            font-weight: 800;
+            color: #1a202c;
+            margin-bottom: 8px;
+            text-shadow: 2px 2px 0px rgba(255,255,255,0.5);
+        }
+        
+        .tagline {
+            font-size: 16px;
+            color: #4a5568;
+            font-weight: 500;
+        }
+        
+        .main-content {
+            max-width: 800px;
+            margin: -40px auto 40px;
+            padding: 0 20px;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 24px;
+            padding: 32px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            border: 4px solid #1a202c;
+            transition: all 0.3s;
+        }
+        
+        .card:hover {
+            transform: translateY(-8px) rotate(1deg);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+        }
+        
+        .card-icon {
+            width: 64px;
+            height: 64px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            margin-bottom: 20px;
+            border: 3px solid #1a202c;
+        }
+        
+        .card.docs .card-icon { background: #FFD93D; }
+        .card.dev .card-icon { background: #6EE7B7; }
+        
+        h2 {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: #1a202c;
+        }
+        
+        .doc-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .doc-btn {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 20px;
+            background: linear-gradient(135deg, #FFD93D 0%, #FB7185 100%);
+            border-radius: 16px;
+            text-decoration: none;
+            color: #1a202c;
+            font-weight: 700;
+            border: 3px solid #1a202c;
+            box-shadow: 4px 4px 0 #1a202c;
+            transition: all 0.2s;
+        }
+        
+        .doc-btn:hover {
+            transform: translate(-2px, -2px);
+            box-shadow: 6px 6px 0 #1a202c;
+        }
+        
+        .doc-btn:active {
+            transform: translate(2px, 2px);
+            box-shadow: 2px 2px 0 #1a202c;
+        }
+        
+        .doc-btn-icon {
+            font-size: 28px;
+            width: 50px;
+            height: 50px;
+            background: white;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid #1a202c;
+        }
+        
+        .doc-btn-text {
+            flex: 1;
+            text-align: left;
+        }
+        
+        .doc-btn-title {
+            display: block;
+            font-size: 16px;
+            margin-bottom: 4px;
+        }
+        
+        .doc-btn-desc {
+            display: block;
+            font-size: 13px;
+            opacity: 0.8;
+            font-weight: 500;
+        }
+        
+        .dev-details {
+            background: linear-gradient(135deg, #C4B5FD 0%, #6EE7B7 100%);
+            padding: 20px;
+            border-radius: 16px;
+            border: 3px solid #1a202c;
+        }
+        
+        .dev-row {
+            display: flex;
+            padding: 12px 0;
+            border-bottom: 2px solid rgba(26, 32, 44, 0.2);
+            gap: 12px;
+        }
+        
+        .dev-row:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+        
+        .dev-row:first-child {
+            padding-top: 0;
+        }
+        
+        .dev-label {
+            font-weight: 700;
+            color: #1a202c;
+            min-width: 120px;
+            font-size: 14px;
+        }
+        
+        .dev-value {
+            color: #2d3748;
+            font-size: 14px;
+            flex: 1;
+        }
+        
+        .dev-value a {
+            color: #6B46C1;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        
+        .dev-value a:hover {
+            text-decoration: underline;
+        }
+        
+        .footer {
+            background: #1a202c;
+            color: white;
+            text-align: center;
+            padding: 40px 20px;
+            margin-top: 60px;
+        }
+        
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        
+        .footer-links a {
+            color: #FFD93D;
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.2s;
+        }
+        
+        .footer-links a:hover {
+            color: #6EE7B7;
+        }
+        
+        .footer-copy {
+            color: #a0aec0;
+            font-size: 14px;
+        }
+        
+        @media (max-width: 640px) {
+            h1 { font-size: 24px; }
+            .hero { padding: 40px 20px; }
+            .logo-container { width: 160px; height: 160px; }
+            .logo-emoji { font-size: 80px; }
+            .grid { grid-template-columns: 1fr; }
+            .card { padding: 24px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="hero">
+        <div class="hero-content">
+            <div class="logo-container">
+                <!-- Замените на реальное изображение -->
+                <!-- <img src="/static/logo.png" alt="24PolicyBot"> -->
+                <span class="logo-emoji">🤝</span>
+            </div>
+            <h1>24PolicyBot</h1>
+            <p class="tagline">Соединяем клиентов и исполнителей</p>
+        </div>
+    </div>
+    
+    <div class="main-content">
+        <div class="grid">
+            <!-- Документы -->
+            <div class="card docs">
+                <div class="card-icon">📚</div>
+                <h2>Юридические документы</h2>
+                <div class="doc-buttons">
+                    <a href="/consent" class="doc-btn">
+                        <span class="doc-btn-icon">🔐</span>
+                        <span class="doc-btn-text">
+                            <span class="doc-btn-title">Политика конфиденциальности</span>
+                            <span class="doc-btn-desc">Защита ваших данных</span>
+                        </span>
+                    </a>
+                    <a href="/offer" class="doc-btn">
+                        <span class="doc-btn-icon">📋</span>
+                        <span class="doc-btn-text">
+                            <span class="doc-btn-title">Публичная оферта</span>
+                            <span class="doc-btn-desc">Условия сервиса</span>
+                        </span>
+                    </a>
+                    <a href="/privacy" class="doc-btn">
+                        <span class="doc-btn-icon">✅</span>
+                        <span class="doc-btn-text">
+                            <span class="doc-btn-title">Согласие на ПДн</span>
+                            <span class="doc-btn-desc">Обработка данных</span>
+                        </span>
+                    </a>
+                </div>
+            </div>
+            
+            <!-- Разработчик -->
+            <div class="card dev">
+                <div class="card-icon">👨‍</div>
+                <h2>Разработчик</h2>
+                <div class="dev-details">
+                    <div class="dev-row">
+                        <span class="dev-label">Наименование:</span>
+                        <span class="dev-value">[Ваше ИП/ООО или ФИО]</span>
+                    </div>
+                    <div class="dev-row">
+                        <span class="dev-label">ИНН:</span>
+                        <span class="dev-value">[Ваш ИНН]</span>
+                    </div>
+                    <div class="dev-row">
+                        <span class="dev-label">Email:</span>
+                        <span class="dev-value"><a href="mailto:support@24policybot.ru">support@24policybot.ru</a></span>
+                    </div>
+                    <div class="dev-row">
+                        <span class="dev-label">Telegram:</span>
+                        <span class="dev-value"><a href="https://t.me/[ваш_юзернейм]" target="_blank">@[ваш_юзернейм]</a></span>
+                    </div>
+                    <div class="dev-row">
+                        <span class="dev-label">Сайт:</span>
+                        <span class="dev-value"><a href="https://24policybot.ru" target="_blank">24policybot.ru</a></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="footer">
+        <div class="footer-links">
+            <a href="/offer">📋 Оферта</a>
+            <a href="/consent">🔐 Конфиденциальность</a>
+            <a href="/privacy">✅ ПДн</a>
+        </div>
+        <p class="footer-copy">© 2024–<span id="year"></span> 24PolicyBot. Все права защищены.</p>
+    </div>
+
+    <script>
+        document.getElementById('year').textContent = new Date().getFullYear();
+    </script>
+</body>
+</html>
