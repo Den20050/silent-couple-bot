@@ -19,7 +19,7 @@ from src.worker.tasks.cleanup import (
     cleanup_old_data as cleanup_old_data_task,
     cleanup_old_messages as cleanup_old_messages_task,
 )
-from src.worker.tasks.summary import send_week_summary as send_week_summary_task
+# from src.worker.tasks.summary import send_week_summary as send_week_summary_task
 from src.worker.tasks.nudges import send_share_nudge as send_share_nudge_task
 from src.worker.tasks.renewal import send_renewal_reminders as send_renewal_reminders_task
 
@@ -124,10 +124,10 @@ async def send_initiator_warning(
     )
 
 
-async def send_week_summary(ctx: dict[str, Any]) -> None:
-    """Wrapper for send week summary task."""
-    worker_context = await get_worker_context()
-    await send_week_summary_task(ctx, worker_context)
+# async def send_week_summary(ctx: dict[str, Any]) -> None:
+#     """Wrapper for send week summary task."""
+#     worker_context = await get_worker_context()
+#     await send_week_summary_task(ctx, worker_context)
 
 
 async def send_share_nudge(ctx: dict[str, Any]) -> None:
@@ -162,7 +162,7 @@ class WorkerSettings:
         dunning_notifications,
         send_recipient_reminder,
         send_initiator_warning,
-        send_week_summary,
+        # send_week_summary,  # Disabled: weekly summary notifications
         send_share_nudge,
         cleanup_old_messages,
         send_renewal_reminders,
@@ -172,7 +172,7 @@ class WorkerSettings:
         cron(evening_sender, minute=None),  # Every minute
         cron(cleanup_old_data, hour=3, minute=0),  # 03:00 UTC
         cron(dunning_notifications, hour=10, minute=0),  # 10:00 UTC
-        cron(send_week_summary, hour=0, minute=0),  # 00:00 UTC
+        # cron(send_week_summary, hour=0, minute=0),  # 00:00 UTC - Disabled: weekly summary
         cron(send_share_nudge, hour=14, minute=0),  # 14:00 UTC
         cron(cleanup_old_messages, hour=None, minute=30),  # Every hour at :30
         cron(send_renewal_reminders, hour=None, minute=0),  # Every hour
