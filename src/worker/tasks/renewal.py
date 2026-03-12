@@ -11,6 +11,7 @@ from src.core.messages import get_message
 from src.db.models import User
 from src.db.repositories.pairs import PairsRepository
 from src.db.repositories.subscriptions import SubscriptionsRepository
+from src.services.messaging.partner_label import format_partner_label
 from src.worker.di.context import WorkerContext
 
 logger = get_logger(__name__)
@@ -149,11 +150,44 @@ async def send_renewal_reminders(ctx: dict[str, Any], worker_context: WorkerCont
                 else:
                     days_word = "дней"
                 
-                reminder_text = get_message(
-                    "SUBSCRIPTION_RENEWAL_REMINDER",
-                    days_left=days_left,
-                    days_word=days_word,
+                # Format partner labels
+                label_for_a = format_partner_label(
+                    partner_nickname=pairs_repo.get_my_nickname_for_partner(pair, user_a.id),
+                    partner_username=user_b.username,
                 )
+                label_for_b = format_partner_label(
+                    partner_nickname=pairs_repo.get_my_nickname_for_partner(pair, user_b.id),
+                    partner_username=user_a.username,
+                )
+                
+                # Build personalized reminder messages
+                if label_for_a:
+                    reminder_text_a = get_message(
+                        "SUBSCRIPTION_RENEWAL_REMINDER_WITH_PARTNER",
+                        days_left=days_left,
+                        days_word=days_word,
+                        partner_label=label_for_a,
+                    )
+                else:
+                    reminder_text_a = get_message(
+                        "SUBSCRIPTION_RENEWAL_REMINDER",
+                        days_left=days_left,
+                        days_word=days_word,
+                    )
+                
+                if label_for_b:
+                    reminder_text_b = get_message(
+                        "SUBSCRIPTION_RENEWAL_REMINDER_WITH_PARTNER",
+                        days_left=days_left,
+                        days_word=days_word,
+                        partner_label=label_for_b,
+                    )
+                else:
+                    reminder_text_b = get_message(
+                        "SUBSCRIPTION_RENEWAL_REMINDER",
+                        days_left=days_left,
+                        days_word=days_word,
+                    )
                 
                 # Add pay button
                 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -168,15 +202,15 @@ async def send_renewal_reminders(ctx: dict[str, Any], worker_context: WorkerCont
                     ],
                 )
                 
-                # Send reminders to both users
+                # Send personalized reminders to both users
                 await messenger.send_message(
                     chat_id=user_a.tg_id,
-                    text=reminder_text,
+                    text=reminder_text_a,
                     reply_markup=keyboard,
                 )
                 await messenger.send_message(
                     chat_id=user_b.tg_id,
-                    text=reminder_text,
+                    text=reminder_text_b,
                     reply_markup=keyboard,
                 )
                 

@@ -718,6 +718,11 @@ class Messages:
         "Ваша подписка заканчивается через {days_left} {days_word}.\n\n"
         "Продлите подписку, чтобы продолжить пользоваться ботом."
     )
+    SUBSCRIPTION_RENEWAL_REMINDER_WITH_PARTNER = (
+        "⏰ <b>Напоминание о продлении подписки</b>\n\n"
+        "Ваша подписка с {partner_label} заканчивается через {days_left} {days_word}.\n\n"
+        "Продлите подписку, чтобы продолжить пользоваться ботом."
+    )
     WEBHOOK_LIFETIME_TEXT = "Навсегда"
     WORKER_RECIPIENT_FALLBACK = "Ваш близкий"
 
