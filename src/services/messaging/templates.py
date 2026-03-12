@@ -216,17 +216,17 @@ class ButtonTemplates:
         )
     
     @staticmethod
-    def offer_button(url: str = "https://www.24policybot.ru/offer") -> InlineKeyboardButton:
-        """Create offer button.
+    def offer_button(url: str = "https://www.24policybot.ru/legal") -> InlineKeyboardButton:
+        """Create info button with legal documents.
         
         Args:
-            url: Offer URL
+            url: Legal info page URL
             
         Returns:
-            InlineKeyboardButton for offer
+            InlineKeyboardButton for legal info
         """
         return InlineKeyboardButton(
-            text="📄 Оферта",
+            text="ℹ️ Информация",
             url=url,
         )
 
