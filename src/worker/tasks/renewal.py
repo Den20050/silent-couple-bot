@@ -96,8 +96,9 @@ async def send_renewal_reminders(ctx: dict[str, Any], worker_context: WorkerCont
                 # Calculate days left
                 days_left = (sub.period_end - today).days
                 
-                # Only send if within threshold
-                if days_left > days_before or days_left < 0:
+                # Only send if within threshold (1-3 days before expiry)
+                # Do NOT send on expiry day (days_left = 0) or after
+                if days_left > days_before or days_left <= 0:
                     logger.debug(
                         "Subscription not within threshold",
                         subscription_id=sub.id,
