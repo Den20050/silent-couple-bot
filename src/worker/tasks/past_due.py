@@ -58,8 +58,10 @@ async def check_and_update_expired_subscriptions(
                     )
                     continue
                 
-                # Update pair status
+                # Update pair status and commit immediately
+                # This ensures status is updated even if notification fails
                 await pairs_repo.update_status(pair.id, PairStatus.PAST_DUE)
+                await session.commit()
                 updated_count += 1
                 
                 logger.info(
@@ -69,68 +71,75 @@ async def check_and_update_expired_subscriptions(
                     period_end=sub.period_end.isoformat(),
                 )
                 
-                # Send notifications if requested
+                # Send notifications if requested (in separate try-except)
                 if send_notifications:
-                    lock_service = worker_context.lock_service
-                    dunning_key = f"dunning_notification:{pair.id}:{today.isoformat()}"
-                    can_send = await lock_service.set_key_if_not_exists(
-                        dunning_key,
-                        "1",
-                        86400,
-                    )
-                    if not can_send:
-                        logger.debug(
-                            "Dunning notification already sent today",
+                    try:
+                        lock_service = worker_context.lock_service
+                        dunning_key = f"dunning_notification:{pair.id}:{today.isoformat()}"
+                        can_send = await lock_service.set_key_if_not_exists(
+                            dunning_key,
+                            "1",
+                            86400,
+                        )
+                        if not can_send:
+                            logger.debug(
+                                "Dunning notification already sent today",
+                                pair_id=pair.id,
+                            )
+                            continue
+
+                        # Get users
+                        user_a_result = await session.execute(
+                            select(User).where(User.id == pair.uid_a)
+                        )
+                        user_a = user_a_result.scalar_one()
+                        user_b_result = await session.execute(
+                            select(User).where(User.id == pair.uid_b)
+                        )
+                        user_b = user_b_result.scalar_one()
+                        
+                        # Send notifications using NotificationBuilder
+                        messenger = worker_context.messenger
+                        notification_builder = worker_context.notification_builder
+                        
+                        label_for_a = format_partner_label(
+                            partner_nickname=pairs_repo.get_my_nickname_for_partner(pair, user_a.id),
+                            partner_username=user_b.username,
+                        )
+                        label_for_b = format_partner_label(
+                            partner_nickname=pairs_repo.get_my_nickname_for_partner(pair, user_b.id),
+                            partner_username=user_a.username,
+                        )
+                        dunning_text_a, keyboard = await notification_builder.build_dunning_notification_message(
+                            partner_label=label_for_a,
                             pair_id=pair.id,
                         )
-                        await session.commit()
-                        continue
-
-                    # Get users
-                    user_a_result = await session.execute(
-                        select(User).where(User.id == pair.uid_a)
-                    )
-                    user_a = user_a_result.scalar_one()
-                    user_b_result = await session.execute(
-                        select(User).where(User.id == pair.uid_b)
-                    )
-                    user_b = user_b_result.scalar_one()
-                    
-                    # Send notifications using NotificationBuilder
-                    messenger = worker_context.messenger
-                    notification_builder = worker_context.notification_builder
-                    
-                    label_for_a = format_partner_label(
-                        partner_nickname=pairs_repo.get_my_nickname_for_partner(pair, user_a.id),
-                        partner_username=user_b.username,
-                    )
-                    label_for_b = format_partner_label(
-                        partner_nickname=pairs_repo.get_my_nickname_for_partner(pair, user_b.id),
-                        partner_username=user_a.username,
-                    )
-                    dunning_text_a, keyboard = await notification_builder.build_dunning_notification_message(
-                        partner_label=label_for_a,
-                        pair_id=pair.id,
-                    )
-                    dunning_text_b, _keyboard_b = await notification_builder.build_dunning_notification_message(
-                        partner_label=label_for_b,
-                        pair_id=pair.id,
-                    )
-                    
-                    await messenger.send_message(
-                        chat_id=user_a.tg_id,
-                        text=dunning_text_a,
-                        reply_markup=keyboard,
-                    )
-                    await messenger.send_message(
-                        chat_id=user_b.tg_id,
-                        text=dunning_text_b,
-                        reply_markup=keyboard,
-                    )
-                    
-                    logger.info("Dunning notification sent", pair_id=pair.id)
+                        dunning_text_b, _keyboard_b = await notification_builder.build_dunning_notification_message(
+                            partner_label=label_for_b,
+                            pair_id=pair.id,
+                        )
+                        
+                        await messenger.send_message(
+                            chat_id=user_a.tg_id,
+                            text=dunning_text_a,
+                            reply_markup=keyboard,
+                        )
+                        await messenger.send_message(
+                            chat_id=user_b.tg_id,
+                            text=dunning_text_b,
+                            reply_markup=keyboard,
+                        )
+                        
+                        logger.info("Dunning notification sent", pair_id=pair.id)
+                    except Exception as notification_error:
+                        # Log error but don't fail the task - status is already updated
+                        logger.error(
+                            "Error sending dunning notification (status already updated)",
+                            pair_id=pair.id,
+                            error=str(notification_error),
+                            exc_info=True,
+                        )
                 
-                await session.commit()
             except Exception as e:
                 logger.error(
                     "Error updating expired subscription",
