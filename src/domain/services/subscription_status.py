@@ -235,7 +235,9 @@ class SubscriptionStatusService:
         self,
         pair: Pair,
     ) -> tuple[bool, Optional[str]]:
-        """Check if subscription can be paid (not lifetime, not active).
+        """Check if subscription can be paid (only block lifetime subscriptions).
+        
+        Allow early renewal - remaining days will be added to new subscription.
         
         Args:
             pair: Pair object
@@ -243,14 +245,13 @@ class SubscriptionStatusService:
         Returns:
             Tuple of (can_pay: bool, error_message: Optional[str])
         """
-        if pair.status == PairStatus.ACTIVE.value:
-            subscription = await self._subs_repo.get_by_pair_id(pair.id)
-            if subscription and subscription.is_lifetime:
-                return False, "PAY_SUBSCRIPTION_LIFETIME"
-            
-            if subscription and subscription.period_end:
-                period_end_str = subscription.period_end.strftime('%d.%m.%Y')
-                return False, f"PAY_SUBSCRIPTION_ACTIVE_UNTIL:{period_end_str}"
+        subscription = await self._subs_repo.get_by_pair_id(pair.id)
         
+        # Only block lifetime subscriptions from renewal
+        if subscription and subscription.is_lifetime:
+            return False, "PAY_SUBSCRIPTION_LIFETIME"
+        
+        # Allow payment for all other cases (trial, active, past_due)
+        # Remaining days will be added by calculate_subscription_period_end
         return True, None
 
