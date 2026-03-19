@@ -171,7 +171,7 @@ class WorkerSettings:
         cron(morning_sender, minute=None),  # Every minute
         cron(evening_sender, minute=None),  # Every minute
         cron(cleanup_old_data, hour=3, minute=0),  # 03:00 UTC
-        cron(dunning_notifications, hour=10, minute=0),  # 10:00 UTC
+        cron(dunning_notifications, hour=None, minute=0),  # Every hour - check expired subscriptions
         # cron(send_week_summary, hour=0, minute=0),  # 00:00 UTC - Disabled: weekly summary
         cron(send_share_nudge, hour=14, minute=0),  # 14:00 UTC
         cron(cleanup_old_messages, hour=None, minute=30),  # Every hour at :30
