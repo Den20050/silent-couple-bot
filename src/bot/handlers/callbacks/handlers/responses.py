@@ -8,13 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.messages import get_message
 from src.core.logger import get_logger
-from src.core.di.container import Container
 from src.db.repositories.pairs import PairsRepository
 from src.db.repositories.users import UsersRepository
 from src.services.telegram.messenger import TelegramMessenger
 from src.bot.handlers.callbacks.validators import parse_callback_data_with_day
 from src.bot.handlers.callbacks.use_cases.respond_to_wish import respond_to_wish
-from src.services.messaging.active_action_message import is_message_active, ActionKind
 from src.bot.handlers.start.services.pair_service import format_partner_text
 
 logger = get_logger(__name__)
@@ -52,25 +50,13 @@ async def handle_tap_morning(
     callback: CallbackQuery,
     session: AsyncSession,
     telegram_messenger: TelegramMessenger,
-    container: Container,
 ) -> None:
     """Handle morning tap (response)."""
     tg_id = callback.from_user.id
-    if callback.message:
-        ok = await is_message_active(
-            redis=container.redis,
-            tg_id=tg_id,
-            message_id=callback.message.message_id,
-            kind=ActionKind.REMINDER,
-        )
-        if not ok:
-            # Best-effort: remove stale buttons so the user stops clicking.
-            await telegram_messenger.remove_reply_markup(
-                chat_id=tg_id,
-                message_id=callback.message.message_id,
-            )
-            await callback.answer(get_message("CALLBACK_STALE_MESSAGE"), show_alert=True)
-            return
+    
+    # NOTE: We don't check is_message_active here because "Отправить в ответ" button
+    # should work all day regardless of other messages (e.g., subscription reminders).
+    # The respond_to_wish function already has proper checks for already_responded, etc.
 
     # Parse callback data: tap_morning_{pair_id}_{initiator_tg_id}|{day_iso}
     parsed = parse_callback_data_with_day(callback.data, prefix="tap_morning_")
@@ -138,24 +124,13 @@ async def handle_tap_evening(
     callback: CallbackQuery,
     session: AsyncSession,
     telegram_messenger: TelegramMessenger,
-    container: Container,
 ) -> None:
     """Handle evening tap (response)."""
     tg_id = callback.from_user.id
-    if callback.message:
-        ok = await is_message_active(
-            redis=container.redis,
-            tg_id=tg_id,
-            message_id=callback.message.message_id,
-            kind=ActionKind.REMINDER,
-        )
-        if not ok:
-            await telegram_messenger.remove_reply_markup(
-                chat_id=tg_id,
-                message_id=callback.message.message_id,
-            )
-            await callback.answer(get_message("CALLBACK_STALE_MESSAGE"), show_alert=True)
-            return
+    
+    # NOTE: We don't check is_message_active here because "Отправить в ответ" button
+    # should work all day regardless of other messages (e.g., subscription reminders).
+    # The respond_to_wish function already has proper checks for already_responded, etc.
 
     # Parse callback data: tap_evening_{pair_id}_{initiator_tg_id}|{day_iso}
     parsed = parse_callback_data_with_day(callback.data, prefix="tap_evening_")
