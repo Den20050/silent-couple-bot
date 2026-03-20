@@ -618,6 +618,17 @@ class Messages:
     PAY_SUBSCRIPTION_NOT_FOUND = "Ошибка: подписка не найдена"
     PAY_SUBSCRIPTION_LIFETIME = "✅ Подписка активна навсегда"
     PAY_INVALID_TARIFF = "❌ Неверный тариф. Выберите тариф из списка."
+    PAY_CONFIRM_TERMS_MESSAGE = (
+        "💳 <b>Подтверждение оплаты</b>\n\n"
+        "Тариф: <b>{plan_name}</b>\n"
+        "Сумма: <b>{price} {symbol}</b>\n"
+        "Период: <b>{period_text}</b>\n\n"
+        "⚠️ <b>Важное условие:</b>\n"
+        "Услуга не подлежит возврату после получения доступа.\n\n"
+        "Нажимая кнопку «✅ Согласен и оплатить», вы подтверждаете, что:\n"
+        "• Ознакомились с <a href=\"https://www.24policybot.ru/legal\">условиями оферты</a>\n"
+        "• Понимаете, что услуга не подлежит возврату после получения доступа"
+    )
     PAY_CREATE_PAYMENT_MESSAGE = (
         "💳 Оплата подписки: {plan_name}\n\n"
         "Сумма: {price} {symbol}\n"

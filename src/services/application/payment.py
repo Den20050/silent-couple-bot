@@ -326,6 +326,134 @@ class PaymentApplicationService:
         )
         return True, message_text, keyboard
     
+    async def show_terms_confirmation(
+        self,
+        tg_id: int,
+        plan_id: str,
+        currency_code: str,
+        pair_id: int | None = None,
+    ) -> tuple[bool, str, InlineKeyboardMarkup | None]:
+        """Show terms confirmation page before payment.
+        
+        Args:
+            tg_id: Telegram user ID
+            plan_id: Plan ID (e.g., "1_month", "lifetime")
+            currency_code: Currency code (e.g., "RUB", "USD")
+            pair_id: Optional pair ID (if None, uses first pair)
+            
+        Returns:
+            Tuple of (success: bool, message_text: str, keyboard: InlineKeyboardMarkup | None)
+        """
+        # Validate currency
+        from src.bot.validators.currency import validate_currency
+        validate_currency(currency_code, "PAY_ERROR")
+        
+        # Validate user exists
+        from src.bot.validators.user import validate_user_exists
+        user = await validate_user_exists(self._session, tg_id, "PAY_START_REQUIRED")
+        
+        # Get pair (either specified or first one)
+        from src.db.repositories.pairs import PairsRepository
+        pairs_repo = PairsRepository(self._session)
+        
+        if pair_id:
+            # Validate pair exists and user has access
+            from src.bot.validators.pair import validate_pair_exists, validate_pair_access
+            pair = await validate_pair_exists(self._session, pair_id, "PAY_NO_PAIR")
+            await validate_pair_access(self._session, pair, user.id, tg_id, "PAY_NO_PAIR")
+        else:
+            # Use first pair (backward compatibility)
+            from src.bot.validators.pair import validate_user_has_pair
+            pair = await validate_user_has_pair(self._session, tg_id, "PAY_NO_PAIR")
+            pair_id = pair.id
+        
+        # Validate subscription exists
+        from src.bot.validators.subscription import validate_subscription_exists
+        subscription = await validate_subscription_exists(self._session, pair)
+        
+        # Check current status using domain service
+        can_pay, error_key = await self._subscription_status_service.check_subscription_for_payment(pair)
+        if not can_pay:
+            from src.bot.exceptions import PaymentError
+            if error_key == "PAY_SUBSCRIPTION_LIFETIME":
+                raise PaymentError(
+                    message_key="PAY_SUBSCRIPTION_LIFETIME",
+                    message=get_message("PAY_SUBSCRIPTION_LIFETIME"),
+                    tg_id=tg_id,
+                    pair_id=pair.id,
+                )
+            else:
+                raise PaymentError(
+                    message_key="PAY_ERROR",
+                    message=get_message("PAY_ERROR"),
+                    tg_id=tg_id,
+                    pair_id=pair.id,
+                )
+        
+        # Validate plan exists
+        if plan_id not in SUBSCRIPTION_PLANS:
+            from src.bot.exceptions import PaymentError
+            raise PaymentError(
+                message_key="PAY_INVALID_TARIFF",
+                message=get_message("PAY_INVALID_TARIFF"),
+                tg_id=tg_id,
+                pair_id=pair.id,
+            )
+        
+        plan = SUBSCRIPTION_PLANS[plan_id]
+        period_days = plan.get("days")
+        plan_name = plan["name"]
+        is_lifetime = plan.get("is_lifetime", False)
+        
+        # Get base RUB price
+        prices = self._settings.get_subscription_prices()
+        rub_prices = prices.get("RUB", {})
+        rub_price = rub_prices.get(plan_id, 0)
+        
+        if rub_price == 0:
+            from src.bot.exceptions import PaymentError
+            raise PaymentError(
+                message_key="PAY_INVALID_TARIFF",
+                message=get_message("PAY_INVALID_TARIFF"),
+                tg_id=tg_id,
+                pair_id=pair.id,
+            )
+        
+        # Calculate price in selected currency
+        currency_info = SUPPORTED_CURRENCIES.get(currency_code, SUPPORTED_CURRENCIES["RUB"])
+        decimals = currency_info["decimals"]
+        
+        price_in_currency = await self._currency_rates_service.calculate_price_in_currency(
+            rub_price=rub_price,
+            currency_code=currency_code,
+        )
+        
+        price_str = f"{price_in_currency:.{decimals}f}".rstrip('0').rstrip('.')
+        
+        # Build confirmation message
+        period_text = (
+            get_message("PAY_LIFETIME_TEXT")
+            if is_lifetime
+            else f"{period_days} дней"
+        )
+        
+        message_text = get_message(
+            "PAY_CONFIRM_TERMS_MESSAGE",
+            plan_name=plan_name,
+            price=price_str,
+            symbol=currency_info["symbol"],
+            period_text=period_text,
+        )
+        
+        # Build confirmation keyboard
+        keyboard = self._payment_ui.build_terms_confirmation_keyboard(
+            plan_id=plan_id,
+            currency_code=currency_code,
+            pair_id=pair_id,
+        )
+        
+        return True, message_text, keyboard
+    
     async def create_payment_for_tariff(
         self,
         tg_id: int,
