@@ -60,6 +60,15 @@ class ResponseSenderService:
             Tuple of (success: bool, error_message: Optional[str])
             error_message is None on success, otherwise contains error key
         """
+        logger.info(
+            "Starting send_response",
+            pair_id=pair_id,
+            check_day=str(check_day),
+            responder_tg_id=tg_id,
+            initiator_tg_id=initiator_tg_id,
+            pic_type=pic_type,
+        )
+        
         # Get pair and users
         pair = await self.pairs_repo.get_by_id(pair_id)
         if not pair:
@@ -85,19 +94,45 @@ class ResponseSenderService:
         # Check if wish exists
         if pic_type == "morning":
             if daily_state.morning_initiator is None:
+                logger.warning(
+                    "No morning initiator found in daily state",
+                    pair_id=pair_id,
+                    check_day=str(check_day),
+                    responder_tg_id=tg_id,
+                )
                 return False, "CALLBACK_STALE_MESSAGE"
             initiator_user_id = daily_state.morning_initiator
         else:  # evening
             if daily_state.evening_initiator is None:
+                logger.warning(
+                    "No evening initiator found in daily state",
+                    pair_id=pair_id,
+                    check_day=str(check_day),
+                    responder_tg_id=tg_id,
+                )
                 return False, "CALLBACK_STALE_MESSAGE"
             initiator_user_id = daily_state.evening_initiator
 
         # Check if already responded
         if pic_type == "morning":
             if daily_state.morning_responded_at is not None:
+                logger.warning(
+                    "Morning response already sent",
+                    pair_id=pair_id,
+                    check_day=str(check_day),
+                    responder_tg_id=tg_id,
+                    responded_at=str(daily_state.morning_responded_at),
+                )
                 return False, "CALLBACK_ALREADY_RESPONDED"
         else:  # evening
             if daily_state.evening_responded_at is not None:
+                logger.warning(
+                    "Evening response already sent",
+                    pair_id=pair_id,
+                    check_day=str(check_day),
+                    responder_tg_id=tg_id,
+                    responded_at=str(daily_state.evening_responded_at),
+                )
                 return False, "CALLBACK_ALREADY_RESPONDED"
 
         # Verify initiator from callback_data
@@ -134,7 +169,20 @@ class ResponseSenderService:
             )
 
         if not success:
+            logger.warning(
+                "Failed to set response in daily state",
+                pair_id=pair_id,
+                check_day=str(check_day),
+                pic_type=pic_type,
+            )
             return False, "CALLBACK_SAVE_RESPONSE_ERROR"
+        
+        logger.info(
+            "Response marked in daily state successfully",
+            pair_id=pair_id,
+            check_day=str(check_day),
+            pic_type=pic_type,
+        )
 
         # Get random image for response
         pic_type_enum = (
@@ -142,6 +190,13 @@ class ResponseSenderService:
         )
         file_id = await self.image_service.get_random_image(pair_id, pic_type_enum)
         if not file_id:
+            logger.error(
+                "No images available for response",
+                pair_id=pair_id,
+                pic_type=pic_type,
+                check_day=str(check_day),
+                responder_tg_id=tg_id,
+            )
             return False, "CALLBACK_NO_IMAGES_AVAILABLE"
 
         # Send response photo to initiator
@@ -161,10 +216,27 @@ class ResponseSenderService:
         )
 
         # Send photo to initiator
+        logger.info(
+            "Sending response photo to initiator",
+            pair_id=pair_id,
+            pic_type=pic_type,
+            check_day=str(check_day),
+            responder_tg_id=tg_id,
+            initiator_tg_id=initiator_tg_id_final,
+            file_id=file_id,
+        )
+        
         await self.telegram_messenger.send_photo(
             chat_id=initiator_tg_id_final,
             photo=file_id,
             caption=caption,
+        )
+        
+        logger.info(
+            "Response photo sent successfully",
+            pair_id=pair_id,
+            pic_type=pic_type,
+            initiator_tg_id=initiator_tg_id_final,
         )
 
         return True, None
