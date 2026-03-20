@@ -364,6 +364,18 @@ async def robokassa_webhook(
             if is_lifetime
             else period_end.strftime("%d.%m.%Y")
         )
+        
+        # Send access granted notification
+        await send_message_with_retry(
+            chat_id=user_a.tg_id,
+            text=get_message("PAY_ACCESS_GRANTED"),
+        )
+        await send_message_with_retry(
+            chat_id=user_b.tg_id,
+            text=get_message("PAY_ACCESS_GRANTED"),
+        )
+        
+        # Send subscription details
         await send_message_with_retry(
             chat_id=user_a.tg_id,
             text=get_message("PAY_SUBSCRIPTION_ACTIVE_UNTIL", period_text=period_text),
@@ -376,12 +388,14 @@ async def robokassa_webhook(
         await session.commit()
 
         logger.info(
-            "Robokassa payment processed",
+            "Robokassa payment processed and access granted",
             pair_id=pair_id,
             inv_id=payment_id,
             period_days=period_days,
             period_end=period_end,
             is_lifetime=is_lifetime,
+            user_a_tg_id=user_a.tg_id,
+            user_b_tg_id=user_b.tg_id,
         )
 
         # Robokassa expects "OK<InvId>" on success (no spaces).

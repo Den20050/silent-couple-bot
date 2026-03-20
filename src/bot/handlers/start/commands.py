@@ -149,6 +149,23 @@ async def handle_start_logic(
         start_param=start_param,
     )
     
+    # Log entry after payment if user has active subscription
+    if active_pairs:
+        from src.db.repositories.subscriptions import SubscriptionsRepository
+        subs_repo = SubscriptionsRepository(session)
+        
+        for pair in active_pairs:
+            sub = await subs_repo.get_by_pair_id(pair.id)
+            if sub and pair.status == "active":
+                logger.info(
+                    "User entry with active subscription",
+                    tg_id=tg_id,
+                    username=username,
+                    pair_id=pair.id,
+                    subscription_period_end=sub.period_end.isoformat() if sub.period_end else None,
+                    is_lifetime=sub.is_lifetime,
+                )
+    
     # If user has pairs (active or past_due), show information about them
     # BUT: If start_param exists (invite link), allow creating new pair even if user has existing pairs
     if all_pairs and not start_param:

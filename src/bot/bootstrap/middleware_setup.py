@@ -9,6 +9,7 @@ from src.bot.middlewares.database import DatabaseMiddleware
 from src.bot.middlewares.error_handler import ErrorHandlerMiddleware
 from src.bot.middlewares.rate_limit import RateLimitMiddleware
 from src.bot.middlewares.timezone import TimezoneMiddleware
+from src.bot.middlewares.user_activity_logger import UserActivityLoggerMiddleware
 
 logger = get_logger(__name__)
 
@@ -19,8 +20,9 @@ def setup_middlewares(dp: Dispatcher, container: Container) -> None:
     Middleware order matters:
     1. ContainerMiddleware - provides container and services
     2. DatabaseMiddleware - provides database session
-    3. TimezoneMiddleware - detects user timezone (needs session)
-    4. RateLimitMiddleware - rate limiting (needs Redis)
+    3. UserActivityLoggerMiddleware - logs all user actions
+    4. TimezoneMiddleware - detects user timezone (needs session)
+    5. RateLimitMiddleware - rate limiting (needs Redis)
 
     Args:
         dp: Dispatcher instance
@@ -41,11 +43,16 @@ def setup_middlewares(dp: Dispatcher, container: Container) -> None:
     dp.message.middleware(database_middleware)
     dp.callback_query.middleware(database_middleware)
 
-    # 3. Timezone detection (needs session from DatabaseMiddleware)
+    # 3. User activity logger (logs all actions with session context)
+    user_activity_logger = UserActivityLoggerMiddleware()
+    dp.message.middleware(user_activity_logger)
+    dp.callback_query.middleware(user_activity_logger)
+
+    # 4. Timezone detection (needs session from DatabaseMiddleware)
     timezone_middleware = TimezoneMiddleware()
     dp.message.middleware(timezone_middleware)
 
-    # 4. Rate limiting only if Redis is available
+    # 5. Rate limiting only if Redis is available
     redis = container.redis
     if redis:
         rate_limit_middleware = RateLimitMiddleware(redis)
