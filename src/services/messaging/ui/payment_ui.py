@@ -290,6 +290,55 @@ class PaymentUIService:
         
         return get_message("PAY_SELECT_TARIFF", tariffs_list="\n".join(tariffs_list))
     
+    def build_terms_confirmation_keyboard(
+        self,
+        plan_id: str,
+        currency_code: str,
+        pair_id: int | None = None,
+    ) -> InlineKeyboardMarkup:
+        """Build keyboard for terms confirmation before payment.
+        
+        Args:
+            plan_id: Plan ID (e.g., "1_month", "lifetime")
+            currency_code: Currency code (e.g., "RUB", "USD")
+            pair_id: Optional pair ID to include in callback data
+            
+        Returns:
+            InlineKeyboardMarkup with confirmation button
+        """
+        # Build callback data for confirmation
+        confirm_callback = (
+            f"confirm_and_pay_{plan_id}_{currency_code}_{pair_id}"
+            if pair_id
+            else f"confirm_and_pay_{plan_id}_{currency_code}"
+        )
+        
+        # Build back callback
+        back_callback = (
+            f"select_currency_{currency_code}_{pair_id}"
+            if pair_id
+            else f"select_currency_{currency_code}"
+        )
+        
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    ButtonTemplates.confirm_button(
+                        "✅ Согласен и оплатить",
+                        confirm_callback,
+                    ),
+                ],
+                [ButtonTemplates.offer_button()],
+                [
+                    ButtonTemplates.confirm_button(
+                        get_message("PAY_BACK_TO_TARIFFS"),
+                        back_callback,
+                    ),
+                ],
+                [ButtonTemplates.back_button("pay_back_to_menu")],
+            ]
+        )
+    
     def build_payment_keyboard(
         self,
         payment_url: str,

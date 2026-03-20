@@ -205,7 +205,7 @@ async def handle_select_tariff(
     callback: CallbackQuery,
     payment_application_service: PaymentApplicationService,
 ) -> None:
-    """Handle tariff selection."""
+    """Handle tariff selection - show terms confirmation."""
     tg_id = callback.from_user.id
     # Format: select_tariff_{plan_id}_{currency_code} or select_tariff_{plan_id}_{currency_code}_{pair_id}
     parts = callback.data.replace("select_tariff_", "").split("_")
@@ -239,6 +239,58 @@ async def handle_select_tariff(
     if currency_code not in SUPPORTED_CURRENCIES:
         currency_code = "RUB"
     
+    # Show terms confirmation page instead of creating payment immediately
+    success, message_text, keyboard = await payment_application_service.show_terms_confirmation(
+        tg_id=tg_id,
+        plan_id=plan_id,
+        currency_code=currency_code,
+        pair_id=pair_id,
+    )
+    
+    await callback.message.edit_text(message_text, reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("confirm_and_pay_"))
+async def handle_confirm_and_pay(
+    callback: CallbackQuery,
+    payment_application_service: PaymentApplicationService,
+) -> None:
+    """Handle terms confirmation and create payment."""
+    tg_id = callback.from_user.id
+    # Format: confirm_and_pay_{plan_id}_{currency_code} or confirm_and_pay_{plan_id}_{currency_code}_{pair_id}
+    parts = callback.data.replace("confirm_and_pay_", "").split("_")
+    
+    pair_id = None
+    if len(parts) >= 3:
+        # Check if last part is a number (pair_id)
+        try:
+            potential_pair_id = int(parts[-1])
+            # If it's a valid pair_id (reasonable range), use it
+            if 1 <= potential_pair_id <= 999999:
+                pair_id = potential_pair_id
+                parts = parts[:-1]  # Remove pair_id from parts
+        except ValueError:
+            pass
+    
+    if len(parts) < 2:
+        # Backward compatibility: try to extract from old format
+        plan_id = parts[0] if parts else ""
+        currency_code = "RUB"  # Default to RUB
+    else:
+        # Format: plan_id_currency_code
+        # Handle plan_id that might contain underscores (like "1_month")
+        # Last part is currency_code, everything before is plan_id
+        currency_code = parts[-1]
+        plan_id = "_".join(parts[:-1])
+    
+    # Currency validation is done in application service (raises ValidationError on invalid)
+    # Fallback to RUB for backward compatibility
+    from src.core.constants import SUPPORTED_CURRENCIES
+    if currency_code not in SUPPORTED_CURRENCIES:
+        currency_code = "RUB"
+    
+    # User confirmed terms - create payment
     success, message_text, keyboard = await payment_application_service.create_payment_for_tariff(
         tg_id=tg_id,
         plan_id=plan_id,
