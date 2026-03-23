@@ -141,7 +141,7 @@ class NotificationBuilder:
     async def build_warning_message(
         self,
         pair_mode: str,
-        recipient_name: str,
+        partner_label: str | None,
         hours: int,
         pair_id: int,
         target_day: date,
@@ -151,7 +151,7 @@ class NotificationBuilder:
         
         Args:
             pair_mode: Pair mode ("chat" or "silent")
-            recipient_name: Recipient name (username or fallback)
+            partner_label: Partner label (nickname, @username, or None for fallback)
             hours: Hours since picture was sent
             pair_id: Pair ID
             target_day: Target day for warning
@@ -160,27 +160,47 @@ class NotificationBuilder:
         Returns:
             Tuple of (message_text, reply_markup)
         """
-        # Normalize: some callers pass "@username" already; templates WARNING_*_MODE include "@".
-        username_no_at = recipient_name.lstrip("@")
-
         if pair_mode == "chat":
-            # Chat mode template does not mention hours, keep it generic.
-            warning_message = get_message(
-                "WARNING_CHAT_MODE",
-                username=username_no_at,
-            )
-        else:
-            # Silent mode: only use the 24h-specific wording when it's actually 24h+.
-            if hours >= 24:
+            # Chat mode: use nickname version if label doesn't start with @
+            if partner_label and not partner_label.startswith("@"):
                 warning_message = get_message(
-                    "WARNING_24H_SILENT",
-                    recipient_name=recipient_name,
+                    "WARNING_CHAT_MODE_WITH_NICKNAME",
+                    nickname=partner_label,
+                )
+            elif partner_label and partner_label.startswith("@"):
+                warning_message = get_message(
+                    "WARNING_CHAT_MODE",
+                    username=partner_label.lstrip("@"),
                 )
             else:
+                # Fallback - no nickname, no username
+                warning_message = get_message("WARNING_CHAT_MODE_FALLBACK")
+        else:
+            # Silent mode: use 24h-specific wording when it's actually 24h+
+            if hours >= 24:
+                # For 24h warning, use partner_label or fallback
+                display_name = partner_label or "Ваш близкий"
                 warning_message = get_message(
-                    "WARNING_SILENT_MODE",
-                    username=username_no_at,
+                    "WARNING_24H_SILENT",
+                    recipient_name=display_name,
                 )
+            else:
+                # Use nickname version if label doesn't start with @
+                if partner_label and not partner_label.startswith("@"):
+                    warning_message = get_message(
+                        "WARNING_SILENT_MODE_WITH_NICKNAME",
+                        nickname=partner_label,
+                    )
+                elif partner_label and partner_label.startswith("@"):
+                    warning_message = get_message(
+                        "WARNING_SILENT_MODE",
+                        username=partner_label.lstrip("@"),
+                    )
+                else:
+                    # Fallback - no nickname, no username
+                    warning_message = get_message(
+                        "WARNING_SILENT_MODE_FALLBACK"
+                    )
         
         # Create cancel button
         cancel_key = (

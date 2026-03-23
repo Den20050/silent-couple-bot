@@ -292,17 +292,27 @@ class WarningSender:
             warning_key: Redis key for tracking
             lock_service: LockService instance
         """
-        # Prepare message with username or fallback
-        recipient_name = (
-            f"@{candidate.recipient.username}"
-            if candidate.recipient.username
-            else get_message("WORKER_RECIPIENT_FALLBACK")
+        # Get partner nickname from pair (recipient is the partner)
+        from src.db.repositories.pairs import PairsRepository
+        
+        pairs_repo = PairsRepository(self._session)
+        partner_nickname = pairs_repo.get_my_nickname_for_partner(
+            candidate.pair,
+            candidate.initiator.id,  # Get nickname from initiator's perspective
         )
+        
+        # Format partner label (nickname if exists, otherwise @username, otherwise None)
+        partner_label = format_partner_label(
+            partner_nickname=partner_nickname,
+            partner_username=candidate.recipient.username,
+        )
+        
+        # If no label available, partner_label will be None - handled in build_warning_message
         
         # Build warning message using NotificationBuilder
         warning_message, reply_markup = await self._notification_builder.build_warning_message(
             pair_mode=candidate.pair.mode,
-            recipient_name=recipient_name,
+            partner_label=partner_label,
             hours=hours,
             pair_id=candidate.pair.id,
             target_day=candidate.target_day,
