@@ -278,6 +278,7 @@ class Messages:
     REMINDER_CHAT_MODE_WITH_NICKNAME = "от {nickname}. Тебя ждут ❤️"
     WARNING_CHAT_MODE = "⚠️ @{username} не отвечает, возможно, стоит написать вручную."
     WARNING_CHAT_MODE_WITH_NICKNAME = "⚠️ {nickname} не отвечает, возможно, стоит написать вручную."
+    WARNING_CHAT_MODE_FALLBACK = "⚠️ Ваш близкий не отвечает, возможно, стоит написать вручную."
     
     # Silent Mode reminders/warnings (lines 226-248 in MODES_DETAILED.md)
     REMINDER_SILENT_MODE = "Если есть секунда — ответьте картинкой, чтобы он не беспокоился."
@@ -290,6 +291,7 @@ class Messages:
     RESPOND_BUTTON_WITH_PARTNER = "Ответить {partner}"
     WARNING_SILENT_MODE = "⚠️ @{username} не отвечает, воспользуйтесь другим способом узнать, всё ли у него в порядке."
     WARNING_SILENT_MODE_WITH_NICKNAME = "⚠️ {nickname} не отвечает, воспользуйтесь другим способом узнать, всё ли у него в порядке."
+    WARNING_SILENT_MODE_FALLBACK = "⚠️ Ваш близкий не отвечает, воспользуйтесь другим способом узнать, всё ли у него в порядке."
     
     # Generic key for warnings (will be selected based on pair mode)
     WARNING_INITIATOR = "⚠️ @{username} не отвечает, возможно, стоит написать вручную."
