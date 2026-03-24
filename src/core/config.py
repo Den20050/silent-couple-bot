@@ -119,7 +119,7 @@ class Settings(BaseSettings):
     # Currency prices for subscriptions (JSON format)
     # Format: {"CURRENCY": {"plan_id": price, ...}, ...}
     # Prices are in main currency units (not kopecks/cents)
-    # Supported currencies: RUB, EUR, USD, UAH, KZT
+    # Supported currencies: RUB, EUR, USD, KZT
     # IMPORTANT: Store only RUB prices. Prices for other currencies are calculated automatically
     # with margin (see currency_margin_percent and currency_exchange_rates)
     # Example: {"RUB": {"1_month": 199, "3_months": 549, ...}}  # noqa: E501
@@ -146,7 +146,7 @@ class Settings(BaseSettings):
     # Example: {"USD": 0.010, "EUR": 0.009} means 1 RUB = 0.010 USD = 0.009 EUR
     # If currency not specified, approximate rates will be used
     currency_exchange_rates: str = Field(
-        default='{"USD": 0.010, "EUR": 0.009, "UAH": 0.40, "KZT": 4.5}',
+        default='{"USD": 0.010, "EUR": 0.009, "KZT": 4.5}',
         description="Fixed exchange rates from RUB to other currencies (JSON format)",
     )
     
@@ -506,7 +506,6 @@ class Settings(BaseSettings):
             return {
                 "USD": 0.010,
                 "EUR": 0.009,
-                "UAH": 0.40,
                 "KZT": 4.5,
             }
     
