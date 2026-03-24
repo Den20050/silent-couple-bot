@@ -239,6 +239,7 @@ async def process_reminders_for_type(
                 hours=hours_to_display,
                 warning_key=last_warning_key,  # Use same key for tracking
                 lock_service=lock_service,
+                pairs_repo=pairs_repo,
             )
             
             # Update last warning time
@@ -535,6 +536,7 @@ async def send_initiator_warning(
                 hours=hours,
                 warning_key=warning_key,
                 lock_service=lock_service,
+                pairs_repo=pairs_repo,
             )
 
             await lock_service.set_last_warning_time(
