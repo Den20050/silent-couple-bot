@@ -63,7 +63,6 @@ SUPPORTED_CURRENCIES = {
     "RUB": {"name": "Российский рубль", "symbol": "₽", "decimals": 2},
     "EUR": {"name": "Евро", "symbol": "€", "decimals": 2},
     "USD": {"name": "Доллар США", "symbol": "$", "decimals": 2},
-    "UAH": {"name": "Украинская гривна", "symbol": "₴", "decimals": 2},
     "KZT": {"name": "Казахстанский тенге", "symbol": "₸", "decimals": 2},
 }
 
