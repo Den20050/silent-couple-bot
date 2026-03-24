@@ -283,6 +283,7 @@ class WarningSender:
         hours: int,
         warning_key: str,
         lock_service,
+        pairs_repo,
     ) -> None:
         """Send warning to initiator.
         
@@ -291,11 +292,9 @@ class WarningSender:
             hours: Hours since picture was sent
             warning_key: Redis key for tracking
             lock_service: LockService instance
+            pairs_repo: PairsRepository instance for getting nicknames
         """
         # Get partner nickname from pair (recipient is the partner)
-        from src.db.repositories.pairs import PairsRepository
-        
-        pairs_repo = PairsRepository(self._session)
         partner_nickname = pairs_repo.get_my_nickname_for_partner(
             candidate.pair,
             candidate.initiator.id,  # Get nickname from initiator's perspective
