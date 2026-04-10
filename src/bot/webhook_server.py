@@ -3,8 +3,6 @@
 from contextlib import asynccontextmanager
 
 from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
 from aiogram.types import BotCommand, BotCommandScopeChat, MenuButtonCommands, Update
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.storage.redis import RedisStorage
@@ -67,11 +65,9 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
         )
         storage = MemoryStorage()
 
-    # Initialize bot
-    bot = Bot(
-        token=settings.tg_bot_token,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
+    # Initialize bot (with proxy if configured)
+    from src.services.telegram.bot_factory import create_bot as _create_bot
+    bot = _create_bot(settings.tg_bot_token, proxy_url=settings.telegram_proxy_url)
     set_bot(bot)  # Set global bot instance for services
     
     # IMPORTANT: Also set bot in container's BotProvider

@@ -1,13 +1,12 @@
 """Bot and Dispatcher factory."""
 
 from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.storage.redis import RedisStorage
 
 from src.core.di.container import Container
 from src.core.logger import get_logger
+from src.services.telegram.bot_factory import create_bot as _create_bot
 
 logger = get_logger(__name__)
 
@@ -39,11 +38,8 @@ def create_bot_and_dispatcher(container: Container) -> tuple[Bot, Dispatcher]:
         logger.warning("Redis not available, using MemoryStorage")
         storage = MemoryStorage()
 
-    # Initialize bot
-    bot = Bot(
-        token=container.settings.tg_bot_token,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
+    # Initialize bot (with proxy if configured)
+    bot = _create_bot(container.settings.tg_bot_token, proxy_url=container.settings.telegram_proxy_url)
     
     # Set bot in provider (for dependency injection)
     container.bot_provider.set_bot(bot)

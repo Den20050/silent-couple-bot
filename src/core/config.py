@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     # Telegram Bot
     tg_bot_token: str
 
+    # Proxy for Telegram API (optional, for servers with RKN blocking)
+    # Supports HTTP and SOCKS5: "http://host:port" or "socks5://user:pass@host:port"
+    telegram_proxy_url: Optional[str] = Field(
+        default=None,
+        description="Proxy URL for Telegram API requests (e.g. socks5://user:pass@host:port)",
+    )
+
     # Alternative bot token for loading images (deprecated)  # noqa: E501
     # Kept for backward compatibility, but all images are now loaded via main bot  # noqa: E501
     tg_bot_token_loader: Optional[str] = Field(  # noqa: E501
