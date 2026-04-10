@@ -92,8 +92,8 @@ class WorkerContext:
             return
         
         try:
-            from aiogram import Bot
-            self._bot = Bot(token=self.settings.tg_bot_token)
+            from src.services.telegram.bot_factory import create_bot as _create_bot
+            self._bot = _create_bot(self.settings.tg_bot_token, proxy_url=self.settings.telegram_proxy_url)
             self.bot_provider.set_bot(self._bot)
             logger.debug("Bot initialized in WorkerContext")
         except Exception as e:
