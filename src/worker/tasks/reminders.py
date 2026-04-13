@@ -65,7 +65,6 @@ async def check_unanswered_pictures(
             await session.commit()
             logger.info("Completed check_unanswered_pictures task")
     finally:
-        await worker_context.close_bot()
         await lock_service.close()
 
 
@@ -381,8 +380,6 @@ async def send_recipient_reminder(
                 reminder_key=reminder_key,
                 lock_service=lock_service,
             )
-    finally:
-        await worker_context.close_bot()
 
 
 async def send_initiator_warning(
@@ -543,7 +540,5 @@ async def send_initiator_warning(
                 warning_key,
                 datetime.utcnow().timestamp(),
             )
-    finally:
-        await worker_context.close_bot()
 
 

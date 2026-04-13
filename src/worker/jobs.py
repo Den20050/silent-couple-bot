@@ -56,6 +56,8 @@ async def get_worker_context() -> WorkerContext:
                     messenger=container.telegram_messenger,
                     bot_provider=container.bot_provider,
                 )
+                # Initialize Bot once at startup — do not close it in individual tasks
+                await _global_worker_context.ensure_bot_initialized()
     return _global_worker_context
 
 
