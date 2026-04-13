@@ -313,10 +313,12 @@ class Settings(BaseSettings):
     )
     
     # Task lock settings
+    # Must be longer than the Telegram request timeout (300s) + retry delays to
+    # prevent multiple concurrent task instances when Telegram is unreachable.
     task_lock_ttl_seconds: int = Field(
-        default=60,
+        default=360,
         ge=1,
-        description="TTL for task locks in seconds (default: 60)",
+        description="TTL for task locks in seconds (default: 360, must exceed Telegram timeout)",
     )
     
     # Other notification TTL settings

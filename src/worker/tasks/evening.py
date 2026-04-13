@@ -131,6 +131,5 @@ async def evening_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> 
                 reasons=dict(reasons),
             )
     finally:
-        await worker_context.close_bot()
         await lock_service.close()
 
