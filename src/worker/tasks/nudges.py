@@ -128,6 +128,5 @@ async def send_share_nudge(
                 total_pairs=len(pairs),
             )
     finally:
-        await worker_context.close_bot()
         await lock_service.close()
 
