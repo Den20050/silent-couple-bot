@@ -177,6 +177,13 @@ class ResponseSenderService:
             )
             return False, "CALLBACK_SAVE_RESPONSE_ERROR"
         
+        # Commit BEFORE any Telegram API calls so that even if callback.answer()
+        # later raises "query is too old", the response is durably recorded.
+        # Without this commit, a Telegram exception rolling back the session would
+        # leave evening_responded_at as NULL and allow duplicate photo delivery on
+        # re-delivered webhook updates.
+        await self.session.commit()
+
         logger.info(
             "Response marked in daily state successfully",
             pair_id=pair_id,
