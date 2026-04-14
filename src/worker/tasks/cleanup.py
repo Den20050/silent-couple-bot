@@ -36,6 +36,8 @@ async def cleanup_old_data(
                 deleted_count=deleted_count,
                 retention_days=DAILY_STATE_RETENTION_DAYS,
             )
+    finally:
+        pass
 
 
 async def cleanup_old_messages(
@@ -105,4 +107,6 @@ async def cleanup_old_messages(
                 failed_count=failed_count,
                 total_found=len(old_messages),
             )
+    finally:
+        pass
 
