@@ -380,6 +380,8 @@ async def send_recipient_reminder(
                 reminder_key=reminder_key,
                 lock_service=lock_service,
             )
+    finally:
+        pass
 
 
 async def send_initiator_warning(
@@ -540,5 +542,7 @@ async def send_initiator_warning(
                 warning_key,
                 datetime.utcnow().timestamp(),
             )
+    finally:
+        pass
 
 
