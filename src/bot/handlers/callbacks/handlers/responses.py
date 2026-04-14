@@ -115,8 +115,11 @@ async def handle_tap_morning(
         chat_id=tg_id,
         text=get_message("CALLBACK_RESPONSE_DELIVERED", partner_text=partner_text),
     )
-    
-    await callback.answer(get_message("CALLBACK_RESPONSE_SENT"))
+
+    try:
+        await callback.answer(get_message("CALLBACK_RESPONSE_SENT"))
+    except Exception:
+        pass
 
 
 @router.callback_query(F.data.startswith("tap_evening_"))
@@ -189,6 +192,9 @@ async def handle_tap_evening(
         chat_id=tg_id,
         text=get_message("CALLBACK_RESPONSE_DELIVERED", partner_text=partner_text),
     )
-    
-    await callback.answer(get_message("CALLBACK_RESPONSE_SENT"))
+
+    try:
+        await callback.answer(get_message("CALLBACK_RESPONSE_SENT"))
+    except Exception:
+        pass
 
