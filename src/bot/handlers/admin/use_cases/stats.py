@@ -91,22 +91,39 @@ async def get_admin_statistics(session: AsyncSession) -> dict:
             else_="1_month",
         )
 
-        plan_rows = await session.execute(
+        # Gifted subscriptions are identified by yoo_id starting with "admin_gift_".
+        is_gift = Subscription.yoo_id.like("admin_gift_%")
+
+        def _empty_plan_dict() -> dict[str, int]:
+            return {"1_month": 0, "3_months": 0, "6_months": 0, "1_year": 0, "lifetime": 0}
+
+        # Paid subscriptions (active, not gifted)
+        paid_rows = await session.execute(
             select(plan_expr.label("plan"), func.count(func.distinct(Subscription.pair_id)))
-            .where(Subscription.status == SubscriptionStatus.ACTIVE.value)
+            .where(
+                Subscription.status == SubscriptionStatus.ACTIVE.value,
+                ~is_gift,
+            )
             .group_by(plan_expr)
         )
-
-        subscriptions_by_plan: dict[str, int] = {
-            "1_month": 0,
-            "3_months": 0,
-            "6_months": 0,
-            "1_year": 0,
-            "lifetime": 0,
-        }
-        for plan_key, count in plan_rows:
+        subscriptions_by_plan = _empty_plan_dict()
+        for plan_key, count in paid_rows:
             if plan_key in subscriptions_by_plan:
                 subscriptions_by_plan[plan_key] = count
+
+        # Gifted subscriptions (active, yoo_id starts with "admin_gift_")
+        gift_rows = await session.execute(
+            select(plan_expr.label("plan"), func.count(func.distinct(Subscription.pair_id)))
+            .where(
+                Subscription.status == SubscriptionStatus.ACTIVE.value,
+                is_gift,
+            )
+            .group_by(plan_expr)
+        )
+        gifted_by_plan = _empty_plan_dict()
+        for plan_key, count in gift_rows:
+            if plan_key in gifted_by_plan:
+                gifted_by_plan[plan_key] = count
 
         return {
             "total_users": total_users,
@@ -116,6 +133,7 @@ async def get_admin_statistics(session: AsyncSession) -> dict:
             "pairs_with_demo": pairs_with_demo,
             "pairs_with_subscription": pairs_with_subscription,
             "subscriptions_by_plan": subscriptions_by_plan,
+            "gifted_by_plan": gifted_by_plan,
         }
     except Exception as e:
         logger.error("Error getting admin statistics", error=str(e), exc_info=True)
