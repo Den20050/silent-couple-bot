@@ -42,13 +42,31 @@ class AdminUIService:
             f"  💳 На подписке: <b>{stats['pairs_with_subscription']}</b>",
         ]
 
-        by_plan: dict[str, int] = stats.get("subscriptions_by_plan", {})
-        if by_plan:
-            lines.append("\n📋 <b>Подписки по тарифам:</b>")
+        def _plan_lines(data: dict[str, int], prefix: str = "  •") -> list[str]:
+            result = []
             for plan_id in ("1_month", "3_months", "6_months", "1_year", "lifetime"):
-                count = by_plan.get(plan_id, 0)
-                label = _PLAN_LABELS[plan_id]
-                lines.append(f"  • {label}: <b>{count}</b>")
+                count = data.get(plan_id, 0)
+                result.append(f"{prefix} {_PLAN_LABELS[plan_id]}: <b>{count}</b>")
+            return result
+
+        by_plan: dict[str, int] = stats.get("subscriptions_by_plan", {})
+        gifted: dict[str, int] = stats.get("gifted_by_plan", {})
+
+        paid_total = sum(by_plan.values())
+        gift_total = sum(gifted.values())
+
+        if paid_total or gift_total:
+            lines.append("")
+
+        if paid_total:
+            lines.append(f"💳 <b>Оплаченные подписки ({paid_total}):</b>")
+            lines.extend(_plan_lines(by_plan))
+
+        if gift_total:
+            if paid_total:
+                lines.append("")
+            lines.append(f"🎁 <b>Подаренные подписки ({gift_total}):</b>")
+            lines.extend(_plan_lines(gifted))
 
         return "\n".join(lines)
 
