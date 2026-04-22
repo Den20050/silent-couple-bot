@@ -27,13 +27,19 @@ class AdminUIService:
         Returns:
             Formatted message text
         """
+        total = stats['total_users']
+        in_pairs = stats.get('users_in_pairs', total - stats['users_without_pairs'])
+        solo = stats['users_without_pairs']
+
         lines = [
             "📊 <b>Статистика бота</b>\n",
-            f"👥 Пользователей: <b>{stats['total_users']}</b>",
-            f"👤 Без пары: <b>{stats['users_without_pairs']}</b>",
+            f"👥 Пользователей (с согласием): <b>{total}</b>",
+            f"  👫 В паре(ах): <b>{in_pairs}</b>",
+            f"  👤 Без пары: <b>{solo}</b>",
+            f"  ✅ Итого: {in_pairs} + {solo} = <b>{in_pairs + solo}</b>\n",
             f"💑 Всего пар: <b>{stats['total_pairs']}</b>",
-            f"🎁 Пар на демо: <b>{stats['pairs_with_demo']}</b>",
-            f"💳 Пар на подписке: <b>{stats['pairs_with_subscription']}</b>",
+            f"  🎁 На демо: <b>{stats['pairs_with_demo']}</b>",
+            f"  💳 На подписке: <b>{stats['pairs_with_subscription']}</b>",
         ]
 
         by_plan: dict[str, int] = stats.get("subscriptions_by_plan", {})
