@@ -53,7 +53,11 @@ async def get_admin_statistics(session: AsyncSession) -> dict:
         )
         pairs_with_subscription = active_pairs_result.scalar() or 0
 
-        # --- users without pairs --------------------------------------------
+        # --- users in pairs vs without pairs --------------------------------
+        # Count DISTINCT consented users who appear in at least one pair.
+        # This is different from total_pairs × 2 because:
+        #   - one user can be in multiple pairs
+        #   - a pair partner may not have given consent (excluded from total_users)
         uid_a_subquery = (
             select(Pair.uid_a.label("user_id"))
             .join(User, User.id == Pair.uid_a)
@@ -68,7 +72,8 @@ async def get_admin_statistics(session: AsyncSession) -> dict:
         users_in_pairs_result = await session.execute(
             select(func.count(func.distinct(users_in_pairs_union.c.user_id)))
         )
-        users_without_pairs = total_users - (users_in_pairs_result.scalar() or 0)
+        users_in_pairs = users_in_pairs_result.scalar() or 0
+        users_without_pairs = total_users - users_in_pairs
 
         # --- subscriptions by plan ------------------------------------------
         # Plan type is inferred from (period_end − date(updated_at)) because
@@ -105,8 +110,9 @@ async def get_admin_statistics(session: AsyncSession) -> dict:
 
         return {
             "total_users": total_users,
-            "total_pairs": total_pairs,
+            "users_in_pairs": users_in_pairs,
             "users_without_pairs": users_without_pairs,
+            "total_pairs": total_pairs,
             "pairs_with_demo": pairs_with_demo,
             "pairs_with_subscription": pairs_with_subscription,
             "subscriptions_by_plan": subscriptions_by_plan,
