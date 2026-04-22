@@ -203,7 +203,7 @@ async def show_tariff_selection_for_gift() -> tuple[bool, str, InlineKeyboardMar
     for plan_id, plan in SUBSCRIPTION_PLANS.items():
         keyboard.append([
             InlineKeyboardButton(
-                text=f"{plan['name']} - {plan['price']} ₽",
+                text=plan['name'],
                 callback_data=f"admin_gift_tariff_{plan_id}",
             ),
         ])
