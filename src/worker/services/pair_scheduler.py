@@ -2,6 +2,7 @@
 
 from datetime import date, datetime, timedelta
 from datetime import time as time_type
+import hashlib
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,6 +32,16 @@ _WISH_REQUEST_PROMPT_MESSAGE_TTL_SECONDS = 48 * 3600
 def _wish_request_prompt_message_id_key(tg_id: int, pic_type: str, day: date) -> str:
     """Redis key for storing single aggregated request prompt message_id."""
     return f"wish_request_prompt_message_id:{tg_id}:{pic_type}:{day.isoformat()}"
+
+
+def _pair_minute_slot(pair_id: int, pic_type: str, day: date) -> int:
+    """Return deterministic 0..59 minute slot for pair/day/type.
+
+    Spreads sends uniformly inside a 1-hour user window to avoid peak load.
+    """
+    seed = f"{pair_id}:{pic_type}:{day.isoformat()}".encode("utf-8")
+    digest = hashlib.md5(seed).hexdigest()
+    return int(digest[:8], 16) % 60
 
 
 @dataclass(frozen=True)
@@ -183,6 +194,17 @@ class PairScheduler:
                 user_b_local_time=str(user_b_local_time),
                 user_a_utc_offset=getattr(user_a, "utc_offset", None),
                 user_b_utc_offset=getattr(user_b, "utc_offset", None),
+            )
+            return ok, reason, None
+
+        # Deterministic minute slot spreading inside the selected hour window.
+        # This prevents load spikes when many users pick the same hour.
+        slot_minute = _pair_minute_slot(pair.id, pic_type, today)
+        if now_utc.minute != slot_minute:
+            ok, reason = _skip(
+                "minute_slot_mismatch",
+                current_minute=now_utc.minute,
+                slot_minute=slot_minute,
             )
             return ok, reason, None
         
