@@ -49,11 +49,20 @@ class _FakeMessenger:
 
 
 @pytest.mark.asyncio
-async def test_send_wish_uses_pair_window_after_owner_set() -> None:
+async def test_send_wish_uses_pair_window_after_owner_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """If a pair has an owner, the pair-level window is used (shared for both users)."""
+
+    import src.worker.services.pair_scheduler as pair_scheduler_module
 
     scheduler = PairScheduler(
         session=object(), telegram_messenger=_FakeMessenger(), lock_service=_FakeLockService()
+    )
+    monkeypatch.setattr(
+        pair_scheduler_module,
+        "_pair_minute_slot",
+        lambda *_args, **_kwargs: 30,
     )
     # Patch repos (we're unit-testing window logic only).
     scheduler.daily_state_repo = _FakeDailyStateRepo()  # type: ignore[assignment]
@@ -120,5 +129,47 @@ async def test_send_wish_uses_user_windows_when_owner_not_set() -> None:
 
     assert eligible is False
     assert reason == "outside_time_window"
+    assert attempt_ctx is None
+
+
+@pytest.mark.asyncio
+async def test_send_wish_skips_when_minute_slot_does_not_match(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Eligible pair in window is deferred until its deterministic minute slot."""
+    import src.worker.services.pair_scheduler as pair_scheduler_module
+
+    scheduler = PairScheduler(
+        session=object(), telegram_messenger=_FakeMessenger(), lock_service=_FakeLockService()
+    )
+    scheduler.daily_state_repo = _FakeDailyStateRepo()  # type: ignore[assignment]
+    monkeypatch.setattr(
+        pair_scheduler_module,
+        "_pair_minute_slot",
+        lambda *_args, **_kwargs: 31,
+    )
+
+    pair = SimpleNamespace(
+        id=1,
+        status="trial",
+        notification_window_owner_id=10,
+        morning_window_start_hour=6,
+        evening_window_start_hour=21,
+    )
+    now_utc = datetime(2026, 1, 20, 3, 30, 0)
+    user_a = SimpleNamespace(utc_offset=3, morning_window_start_hour=8, evening_window_start_hour=22)
+    user_b = SimpleNamespace(utc_offset=0, morning_window_start_hour=8, evening_window_start_hour=22)
+
+    eligible, reason, attempt_ctx = await scheduler.send_wish_for_pair(
+        pair=pair,
+        user_a=user_a,
+        user_b=user_b,
+        pic_type="morning",
+        today=date(2026, 1, 20),
+        now_utc=now_utc,
+    )
+
+    assert eligible is False
+    assert reason == "minute_slot_mismatch"
     assert attempt_ctx is None
 
