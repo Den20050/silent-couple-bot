@@ -49,20 +49,11 @@ class _FakeMessenger:
 
 
 @pytest.mark.asyncio
-async def test_send_wish_uses_pair_window_after_owner_set(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_send_wish_uses_pair_window_after_owner_set() -> None:
     """If a pair has an owner, the pair-level window is used (shared for both users)."""
-
-    import src.worker.services.pair_scheduler as pair_scheduler_module
 
     scheduler = PairScheduler(
         session=object(), telegram_messenger=_FakeMessenger(), lock_service=_FakeLockService()
-    )
-    monkeypatch.setattr(
-        pair_scheduler_module,
-        "_pair_minute_slot",
-        lambda *_args, **_kwargs: 30,
     )
     # Patch repos (we're unit-testing window logic only).
     scheduler.daily_state_repo = _FakeDailyStateRepo()  # type: ignore[assignment]
@@ -133,21 +124,13 @@ async def test_send_wish_uses_user_windows_when_owner_not_set() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_wish_skips_when_minute_slot_does_not_match(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Eligible pair in window is deferred until its deterministic minute slot."""
-    import src.worker.services.pair_scheduler as pair_scheduler_module
+async def test_send_wish_eligible_at_any_minute_within_window() -> None:
+    """Eligible pair in window is processed immediately at any minute (no slot gating)."""
 
     scheduler = PairScheduler(
         session=object(), telegram_messenger=_FakeMessenger(), lock_service=_FakeLockService()
     )
     scheduler.daily_state_repo = _FakeDailyStateRepo()  # type: ignore[assignment]
-    monkeypatch.setattr(
-        pair_scheduler_module,
-        "_pair_minute_slot",
-        lambda *_args, **_kwargs: 31,
-    )
 
     pair = SimpleNamespace(
         id=1,
@@ -156,7 +139,8 @@ async def test_send_wish_skips_when_minute_slot_does_not_match(
         morning_window_start_hour=6,
         evening_window_start_hour=21,
     )
-    now_utc = datetime(2026, 1, 20, 3, 30, 0)
+    # now_utc 03:31 — any minute inside 06–07 local window
+    now_utc = datetime(2026, 1, 20, 3, 31, 0)
     user_a = SimpleNamespace(utc_offset=3, morning_window_start_hour=8, evening_window_start_hour=22)
     user_b = SimpleNamespace(utc_offset=0, morning_window_start_hour=8, evening_window_start_hour=22)
 
@@ -169,7 +153,7 @@ async def test_send_wish_skips_when_minute_slot_does_not_match(
         now_utc=now_utc,
     )
 
-    assert eligible is False
-    assert reason == "minute_slot_mismatch"
-    assert attempt_ctx is None
+    assert eligible is True
+    assert reason == "eligible"
+    assert attempt_ctx is not None
 
