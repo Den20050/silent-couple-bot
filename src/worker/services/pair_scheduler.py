@@ -1,5 +1,7 @@
 """Pair scheduling service for sending wishes and reminders."""
 
+import asyncio
+import random as _random
 from datetime import date, datetime, timedelta
 from datetime import time as time_type
 from typing import Optional
@@ -31,6 +33,19 @@ _WISH_REQUEST_PROMPT_MESSAGE_TTL_SECONDS = 48 * 3600
 def _wish_request_prompt_message_id_key(tg_id: int, pic_type: str, day: date) -> str:
     """Redis key for storing single aggregated request prompt message_id."""
     return f"wish_request_prompt_message_id:{tg_id}:{pic_type}:{day.isoformat()}"
+
+
+def _pair_daily_jitter_minutes(
+    pair_id: int, pic_type: str, day: date, max_minutes: int = 20
+) -> int:
+    """Return a stable random [0, max_minutes) minute offset from window start.
+
+    The value changes every day (date ordinal in seed) but stays constant
+    across all cron ticks within the same day, so the pair is deferred to
+    a consistent per-day time rather than always being sent at window open.
+    """
+    rng = _random.Random(f"{pair_id}:{pic_type}:{day.toordinal()}")
+    return rng.randint(0, max_minutes - 1)
 
 
 
@@ -184,6 +199,33 @@ class PairScheduler:
                 user_b_local_time=str(user_b_local_time),
                 user_a_utc_offset=getattr(user_a, "utc_offset", None),
                 user_b_utc_offset=getattr(user_b, "utc_offset", None),
+            )
+            return ok, reason, None
+
+        # Daily-varying jitter: defer each pair to a random minute inside the window.
+        # The offset changes every day (different seed each day) so users receive
+        # at a naturally varying time rather than always at window-open.
+        jitter_minutes = _pair_daily_jitter_minutes(pair.id, pic_type, today)
+
+        # Compute minutes elapsed since window opened for the earliest in-window user.
+        minutes_in_window: int | None = None
+        for in_window, local_time, start in (
+            (user_a_in_window, user_a_local_time, a_start),
+            (user_b_in_window, user_b_local_time, b_start),
+        ):
+            if in_window:
+                m = (
+                    local_time.hour * 60 + local_time.minute
+                    - start.hour * 60
+                ) % 1440  # % 1440 handles cross-midnight windows correctly
+                if minutes_in_window is None or m < minutes_in_window:
+                    minutes_in_window = m
+
+        if minutes_in_window is not None and minutes_in_window < jitter_minutes:
+            ok, reason = _skip(
+                "jitter_not_reached",
+                jitter_minutes=jitter_minutes,
+                minutes_in_window=minutes_in_window,
             )
             return ok, reason, None
 
@@ -364,6 +406,9 @@ class PairScheduler:
                     error=str(e),
                     exc_info=True,
                 )
+            finally:
+                # Rate limiter: no more than ~20 Telegram API calls per second.
+                await asyncio.sleep(0.05)
 
         # Mark attempt tracking only for pairs for which at least one user prompt succeeded.
         pairs_marked: set[int] = set()
