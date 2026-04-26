@@ -2,7 +2,6 @@
 
 from datetime import date, datetime, timedelta
 from datetime import time as time_type
-import hashlib
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,15 +32,6 @@ def _wish_request_prompt_message_id_key(tg_id: int, pic_type: str, day: date) ->
     """Redis key for storing single aggregated request prompt message_id."""
     return f"wish_request_prompt_message_id:{tg_id}:{pic_type}:{day.isoformat()}"
 
-
-def _pair_minute_slot(pair_id: int, pic_type: str, day: date) -> int:
-    """Return deterministic 0..59 minute slot for pair/day/type.
-
-    Spreads sends uniformly inside a 1-hour user window to avoid peak load.
-    """
-    seed = f"{pair_id}:{pic_type}:{day.isoformat()}".encode("utf-8")
-    digest = hashlib.md5(seed).hexdigest()
-    return int(digest[:8], 16) % 60
 
 
 @dataclass(frozen=True)
@@ -197,17 +187,6 @@ class PairScheduler:
             )
             return ok, reason, None
 
-        # Deterministic minute slot spreading inside the selected hour window.
-        # This prevents load spikes when many users pick the same hour.
-        slot_minute = _pair_minute_slot(pair.id, pic_type, today)
-        if now_utc.minute != slot_minute:
-            ok, reason = _skip(
-                "minute_slot_mismatch",
-                current_minute=now_utc.minute,
-                slot_minute=slot_minute,
-            )
-            return ok, reason, None
-        
         # Check wish request attempt limit (max 3 attempts per day with 1 hour intervals)
         wish_request_key_prefix = f"{settings.redis_key_prefix_wish_request}:{pair.id}:{pic_type}:{today.isoformat()}"
         first_sent_key = f"{wish_request_key_prefix}:first_sent"
