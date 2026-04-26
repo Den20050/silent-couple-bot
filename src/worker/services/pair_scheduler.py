@@ -1,7 +1,6 @@
 """Pair scheduling service for sending wishes and reminders."""
 
 import asyncio
-import random
 from datetime import date, datetime, timedelta
 from datetime import time as time_type
 from typing import Optional
@@ -28,6 +27,14 @@ from src.services.messaging.active_action_message import activate_message, Actio
 logger = get_logger(__name__)
 
 _WISH_REQUEST_PROMPT_MESSAGE_TTL_SECONDS = 48 * 3600
+
+# Telegram global rate limit: 30 messages/second to different chats.
+# We use batches of 25 (headroom for retries) sent concurrently, with a
+# 1-second pause between batches, giving a sustained rate of 25 msg/s.
+# At that rate 5 000 users are delivered in ~3.3 minutes, well inside any
+# 1-hour notification window.
+_SEND_BATCH_SIZE = 25
+_SEND_BATCH_INTERVAL_S = 1.0
 
 
 def _wish_request_prompt_message_id_key(tg_id: int, pic_type: str, day: date) -> str:
@@ -259,6 +266,105 @@ class PairScheduler:
         # If we reached here, the pair is eligible to be included in the aggregated prompt.
         return True, "eligible", attempt_ctx
 
+    async def _send_prompt_to_user(
+        self,
+        tg_id: int,
+        pair_ids: set[int],
+        ui_builder: "WishRequestUIService",
+        pic_type: str,
+        today: date,
+    ) -> bool:
+        """Send or edit the wish-request prompt for a single user.
+
+        Returns True when the Telegram API call succeeded (new send or edit),
+        False on any error.  All exceptions are caught and logged internally.
+        """
+        try:
+            ui = await ui_builder.build_for_user(
+                user_tg_id=tg_id,
+                pic_type=pic_type,
+                day=today,
+            )
+            key = _wish_request_prompt_message_id_key(tg_id, pic_type, today)
+            message_id_raw = await self.lock_service.get_key(key)
+            if message_id_raw:
+                try:
+                    message_id = int(message_id_raw)
+                    try:
+                        await self.telegram_messenger.edit_message(
+                            chat_id=tg_id,
+                            message_id=message_id,
+                            text=ui.text,
+                            reply_markup=ui.reply_markup,
+                        )
+                    except Exception as e:
+                        # Telegram may reject a no-op edit with "message is not modified".
+                        # Treat it as success to avoid spamming users with new messages.
+                        if "message is not modified" not in str(e).lower():
+                            raise
+                    # Keep only this message interactive for the user (best-effort).
+                    # IMPORTANT: activation must never be fatal; otherwise we can spam users
+                    # with repeated prompts on every cron tick.
+                    try:
+                        await activate_message(
+                            redis=await self.lock_service.get_redis_client(),
+                            messenger=self.telegram_messenger,
+                            tg_id=tg_id,
+                            message_id=message_id,
+                            kind=ActionKind.PROMPT,
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to activate prompt message",
+                            tg_id=tg_id,
+                            pic_type=pic_type,
+                            message_id=message_id,
+                            error=str(e),
+                        )
+                    return True
+                except Exception:
+                    # If edit fails (message deleted, etc.), fall back to sending a new prompt.
+                    pass
+
+            msg = await self.telegram_messenger.send_message(
+                chat_id=tg_id,
+                text=ui.text,
+                reply_markup=ui.reply_markup,
+            )
+            await self.lock_service.set_key_with_ttl(
+                key,
+                str(msg.message_id),
+                _WISH_REQUEST_PROMPT_MESSAGE_TTL_SECONDS,
+            )
+            # Best-effort: don't let activation errors break idempotency.
+            try:
+                await activate_message(
+                    redis=await self.lock_service.get_redis_client(),
+                    messenger=self.telegram_messenger,
+                    tg_id=tg_id,
+                    message_id=msg.message_id,
+                    kind=ActionKind.PROMPT,
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to activate prompt message",
+                    tg_id=tg_id,
+                    pic_type=pic_type,
+                    message_id=msg.message_id,
+                    error=str(e),
+                )
+            return True
+
+        except Exception as e:
+            logger.error(
+                "Failed to send/update aggregated wish request prompt",
+                tg_id=tg_id,
+                pic_type=pic_type,
+                error=str(e),
+                exc_info=True,
+            )
+            return False
+
     async def send_aggregated_wish_requests(
         self,
         user_to_pair_ids: dict[int, set[int]],
@@ -269,6 +375,10 @@ class PairScheduler:
     ) -> tuple[int, set[int], set[int]]:
         """Send/update aggregated wish request prompts for specified users.
 
+        Users are processed in concurrent batches of _SEND_BATCH_SIZE with a
+        _SEND_BATCH_INTERVAL_S pause between batches.  This saturates Telegram's
+        30 msg/s limit without exceeding it, delivering 5 000 messages in ~3 min.
+
         Returns:
             (users_updated_count, successfully_notified_user_tg_ids, pairs_marked_as_attempt_sent)
         """
@@ -277,98 +387,28 @@ class PairScheduler:
         succeeded: set[int] = set()
         delivered_pair_ids: set[int] = set()
 
-        for tg_id, pair_ids in user_to_pair_ids.items():
-            try:
-                ui = await ui_builder.build_for_user(
-                    user_tg_id=tg_id,
-                    pic_type=pic_type,
-                    day=today,
-                )
-                key = _wish_request_prompt_message_id_key(tg_id, pic_type, today)
-                message_id_raw = await self.lock_service.get_key(key)
-                if message_id_raw:
-                    try:
-                        message_id = int(message_id_raw)
-                        try:
-                            await self.telegram_messenger.edit_message(
-                                chat_id=tg_id,
-                                message_id=message_id,
-                                text=ui.text,
-                                reply_markup=ui.reply_markup,
-                            )
-                        except Exception as e:
-                            # Telegram may reject a no-op edit with "message is not modified".
-                            # Treat it as success to avoid spamming users with new messages.
-                            if "message is not modified" not in str(e).lower():
-                                raise
-                        # Keep only this message interactive for the user (best-effort).
-                        # IMPORTANT: activation must never be fatal; otherwise we can spam users
-                        # with repeated prompts on every cron tick.
-                        try:
-                            await activate_message(
-                                redis=await self.lock_service.get_redis_client(),
-                                messenger=self.telegram_messenger,
-                                tg_id=tg_id,
-                                message_id=message_id,
-                                kind=ActionKind.PROMPT,
-                            )
-                        except Exception as e:
-                            logger.warning(
-                                "Failed to activate prompt message",
-                                tg_id=tg_id,
-                                pic_type=pic_type,
-                                message_id=message_id,
-                                error=str(e),
-                            )
-                        updated += 1
-                        succeeded.add(tg_id)
-                        delivered_pair_ids.update(pair_ids)
-                        continue
-                    except Exception:
-                        # If edit fails (message deleted, etc.), fall back to sending a new prompt.
-                        pass
+        items = list(user_to_pair_ids.items())
 
-                msg = await self.telegram_messenger.send_message(
-                    chat_id=tg_id,
-                    text=ui.text,
-                    reply_markup=ui.reply_markup,
-                )
-                await self.lock_service.set_key_with_ttl(
-                    key,
-                    str(msg.message_id),
-                    _WISH_REQUEST_PROMPT_MESSAGE_TTL_SECONDS,
-                )
-                # Best-effort: don't let activation errors break idempotency.
-                try:
-                    await activate_message(
-                        redis=await self.lock_service.get_redis_client(),
-                        messenger=self.telegram_messenger,
-                        tg_id=tg_id,
-                        message_id=msg.message_id,
-                        kind=ActionKind.PROMPT,
-                    )
-                except Exception as e:
-                    logger.warning(
-                        "Failed to activate prompt message",
-                        tg_id=tg_id,
-                        pic_type=pic_type,
-                        message_id=msg.message_id,
-                        error=str(e),
-                    )
-                updated += 1
-                succeeded.add(tg_id)
-                delivered_pair_ids.update(pair_ids)
-            except Exception as e:
-                logger.error(
-                    "Failed to send/update aggregated wish request prompt",
-                    tg_id=tg_id,
-                    pic_type=pic_type,
-                    error=str(e),
-                    exc_info=True,
-                )
-            finally:
-                # Random pause between sends to create natural timing variation.
-                await asyncio.sleep(random.uniform(0.5, 1.0))
+        for batch_start in range(0, len(items), _SEND_BATCH_SIZE):
+            batch = items[batch_start : batch_start + _SEND_BATCH_SIZE]
+
+            # Send this batch concurrently — all within Telegram's 30 msg/s window.
+            results: list[bool] = await asyncio.gather(  # type: ignore[assignment]
+                *[
+                    self._send_prompt_to_user(tg_id, pair_ids, ui_builder, pic_type, today)
+                    for tg_id, pair_ids in batch
+                ]
+            )
+
+            for (tg_id, pair_ids), success in zip(batch, results):
+                if success:
+                    updated += 1
+                    succeeded.add(tg_id)
+                    delivered_pair_ids.update(pair_ids)
+
+            # Pause between batches to maintain ~25 msg/s sustained rate.
+            if batch_start + _SEND_BATCH_SIZE < len(items):
+                await asyncio.sleep(_SEND_BATCH_INTERVAL_S)
 
         # Mark attempt tracking only for pairs for which at least one user prompt succeeded.
         pairs_marked: set[int] = set()
