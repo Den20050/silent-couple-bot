@@ -3,6 +3,7 @@
 from datetime import date
 
 from aiogram import Router, F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,10 +18,28 @@ logger = get_logger(__name__)
 router = Router(name="other_callbacks")
 
 
+async def _safe_callback_answer(
+    callback: CallbackQuery,
+    text: str | None = None,
+    show_alert: bool = False,
+) -> None:
+    """Answer callback without failing handler on stale/expired query IDs."""
+    try:
+        await callback.answer(text, show_alert=show_alert)
+    except TelegramBadRequest as exc:
+        message = str(exc).lower()
+        if "query is too old" in message or "query id is invalid" in message:
+            logger.warning("Ignored expired callback answer", error=str(exc))
+            return
+        logger.warning("Telegram bad request while answering callback", error=str(exc))
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Unexpected callback.answer failure", error=str(exc))
+
+
 @router.callback_query(F.data.startswith("wish_sent_"))
 async def handle_wish_sent_noop(callback: CallbackQuery) -> None:
     """Handle disabled 'sent' buttons in aggregated wish request prompts."""
-    await callback.answer("✅ Уже отправлено")
+    await _safe_callback_answer(callback, "✅ Уже отправлено")
 
 
 @router.callback_query(F.data.startswith("wish_back_"))
@@ -34,11 +53,11 @@ async def handle_wish_back(
     try:
         pic_type = callback.data.replace("wish_back_", "", 1)
     except Exception:
-        await callback.answer(get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+        await _safe_callback_answer(callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
         return
 
     if pic_type not in ("morning", "evening"):
-        await callback.answer(get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+        await _safe_callback_answer(callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
         return
 
     tg_id = callback.from_user.id
@@ -51,7 +70,7 @@ async def handle_wish_back(
         text=ui.text,
         reply_markup=ui.reply_markup,
     )
-    await callback.answer()
+    await _safe_callback_answer(callback)
 
 
 @router.callback_query(F.data.startswith("wish_pay_"))
@@ -65,18 +84,18 @@ async def handle_wish_pay(
     raw = callback.data.replace("wish_pay_", "", 1)
     parts = raw.split("_", 1)
     if len(parts) != 2:
-        await callback.answer(get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+        await _safe_callback_answer(callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
         return
 
     pic_type, pair_id_raw = parts
     if pic_type not in ("morning", "evening"):
-        await callback.answer(get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+        await _safe_callback_answer(callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
         return
 
     try:
         pair_id = int(pair_id_raw)
     except ValueError:
-        await callback.answer(get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+        await _safe_callback_answer(callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
         return
 
     tg_id = callback.from_user.id
@@ -91,11 +110,11 @@ async def handle_wish_pay(
     user = await users_repo.get_by_tg_id(tg_id)
     pair = await pairs_repo.get_by_id(pair_id)
     if not user or not pair:
-        await callback.answer(get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+        await _safe_callback_answer(callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
         return
 
     if user.id not in (pair.uid_a, pair.uid_b):
-        await callback.answer(get_message("CALLBACK_ACCESS_DENIED"), show_alert=True)
+        await _safe_callback_answer(callback, get_message("CALLBACK_ACCESS_DENIED"), show_alert=True)
         return
 
     if pair.status != "past_due":
@@ -108,7 +127,7 @@ async def handle_wish_pay(
             text=ui.text,
             reply_markup=ui.reply_markup,
         )
-        await callback.answer()
+        await _safe_callback_answer(callback)
         return
 
     partner_id = pair.uid_b if pair.uid_a == user.id else pair.uid_a
@@ -140,7 +159,7 @@ async def handle_wish_pay(
         text=text,
         reply_markup=reply_markup,
     )
-    await callback.answer()
+    await _safe_callback_answer(callback)
 
 
 @router.callback_query(F.data.startswith("cancel_initiator_warnings_"))
@@ -167,7 +186,7 @@ async def handle_cancel_initiator_warnings(
                 callback_data=callback.data,
                 parts_count=len(parts),
             )
-            await callback.answer(get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+            await _safe_callback_answer(callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
             return
         
         pair_id = int(parts[0])
@@ -192,7 +211,7 @@ async def handle_cancel_initiator_warnings(
         pair = await pairs_repo.get_by_id(pair_id)
         if not pair:
             logger.warning("Pair not found", pair_id=pair_id)
-            await callback.answer(get_message("CALLBACK_PAIR_NOT_FOUND"), show_alert=True)
+            await _safe_callback_answer(callback, get_message("CALLBACK_PAIR_NOT_FOUND"), show_alert=True)
             return
         
         # Get users
@@ -200,14 +219,14 @@ async def handle_cancel_initiator_warnings(
         user_b = await users_repo.get_by_id(pair.uid_b)
         if not user_a or not user_b:
             logger.warning("Users not found", pair_id=pair_id)
-            await callback.answer(get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+            await _safe_callback_answer(callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
             return
         
         # Verify that current user is part of this pair
         current_user = await users_repo.get_by_tg_id(tg_id)
         if not current_user:
             logger.warning("Current user not found", tg_id=tg_id)
-            await callback.answer(get_message("CALLBACK_USER_NOT_FOUND"), show_alert=True)
+            await _safe_callback_answer(callback, get_message("CALLBACK_USER_NOT_FOUND"), show_alert=True)
             return
         
         if current_user.id != user_a.id and current_user.id != user_b.id:
@@ -218,7 +237,7 @@ async def handle_cancel_initiator_warnings(
                 user_a_id=user_a.id,
                 user_b_id=user_b.id,
             )
-            await callback.answer(get_message("CALLBACK_ACCESS_DENIED"), show_alert=True)
+            await _safe_callback_answer(callback, get_message("CALLBACK_ACCESS_DENIED"), show_alert=True)
             return
         
         # Save cancellation in Redis
@@ -256,7 +275,9 @@ async def handle_cancel_initiator_warnings(
             reply_markup=None,
         )
         
-        await callback.answer(get_message("CALLBACK_REMINDERS_CANCELLED_SHORT"))
+        await _safe_callback_answer(
+            callback, get_message("CALLBACK_REMINDERS_CANCELLED_SHORT")
+        )
         logger.info("Cancel initiator warnings completed successfully", pair_id=pair_id, tg_id=tg_id)
     except Exception as e:
         logger.error(

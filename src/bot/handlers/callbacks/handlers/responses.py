@@ -3,6 +3,7 @@
 from datetime import date
 
 from aiogram import Router, F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +19,24 @@ from src.bot.handlers.start.services.pair_service import format_partner_text
 logger = get_logger(__name__)
 
 router = Router(name="responses")
+
+
+async def _safe_callback_answer(
+    callback: CallbackQuery,
+    text: str | None = None,
+    show_alert: bool = False,
+) -> None:
+    """Answer callback without failing handler on stale/expired query IDs."""
+    try:
+        await callback.answer(text, show_alert=show_alert)
+    except TelegramBadRequest as exc:
+        message = str(exc).lower()
+        if "query is too old" in message or "query id is invalid" in message:
+            logger.warning("Ignored expired callback answer", error=str(exc))
+            return
+        logger.warning("Telegram bad request while answering callback", error=str(exc))
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Unexpected callback.answer failure", error=str(exc))
 
 
 async def _build_partner_text_for_response(
@@ -61,7 +80,7 @@ async def handle_tap_morning(
     # Parse callback data: tap_morning_{pair_id}_{initiator_tg_id}|{day_iso}
     parsed = parse_callback_data_with_day(callback.data, prefix="tap_morning_")
     if not parsed:
-        await callback.answer(get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+        await _safe_callback_answer(callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
         return
     
     pair_id, initiator_tg_id, day_iso = parsed
@@ -90,7 +109,9 @@ async def handle_tap_morning(
     )
     
     if not success:
-        await callback.answer(get_message(error_key or "CALLBACK_ERROR_GENERIC"), show_alert=True)
+        await _safe_callback_answer(
+            callback, get_message(error_key or "CALLBACK_ERROR_GENERIC"), show_alert=True
+        )
         return
     
     # Remove button from the message
@@ -116,10 +137,7 @@ async def handle_tap_morning(
         text=get_message("CALLBACK_RESPONSE_DELIVERED", partner_text=partner_text),
     )
 
-    try:
-        await callback.answer(get_message("CALLBACK_RESPONSE_SENT"))
-    except Exception:
-        pass
+    await _safe_callback_answer(callback, get_message("CALLBACK_RESPONSE_SENT"))
 
 
 @router.callback_query(F.data.startswith("tap_evening_"))
@@ -138,7 +156,7 @@ async def handle_tap_evening(
     # Parse callback data: tap_evening_{pair_id}_{initiator_tg_id}|{day_iso}
     parsed = parse_callback_data_with_day(callback.data, prefix="tap_evening_")
     if not parsed:
-        await callback.answer(get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+        await _safe_callback_answer(callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
         return
     
     pair_id, initiator_tg_id, day_iso = parsed
@@ -167,7 +185,9 @@ async def handle_tap_evening(
     )
     
     if not success:
-        await callback.answer(get_message(error_key or "CALLBACK_ERROR_GENERIC"), show_alert=True)
+        await _safe_callback_answer(
+            callback, get_message(error_key or "CALLBACK_ERROR_GENERIC"), show_alert=True
+        )
         return
     
     # Remove button from the message
@@ -193,8 +213,5 @@ async def handle_tap_evening(
         text=get_message("CALLBACK_RESPONSE_DELIVERED", partner_text=partner_text),
     )
 
-    try:
-        await callback.answer(get_message("CALLBACK_RESPONSE_SENT"))
-    except Exception:
-        pass
+    await _safe_callback_answer(callback, get_message("CALLBACK_RESPONSE_SENT"))
 

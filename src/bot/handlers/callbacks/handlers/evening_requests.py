@@ -3,6 +3,7 @@
 from datetime import date
 
 from aiogram import Router, F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,6 +35,24 @@ logger = get_logger(__name__)
 router = Router(name="evening_requests")
 
 
+async def _safe_callback_answer(
+    callback: CallbackQuery,
+    text: str | None = None,
+    show_alert: bool = False,
+) -> None:
+    """Answer callback without failing handler on stale/expired query IDs."""
+    try:
+        await callback.answer(text, show_alert=show_alert)
+    except TelegramBadRequest as exc:
+        message = str(exc).lower()
+        if "query is too old" in message or "query id is invalid" in message:
+            logger.warning("Ignored expired callback answer", error=str(exc))
+            return
+        logger.warning("Telegram bad request while answering callback", error=str(exc))
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Unexpected callback.answer failure", error=str(exc))
+
+
 @router.callback_query(F.data.startswith("request_evening_all_"))
 async def handle_request_evening_all_legacy(
     callback: CallbackQuery,
@@ -45,7 +64,7 @@ async def handle_request_evening_all_legacy(
         callback.data, expected_parts=4, prefix="request_evening_all_"
     )
     if not parsed:
-        await callback.answer(get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+        await _safe_callback_answer(callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
         return
 
     (user_id,) = parsed
@@ -57,7 +76,7 @@ async def handle_request_evening_all_legacy(
     users_repo = UsersRepository(session)
     user = await users_repo.get_by_id(user_id)
     if not user or user.tg_id != tg_id:
-        await callback.answer(get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+        await _safe_callback_answer(callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
         return
 
     today = date.today()
@@ -70,7 +89,7 @@ async def handle_request_evening_all_legacy(
         text=ui.text,
         reply_markup=ui.reply_markup,
     )
-    await callback.answer("ℹ️ Выберите партнёра")
+    await _safe_callback_answer(callback, "ℹ️ Выберите партнёра")
 
 
 @router.callback_query(F.data.startswith("request_evening_"))
@@ -95,13 +114,13 @@ async def handle_request_evening(
                 chat_id=tg_id,
                 message_id=callback.message.message_id,
             )
-            await callback.answer(get_message("CALLBACK_STALE_MESSAGE"), show_alert=True)
+            await _safe_callback_answer(callback, get_message("CALLBACK_STALE_MESSAGE"), show_alert=True)
             return
 
     # Parse callback data: request_evening_{pair_id}_{user_id}
     parsed = parse_callback_data(callback.data, expected_parts=4, prefix="request_evening_")
     if not parsed:
-        await callback.answer(get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+        await _safe_callback_answer(callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
         return
     
     pair_id, user_id = parsed
@@ -119,16 +138,17 @@ async def handle_request_evening(
         session, pair_id, user_id, tg_id
     )
     if not validation_result:
-        await callback.answer(get_message("CALLBACK_PAIR_NOT_FOUND"), show_alert=True)
+        await _safe_callback_answer(callback, get_message("CALLBACK_PAIR_NOT_FOUND"), show_alert=True)
         return
     
     pair, user_a, user_b, user = validation_result
     
     # Check if subscription is past due
     if pair.status == PairStatus.PAST_DUE.value:
-        await callback.answer(
+        await _safe_callback_answer(
+            callback,
             get_message("WORKER_PAST_DUE_DUNNING"),
-            show_alert=True
+            show_alert=True,
         )
         return
     
@@ -165,14 +185,16 @@ async def handle_request_evening(
                 )
             except Exception:
                 pass
-            await callback.answer(
+            await _safe_callback_answer(
+                callback,
                 get_message("CALLBACK_PARTNER_ALREADY_SENT"),
-                show_alert=True
+                show_alert=True,
             )
         else:
-            await callback.answer(
+            await _safe_callback_answer(
+                callback,
                 get_message("CALLBACK_NO_IMAGES_AVAILABLE"),
-                show_alert=True
+                show_alert=True,
             )
         return
     
@@ -221,5 +243,5 @@ async def handle_request_evening(
         settings=settings,
     )
     
-    await callback.answer("✅ Отправлено")
+    await _safe_callback_answer(callback, "✅ Отправлено")
 
