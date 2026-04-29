@@ -80,22 +80,22 @@ async def handle_wish_pay(
     telegram_messenger: TelegramMessenger,
 ) -> None:
     """Show 'demo/subscription ended' explanation and a pay button for this pair."""
+    # Answer immediately so the button spinner dismisses at once.
+    await _safe_callback_answer(callback)
+
     # Format: wish_pay_{pic_type}_{pair_id}
     raw = callback.data.replace("wish_pay_", "", 1)
     parts = raw.split("_", 1)
     if len(parts) != 2:
-        await _safe_callback_answer(callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
         return
 
     pic_type, pair_id_raw = parts
     if pic_type not in ("morning", "evening"):
-        await _safe_callback_answer(callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
         return
 
     try:
         pair_id = int(pair_id_raw)
     except ValueError:
-        await _safe_callback_answer(callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
         return
 
     tg_id = callback.from_user.id
@@ -110,11 +110,9 @@ async def handle_wish_pay(
     user = await users_repo.get_by_tg_id(tg_id)
     pair = await pairs_repo.get_by_id(pair_id)
     if not user or not pair:
-        await _safe_callback_answer(callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
         return
 
     if user.id not in (pair.uid_a, pair.uid_b):
-        await _safe_callback_answer(callback, get_message("CALLBACK_ACCESS_DENIED"), show_alert=True)
         return
 
     if pair.status != "past_due":
@@ -127,7 +125,6 @@ async def handle_wish_pay(
             text=ui.text,
             reply_markup=ui.reply_markup,
         )
-        await _safe_callback_answer(callback)
         return
 
     partner_id = pair.uid_b if pair.uid_a == user.id else pair.uid_a
@@ -159,7 +156,6 @@ async def handle_wish_pay(
         text=text,
         reply_markup=reply_markup,
     )
-    await _safe_callback_answer(callback)
 
 
 @router.callback_query(F.data.startswith("cancel_initiator_warnings_"))

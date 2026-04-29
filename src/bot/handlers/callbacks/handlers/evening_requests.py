@@ -102,6 +102,11 @@ async def handle_request_evening(
 ) -> None:
     """Handle evening request button."""
     tg_id = callback.from_user.id
+
+    # Answer the callback FIRST so the button spinner dismisses immediately
+    # (~200-500ms for the proxy round-trip). All heavy DB/API work comes after.
+    await _safe_callback_answer(callback)
+
     if callback.message:
         ok = await is_message_active(
             redis=container.redis,
@@ -114,17 +119,15 @@ async def handle_request_evening(
                 chat_id=tg_id,
                 message_id=callback.message.message_id,
             )
-            await _safe_callback_answer(callback, get_message("CALLBACK_STALE_MESSAGE"), show_alert=True)
             return
 
     # Parse callback data: request_evening_{pair_id}_{user_id}
     parsed = parse_callback_data(callback.data, expected_parts=4, prefix="request_evening_")
     if not parsed:
-        await _safe_callback_answer(callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
         return
-    
+
     pair_id, user_id = parsed
-    
+
     logger.info(
         "Processing request_evening callback",
         pair_id=pair_id,
@@ -132,30 +135,28 @@ async def handle_request_evening(
         tg_id=tg_id,
         callback_data=callback.data,
     )
-    
+
     # Validate pair and user
     validation_result = await validate_pair_and_user(
         session, pair_id, user_id, tg_id
     )
     if not validation_result:
-        await _safe_callback_answer(callback, get_message("CALLBACK_PAIR_NOT_FOUND"), show_alert=True)
         return
-    
+
     pair, user_a, user_b, user = validation_result
-    
-    # Check if subscription is past due
+
+    # Check if subscription is past due — send as a regular message (callback already answered)
     if pair.status == PairStatus.PAST_DUE.value:
-        await _safe_callback_answer(
-            callback,
-            get_message("WORKER_PAST_DUE_DUNNING"),
-            show_alert=True,
+        await telegram_messenger.send_message(
+            chat_id=tg_id,
+            text=get_message("WORKER_PAST_DUE_DUNNING"),
         )
         return
-    
+
     today = date.today()
     daily_state_repo = DailyStateRepository(session)
     ui_builder = WishRequestUIService(session)
-    
+
     # Send wish to partner
     success, partner_nickname = await send_wish_to_partner(
         session=session,
@@ -167,7 +168,7 @@ async def handle_request_evening(
         telegram_messenger=telegram_messenger,
         redis=container.redis,
     )
-    
+
     if not success:
         # Check if partner already sent
         daily_state = await daily_state_repo.get_by_pair_and_day(pair_id, today)
@@ -185,20 +186,18 @@ async def handle_request_evening(
                 )
             except Exception:
                 pass
-            await _safe_callback_answer(
-                callback,
-                get_message("CALLBACK_PARTNER_ALREADY_SENT"),
-                show_alert=True,
+            await telegram_messenger.send_message(
+                chat_id=tg_id,
+                text=get_message("CALLBACK_PARTNER_ALREADY_SENT"),
             )
         else:
-            await _safe_callback_answer(
-                callback,
-                get_message("CALLBACK_NO_IMAGES_AVAILABLE"),
-                show_alert=True,
+            await telegram_messenger.send_message(
+                chat_id=tg_id,
+                text=get_message("CALLBACK_NO_IMAGES_AVAILABLE"),
             )
         return
-    
-    # Success: refresh the aggregated prompt (no extra confirmation message in chat)
+
+    # Success: refresh the aggregated prompt
     ui = await ui_builder.build_for_user(user_tg_id=tg_id, pic_type="evening", day=today)
     await telegram_messenger.edit_message(
         chat_id=tg_id,
@@ -229,11 +228,11 @@ async def handle_request_evening(
         chat_id=tg_id,
         text=get_message("CALLBACK_WISH_DELIVERED", partner_text=partner_text),
     )
-    
+
     # Schedule reminder tasks
     partner_tg_id = user_b.tg_id if user_a.tg_id == tg_id else user_a.tg_id
     recipient_user = user_b if user_a.id == user_id else user_a
-    
+
     await schedule_reminder_tasks(
         pair_id=pair_id,
         initiator_tg_id=tg_id,
@@ -242,6 +241,4 @@ async def handle_request_evening(
         pic_type="evening",
         settings=settings,
     )
-    
-    await _safe_callback_answer(callback, "✅ Отправлено")
 
