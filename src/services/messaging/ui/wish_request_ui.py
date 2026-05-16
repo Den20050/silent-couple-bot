@@ -109,9 +109,10 @@ class WishRequestUIService:
                 }
                 sent_rows.append([button])
             else:
+                cb = f"{callback_prefix}_{pair.id}_{user.id}|{day.isoformat()}"
                 button = {
                     "text": f"📨 {partner_text}",
-                    "callback_data": f"{callback_prefix}_{pair.id}_{user.id}",
+                    "callback_data": cb,
                 }
                 pending_rows.append([button])
 
