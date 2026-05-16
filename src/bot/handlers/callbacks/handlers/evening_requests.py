@@ -17,6 +17,7 @@ from src.services.telegram.messenger import TelegramMessenger
 from src.core.di.container import Container
 from src.bot.handlers.callbacks.validators import (
     parse_callback_data,
+    parse_callback_data_with_day,
     validate_pair_and_user,
 )
 from src.bot.handlers.callbacks.use_cases.send_wish import (
@@ -121,12 +122,13 @@ async def handle_request_evening(
             )
             return
 
-    # Parse callback data: request_evening_{pair_id}_{user_id}
-    parsed = parse_callback_data(callback.data, expected_parts=4, prefix="request_evening_")
+    # Parse callback data: request_evening_{pair_id}_{user_id}|{day_iso}
+    # day_iso is embedded to prevent midnight presses from consuming the next day's slot.
+    parsed = parse_callback_data_with_day(callback.data, prefix="request_evening_")
     if not parsed:
         return
 
-    pair_id, user_id = parsed
+    pair_id, user_id, day_iso = parsed
 
     logger.info(
         "Processing request_evening callback",
@@ -153,7 +155,7 @@ async def handle_request_evening(
         )
         return
 
-    today = date.today()
+    today = date.fromisoformat(day_iso) if day_iso else date.today()
     daily_state_repo = DailyStateRepository(session)
     ui_builder = WishRequestUIService(session)
 
