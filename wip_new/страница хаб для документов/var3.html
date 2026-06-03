@@ -75,7 +75,6 @@
             border-bottom: 3px solid #FFD93D;
         }
         
-        /* Описание бота */
         .about-card {
             background: linear-gradient(135deg, #FFD93D20 0%, #C4B5FD20 100%);
             border-radius: 20px;
@@ -149,17 +148,45 @@
             line-height: 1.6;
         }
         
-        .trial-badge {
-            display: inline-block;
-            background: linear-gradient(135deg, #6EE7B7 0%, #FB7185 100%);
+        /* 👇 ОБНОВЛЁННЫЙ СТИЛЬ ДЛЯ ТРИАЛ-ПЛАШКИ */
+        .trial-section {
+            background: linear-gradient(135deg, #6EE7B730 0%, #C4B5FD30 100%);
+            border-radius: 16px;
+            padding: 28px 24px;
+            border: 3px solid #2d3748;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .trial-text {
+            font-size: 16px;
+            font-weight: 600;
             color: #2d3748;
-            padding: 12px 24px;
+            margin-bottom: 16px;
+        }
+        
+        .tariffs-btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #FFD93D 0%, #FB7185 100%);
+            color: #2d3748;
+            padding: 14px 28px;
             border-radius: 12px;
             font-weight: 700;
             font-size: 15px;
-            margin-top: 16px;
+            text-decoration: none;
             border: 2px solid #2d3748;
             box-shadow: 3px 3px 0 #2d3748;
+            transition: all 0.2s;
+        }
+        
+        .tariffs-btn:hover {
+            transform: translate(-2px, -2px);
+            box-shadow: 5px 5px 0 #2d3748;
+        }
+        
+        .tariffs-btn:active {
+            transform: translate(2px, 2px);
+            box-shadow: 1px 1px 0 #2d3748;
         }
         
         .links-grid {
@@ -333,13 +360,13 @@
             .about-card { padding: 24px; }
             .link-card { padding: 20px; }
             .dev-label { min-width: 120px; }
+            .trial-section { padding: 24px 20px; }
         }
     </style>
 </head>
 <body>
     <div class="header">
         <div class="logo-wrapper">
-            <!-- Замените src на путь к вашему логотипу -->
             <img src="/images/logo.png" alt="Тихие объятия Logo" class="logo-img">
         </div>
         <h1>Тихие объятия</h1>
@@ -386,8 +413,14 @@
                     </li>
                 </ul>
                 
-                <div class="trial-badge">
-                    🎁 7 дней бесплатно, чтобы попробовать
+                <!-- 👇 ОБНОВЛЁННЫЙ БЛОК С ТРИАЛОМ И КНОПКОЙ -->
+                <div class="trial-section">
+                    <div class="trial-text">
+                        🎁 7 дней бесплатно, чтобы попробовать
+                    </div>
+                    <a href="/tariffs" class="tariffs-btn">
+                        💰 Посмотреть тарифы
+                    </a>
                 </div>
             </div>
         </div>
@@ -436,7 +469,7 @@
             </div>
             <div class="dev-card">
                 <div class="dev-item">
-                    <span class="dev-label">Физлицо на ПНД</span>
+                    <span class="dev-label">Физлицо на ПНД:</span>
                     <span class="dev-value">Целищев Денис Владиславович</span>
                 </div>
                 <div class="dev-item">
@@ -449,7 +482,7 @@
                 </div>
                 <div class="dev-item">
                     <span class="dev-label">Telegram:</span>
-                    <span class="dev-value"><a href="https://t.me/[ваш_юзернейм]" target="_blank">@eonubis</a></span>
+                    <span class="dev-value"><a href="https://t.me/[ваш_юзернейм]" target="_blank">@[ваш_юзернейм]</a></span>
                 </div>
                 
             </div>
@@ -458,9 +491,10 @@
     
     <div class="footer">
         <div class="footer-links">
-            <a href="/offer">📋 Оферта</a>
+            <a href="/legal">📄 Документы</a>
+            <a href="/tariffs">💰 Тарифы</a>
+            <a href="/offer">📑 Оферта</a>
             <a href="/consent">🔐 Конфиденциальность</a>
-            <a href="/privacy">✅ ПДн</a>
         </div>
         <p class="footer-copy">© 2024–<span id="year"></span> Тихие объятия</p>
     </div>

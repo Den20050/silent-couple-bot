@@ -120,22 +120,12 @@ class WishSenderService:
         # Get partner
         partner = user_b if user_a.tg_id == tg_id else user_a
 
-        # Refresh daily_state
-        daily_state = await self.daily_state_repo.get_by_pair_and_day(pair.id, today)
-
-        # Build caption with surprise logic
-        caption, is_surprise = await self.caption_service.build_wish_caption(
+        # Build caption
+        caption = await self.caption_service.build_wish_caption(
             pair=pair,
             sender_user_id=user_id,
             pic_type=pic_type,
-            daily_state=daily_state,
-            include_surprise=True,
         )
-
-        # Update last_surprise_at if surprise was used
-        if is_surprise:
-            await self.daily_state_repo.update_last_surprise_at(pair.id, today)
-            await self.session.commit()
 
         # Create reply markup
         button_text = get_message("RESPOND_BUTTON")
@@ -145,7 +135,7 @@ class WishSenderService:
                 [
                     {
                         "text": button_text,
-                        "callback_data": f"{callback_prefix}_{pair.id}_{tg_id}",
+                        "callback_data": f"{callback_prefix}_{pair.id}_{tg_id}|{today.isoformat()}",
                     },
                 ],
             ],

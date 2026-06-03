@@ -1,17 +1,11 @@
 """Service for building captions for wishes and responses."""
 
 import random
-from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.constants import (
-    MICRO_SURPRISE_MORNING_CAPTIONS,
-    MICRO_SURPRISE_EVENING_CAPTIONS,
-    MICRO_SURPRISE_MIN_HOURS,
-)
+from src.core.constants import CHAT_MORNING_CAPTIONS, CHAT_EVENING_CAPTIONS
 from src.core.logger import get_logger
 from src.core.messages import get_message
-from src.db.repositories.daily_state import DailyStateRepository
 from src.db.repositories.pairs import PairsRepository
 from src.db.repositories.users import UsersRepository
 
@@ -19,7 +13,7 @@ logger = get_logger(__name__)
 
 
 class CaptionService:
-    """Service for building captions with surprise logic and nicknames."""
+    """Service for building captions for wishes and responses."""
 
     def __init__(self, session: AsyncSession):
         """Initialize caption service.
@@ -29,7 +23,6 @@ class CaptionService:
         """
         self.session = session
         self.pairs_repo = PairsRepository(session)
-        self.daily_state_repo = DailyStateRepository(session)
         self.users_repo = UsersRepository(session)
 
     async def build_wish_caption(
@@ -37,44 +30,26 @@ class CaptionService:
         pair,
         sender_user_id: int,
         pic_type: str,
-        daily_state,
-        include_surprise: bool = True,
-    ) -> tuple[str, bool]:
-        """Build caption for wish with Micro-Surprise logic and nickname.
+    ) -> str:
+        """Build caption for wish photo with nickname.
 
         Args:
             pair: Pair object
             sender_user_id: User ID of the sender
             pic_type: Picture type ("morning" or "evening")
-            daily_state: DailyState object with last_surprise_at
-            include_surprise: Whether to include Micro-Surprise logic
-                (default: True)
 
         Returns:
-            Tuple of (caption, is_surprise_used)
+            Formatted caption with nickname prefix
         """
-        # Get base caption with surprise logic if enabled
-        if include_surprise and pair.mode == "chat":
-            caption, is_surprise = self._get_caption_with_surprise(
-                pair_mode=pair.mode,
-                pic_type=pic_type,
-                daily_state=daily_state,
-            )
-        else:
-            caption = self._get_standard_caption(
-                pair_mode=pair.mode,
-                pic_type=pic_type,
-            )
-            is_surprise = False
-
-        # Format caption with nickname
-        caption = await self._format_caption_with_nickname(
+        caption = self._get_standard_caption(
+            pair_mode=pair.mode,
+            pic_type=pic_type,
+        )
+        return await self._format_caption_with_nickname(
             caption=caption,
             pair=pair,
             sender_user_id=sender_user_id,
         )
-
-        return caption, is_surprise
 
     async def build_response_caption(
         self,
@@ -82,7 +57,7 @@ class CaptionService:
         sender_user_id: int,
         pic_type: str,
     ) -> str:
-        """Build caption for response.
+        """Build caption for response photo with nickname.
 
         Args:
             pair: Pair object
@@ -90,98 +65,39 @@ class CaptionService:
             pic_type: Picture type ("morning" or "evening")
 
         Returns:
-            Formatted caption with nickname
+            Formatted caption with nickname prefix
         """
-        # Get base caption based on mode
-        if pair.mode == "chat":
-            caption = get_message("RESPONSE_RECEIVED_CHAT")
-        else:
-            if pic_type == "morning":
-                caption = get_message("RESPONSE_MORNING_SILENT")
-            else:
-                caption = get_message("RESPONSE_EVENING_SILENT")
-
-        # Format caption with nickname
-        caption = await self._format_caption_with_nickname(
+        caption = self._get_standard_caption(
+            pair_mode=pair.mode, pic_type=pic_type
+        )
+        return await self._format_caption_with_nickname(
             caption=caption,
             pair=pair,
             sender_user_id=sender_user_id,
         )
-
-        return caption
-
-    def _get_caption_with_surprise(
-        self,
-        pair_mode: str,
-        pic_type: str,
-        daily_state,
-    ) -> tuple[str, bool]:
-        """Get caption with Micro-Surprise logic for Chat Mode.
-
-        Args:
-            pair_mode: Pair mode ("chat" or "silent")
-            pic_type: Picture type ("morning" or "evening")
-            daily_state: DailyState object with last_surprise_at
-
-        Returns:
-            Tuple of (caption, is_surprise_used)
-        """
-        if pair_mode != "chat":
-            # Silent Mode: standard captions
-            if pic_type == "morning":
-                return get_message("CAPTION_SILENT_MORNING"), False
-            else:  # evening
-                return get_message("CAPTION_SILENT_EVENING"), False
-
-        # Chat Mode: check for Micro-Surprise
-        if pic_type == "morning":
-            standard_caption = get_message("CAPTION_CHAT_MORNING")
-            surprise_captions = MICRO_SURPRISE_MORNING_CAPTIONS
-        else:  # evening
-            standard_caption = get_message("CAPTION_CHAT_EVENING")
-            surprise_captions = MICRO_SURPRISE_EVENING_CAPTIONS
-
-        # Check if we should use surprise (1 in 4 chance, but only if
-        # >= 72 hours passed)
-        use_surprise = False
-        if random.randint(1, 4) == 1:
-            if daily_state.last_surprise_at is None:
-                # First time - allow surprise
-                use_surprise = True
-            else:
-                # Check if >= 72 hours passed
-                hours_passed = (
-                    (datetime.utcnow() - daily_state.last_surprise_at)
-                    .total_seconds() / 3600
-                )
-                if hours_passed >= MICRO_SURPRISE_MIN_HOURS:
-                    use_surprise = True
-
-        if use_surprise:
-            caption = random.choice(surprise_captions)
-            return caption, True
-        else:
-            return standard_caption, False
 
     def _get_standard_caption(
         self,
         pair_mode: str,
         pic_type: str,
     ) -> str:
-        """Get standard caption based on mode and picture type.
+        """Get caption based on mode and picture type.
+
+        Chat mode: random pick from a pool of 15 warm captions.
+        Silent mode: fixed contextual caption.
 
         Args:
             pair_mode: Pair mode ("chat" or "silent")
             pic_type: Picture type ("morning" or "evening")
 
         Returns:
-            Standard caption text
+            Caption text
         """
         if pair_mode == "chat":
             if pic_type == "morning":
-                return get_message("CAPTION_CHAT_MORNING")
+                return random.choice(CHAT_MORNING_CAPTIONS)
             else:
-                return get_message("CAPTION_CHAT_EVENING")
+                return random.choice(CHAT_EVENING_CAPTIONS)
         else:  # silent
             if pic_type == "morning":
                 return get_message("CAPTION_SILENT_MORNING")
@@ -205,13 +121,11 @@ class CaptionService:
         Returns:
             Formatted caption with nickname prefix
         """
-        # Get partner nickname (how recipient calls sender)
         partner_nickname = self.pairs_repo.get_partner_nickname(
             pair,
             sender_user_id,
         )
         if partner_nickname:
-            # Add nickname at the beginning: "от мама. Доброе утро!"
             return f"от {partner_nickname}. {caption}"
 
         sender_user = await self.users_repo.get_by_id(sender_user_id)
