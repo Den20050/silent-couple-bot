@@ -1,12 +1,13 @@
 """Telegram webhook server using FastAPI."""
 
+import asyncio
 from contextlib import asynccontextmanager
 
 from aiogram import Bot, Dispatcher
-from aiogram.types import BotCommand, BotCommandScopeChat, MenuButtonCommands, Update
+from aiogram.types import BotCommand, BotCommandScopeChat, MenuButtonCommands
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.storage.redis import RedisStorage
-from fastapi import FastAPI, Request, HTTPException, Header
+from fastapi import FastAPI, Request, Header
 from fastapi.responses import JSONResponse
 
 from src.core.config import settings
@@ -18,7 +19,7 @@ from src.bot.middlewares.container import ContainerMiddleware
 from src.bot.middlewares.database import DatabaseMiddleware
 from src.bot.middlewares.rate_limit import RateLimitMiddleware
 from src.bot.middlewares.timezone import TimezoneMiddleware
-from src.bot.middlewares.ip_injector import IPInjectorMiddleware, ip_context
+from src.bot.middlewares.ip_injector import IPInjectorMiddleware
 from src.services.telegram import set_bot
 
 logger = get_logger(__name__)
@@ -27,6 +28,7 @@ logger = get_logger(__name__)
 dp: Dispatcher | None = None
 bot: Bot | None = None
 redis_storage_client = None  # Store Redis client for RedisStorage globally
+_polling_task: asyncio.Task | None = None
 
 
 async def setup_bot() -> tuple[Bot, Dispatcher]:
@@ -170,23 +172,33 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for FastAPI app."""
-    # Startup
-    await setup_bot()
-    
-    # Set webhook URL after bot is initialized
-    from src.bot.webhook_server import set_webhook
-    if settings.webhook_url:
-        logger.info("Setting webhook URL on startup...")
-        success = await set_webhook()
-        if success:
-            logger.info("✅ Webhook set successfully", url=settings.webhook_url)
-        else:
-            logger.error("❌ Failed to set webhook")
-    
-    logger.info("Webhook server started")
+    global bot, dp, _polling_task, redis_storage_client
+
+    bot, dp = await setup_bot()
+
+    # Inbound Telegram webhook delivery to this host is unreliable (Connection timed out).
+    # Pull updates via long polling through the outbound proxy instead.
+    await delete_webhook()
+    _polling_task = asyncio.create_task(
+        dp.start_polling(
+            bot,
+            allowed_updates=["message", "callback_query"],
+        ),
+        name="telegram-polling",
+    )
+    logger.info("Telegram long polling started")
+
+    logger.info("Webhook server started (Robokassa + health)")
     yield
-    # Shutdown
-    global bot, redis_storage_client
+
+    if _polling_task:
+        _polling_task.cancel()
+        try:
+            await _polling_task
+        except asyncio.CancelledError:
+            pass
+        _polling_task = None
+
     if bot:
         await bot.session.close()
     if redis_storage_client:
@@ -194,7 +206,6 @@ async def lifespan(app: FastAPI):
             await redis_storage_client.aclose()
         except Exception as e:
             logger.warning(f"Error closing Redis storage connection: {e}")
-    # Container's Redis is managed by container lifecycle
     logger.info("Webhook server stopped")
 
 
@@ -217,71 +228,12 @@ async def telegram_webhook(
         default=None, alias="X-Telegram-Bot-Api-Secret-Token"
     ),
 ) -> JSONResponse:
-    """Handle Telegram webhook."""
-    global bot, dp
-
-    logger.info("Webhook request received", path=settings.webhook_path)
-
-    if not bot or not dp:
-        logger.error("Bot or dispatcher not initialized")
-        raise HTTPException(status_code=503, detail="Bot not initialized")
-
-    # Verify secret token if configured
-    if settings.webhook_secret_token:
-        if x_telegram_bot_api_secret_token != settings.webhook_secret_token:
-            client_ip = request.client.host if request.client else None
-            logger.warning("Invalid webhook secret token", ip=client_ip)
-            raise HTTPException(
-                status_code=403, detail="Invalid secret token"
-            )
-
-    # Parse update
-    try:
-        update_data = await request.json()
-        update = Update(**update_data)
-        logger.info(
-            "Webhook update parsed",
-            update_id=update.update_id,
-            has_message=update.message is not None,
-            has_callback_query=update.callback_query is not None,
-        )
-    except Exception as e:
-        logger.error("Failed to parse webhook update", error=str(e), exc_info=True)
-        raise HTTPException(status_code=400, detail="Invalid update data")
-
-    # Extract IP from request headers
-    forwarded_for = request.headers.get("X-Forwarded-For", "")
-    ip = (
-        request.headers.get("X-Real-IP")
-        or (forwarded_for.split(",")[0].strip() if forwarded_for else None)
-        or request.headers.get("CF-Connecting-IP")
-        or (request.client.host if request.client else None)
+    """Legacy Telegram webhook endpoint (updates are fetched via long polling)."""
+    logger.warning(
+        "Received Telegram webhook request but bot uses long polling",
+        path=settings.webhook_path,
+        ip=request.client.host if request.client else None,
     )
-
-    # Set IP in context for middleware to inject into data dict
-    # This allows handlers and middleware to access IP without modifying frozen Pydantic models
-    if ip:
-        ip_context.set(ip)
-        logger.debug("IP set in context", ip=ip)
-
-    # Process update
-    try:
-        logger.debug("Processing update", update_id=update.update_id)
-        await dp.feed_update(bot, update)
-        logger.info("Update processed successfully", update_id=update.update_id)
-    except Exception as e:
-        logger.error(
-            "Error processing webhook update",
-            update_id=update.update_id,
-            error=str(e),
-            exc_info=True,
-        )
-        # Still return 200 to prevent Telegram from retrying
-        return JSONResponse(content={"ok": True})
-    finally:
-        # Clear IP from context after processing
-        ip_context.set(None)
-
     return JSONResponse(content={"ok": True})
 
 
@@ -305,6 +257,9 @@ async def set_webhook() -> bool:
         await bot.set_webhook(
             url=settings.webhook_url,
             secret_token=settings.webhook_secret_token,
+            allowed_updates=["message", "callback_query"],
+            max_connections=40,
+            drop_pending_updates=False,
         )
         logger.info("Webhook set", url=settings.webhook_url)
         return True
