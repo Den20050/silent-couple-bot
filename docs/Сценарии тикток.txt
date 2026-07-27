@@ -1,0 +1,462 @@
+Отлично — теперь упакуем это в **вертикальные короткие видео (Reels / TikTok)** с удержанием и хук-эффектом. Ниже — готовые **промты + сценарии (тайминг, текст на экране, монтаж)**.
+
+Формат:
+
+* 9:16
+* 15–25 секунд
+* быстрые сцены (1.5–3 сек)
+* первые 2 секунды = ХУК
+
+---
+
+# 🎬 1. МАМА И ДОЧКА
+
+---
+
+## 😟 ВАРИАНТ СТРАХ (лучший для холодной аудитории)
+
+### ⏱ Структура (20 сек)
+
+**Сцена 1 (0–2 сек) — ХУК**
+Текст:
+👉 *"Если мама не знает, что ты в порядке..."*
+
+**Prompt:**
+close-up worried mother at night, phone glow on face, dark room, emotional tension, cinematic lighting, vertical video
+
+---
+
+**Сцена 2 (2–5 сек)**
+Текст:
+*"…она уже думает о плохом"*
+
+**Prompt:**
+mother staring at phone, no messages, anxious eyes, clock late night
+
+---
+
+**Сцена 3 (5–8 сек)**
+Текст:
+*"А ты просто занят(а)"*
+
+**Prompt:**
+young student rushing through campus, ignoring phone notifications
+
+---
+
+**Сцена 4 (8–12 сек) — РЕШЕНИЕ**
+Текст:
+*"1 кнопка — и всё понятно"*
+
+**Prompt:**
+telegram bot interface, button "Я в порядке ❤️", finger tapping
+
+---
+
+**Сцена 5 (12–16 сек) — ВЫГОДА**
+Текст:
+*"И мама спокойно спит"*
+
+**Prompt:**
+mother smiling with relief, soft warm lighting
+
+---
+
+**Сцена 6 (16–20 сек) — CTA**
+Текст:
+👉 *"Отправь это тому, кто переживает за тебя"*
+
+**Prompt:**
+split screen, both smiling, glowing connection line
+
+---
+
+---
+
+## ❤️ ВАРИАНТ ТЕПЛО (лучший для удержания)
+
+### ⏱ Структура
+
+**Хук (0–2 сек)**
+*"Вы не пишете каждый день… но всё равно важны друг другу"*
+
+---
+
+**Сцены:**
+
+* мама смотрит фото
+* дочка улыбается, но занята
+* лёгкая грусть
+
+**Решение:**
+*"Маленький ежедневный знак"*
+
+**Выгода:**
+оба улыбаются
+
+**CTA:**
+👉 *"Сохрани связь без слов"*
+
+---
+
+## ⚠️ ВАРИАНТ ВИНА (конверсия)
+
+**Хук:**
+👉 *"Ты видел сообщение от мамы… и не ответил?"*
+
+Дальше:
+
+* игнор
+* чувство вины
+* решение (кнопка)
+* мама счастлива
+
+**CTA:**
+👉 *"Ответ занимает 1 секунду"*
+
+---
+
+# 🎬 2. ПОЖИЛЫЕ РОДИТЕЛИ
+
+---
+
+## 😟 СТРАХ
+
+**Хук:**
+👉 *"Самое страшное для родителей — не знать"*
+
+---
+
+**Сцены:**
+
+* тишина дома
+* часы ночью
+* тревога
+
+**Решение:**
+*"Один сигнал — я в порядке"*
+
+**Выгода:**
+облегчение
+
+**CTA:**
+👉 *"Дай им спокойствие"*
+
+---
+
+## ❤️ ТЕПЛО
+
+**Хук:**
+👉 *"Им не нужны длинные разговоры"*
+
+**Дальше:**
+
+* фото семьи
+* расстояние
+* открытка
+
+**CTA:**
+👉 *"Просто напомни, что ты рядом"*
+
+---
+
+## ⚠️ ВИНА
+
+**Хук:**
+👉 *"Ты пишешь всем… кроме родителей?"*
+
+**Сцены:**
+
+* соцсети
+* игнор родителей
+* осознание
+
+**CTA:**
+👉 *"Им важен только знак"*
+
+---
+
+# 🎬 3. БРАТ И СЕСТРА
+
+---
+
+## 😟 ПОТЕРЯ СВЯЗИ
+
+**Хук:**
+👉 *"Вы были близки… что изменилось?"*
+
+**Сцены:**
+
+* детство (быстро)
+* тишина в чате
+* дистанция
+
+**Решение:**
+простая кнопка
+
+**CTA:**
+👉 *"Не теряйте друг друга"*
+
+---
+
+## ❤️ НОСТАЛЬГИЯ
+
+**Хук:**
+👉 *"Помнишь, как вы смеялись вместе?"*
+
+**Сцены:**
+
+* флешбек
+* настоящее
+* открытка
+
+**CTA:**
+👉 *"Связь можно вернуть"*
+
+---
+
+## ⚠️ ВИНА
+
+**Хук:**
+👉 *"Каждый раз думаешь написать…"*
+
+**Сцены:**
+
+* откладывание
+* неловкость
+* решение
+
+**CTA:**
+👉 *"Начать проще, чем кажется"*
+
+---
+
+# 🎯 ВАЖНЫЕ НАСТРОЙКИ ДЛЯ LLAMAGEN
+
+Добавляй в каждый prompt:
+
+```
+vertical video 9:16, cinematic lighting, emotional storytelling, soft realistic faces, smooth transitions, short video scene, high detail, modern smartphone UI
+```
+
+---
+
+# 🔥 Как делать, чтобы заходило (ключевое)
+
+1. **Первые 2 секунды = боль**
+2. Текст крупный (70% экрана)
+3. Минимум слов (до 6 на экран)
+4. Контраст:
+
+   * холод → тепло
+   * тревога → спокойствие
+
+---
+
+# 🚀 Хочешь следующий уровень?
+
+Могу дальше сделать:
+
+* 🎯 **конкретные тексты для озвучки (voice over)**
+* 🎯 **музыку под каждый триггер (что сейчас залетает)**
+* 🎯 **структуру автоворонки (Reels → бот → оплата)**
+
+Это уже даст тебе почти готовую рекламную систему.
+
+Точно, ты прав — в вариантах “тепло” я ушёл в описание и не дал полноценные промты. Исправляю: даю **полные версии с промтами для КАЖДОЙ сцены (Reels/TikTok, 9:16)**.
+
+---
+
+# 🎬 1. МАМА И ДОЧКА — ❤️ ТЕПЛО
+
+## ⏱ 20 сек
+
+---
+
+### **СЦЕНА 1 — ХУК (0–2 сек)**
+
+Текст:
+👉 *"Вы не пишете каждый день…"*
+
+**Prompt:**
+vertical video 9:16, warm morning light, mother in kitchen holding phone, soft smile but slight longing, cozy home, emotional cinematic lighting, realistic faces
+
+---
+
+### **СЦЕНА 2 (2–5 сек)**
+
+Текст:
+*"…но всё равно думаете друг о друге"*
+
+**Prompt:**
+young female student in campus environment, sunlight, pauses and looks at phone with gentle smile, feeling connection, soft focus background
+
+---
+
+### **СЦЕНА 3 (5–8 сек)**
+
+Текст:
+*"Иногда не хватает времени написать"*
+
+**Prompt:**
+student walking fast between classes, notifications on phone, calm but busy, no stress, just light rush, natural lifestyle
+
+---
+
+### **СЦЕНА 4 — РЕШЕНИЕ (8–12 сек)**
+
+Текст:
+*"Но можно проще"*
+
+**Prompt:**
+clean telegram bot interface, button "Доброе утро ☀️", finger gently taps, minimal UI, warm glow from screen
+
+---
+
+### **СЦЕНА 5 — ВЫГОДА (12–16 сек)**
+
+Текст:
+*"Маленький знак — каждый день"*
+
+**Prompt:**
+mother receiving beautiful postcard on phone, smiling softly, warm sunlight fills room, emotional calm moment
+
+---
+
+### **СЦЕНА 6 — CTA (16–20 сек)**
+
+Текст:
+👉 *"Скажи ‘я рядом’ без слов"*
+
+**Prompt:**
+split screen mother and daughter smiling at phones, soft glowing line connecting them, warm color palette, emotional connection
+
+---
+
+# 🎬 2. ПОЖИЛЫЕ РОДИТЕЛИ — ❤️ ТЕПЛО
+
+---
+
+### **СЦЕНА 1 — ХУК**
+
+👉 *"Им не нужны длинные разговоры"*
+
+**Prompt:**
+elderly couple sitting together on sofa, soft evening light, calm faces, holding phone, cozy home atmosphere
+
+---
+
+### **СЦЕНА 2**
+
+*"Им важно просто помнить о тебе"*
+
+**Prompt:**
+close-up framed family photo, parents looking at it with gentle smiles, nostalgic warm tones
+
+---
+
+### **СЦЕНА 3**
+
+*"Даже если ты далеко"*
+
+**Prompt:**
+adult child walking in foreign city, different architecture, looking at phone thoughtfully, sunset light
+
+---
+
+### **СЦЕНА 4 — РЕШЕНИЕ**
+
+*"Один маленький сигнал"*
+
+**Prompt:**
+telegram bot interface, button "Спокойной ночи 🌙", simple tap, minimal effort, soft glow
+
+---
+
+### **СЦЕНА 5 — ВЫГОДА**
+
+*"И они улыбаются"*
+
+**Prompt:**
+elderly couple smiling warmly at phone, relaxed faces, cozy lighting, emotional peace
+
+---
+
+### **СЦЕНА 6 — CTA**
+
+👉 *"Просто напомни, что ты рядом"*
+
+**Prompt:**
+split scene across distance (map glow or light connection), both sides calm and smiling, warm tones
+
+---
+
+# 🎬 3. БРАТ И СЕСТРА — ❤️ НОСТАЛЬГИЯ / ТЕПЛО
+
+---
+
+### **СЦЕНА 1 — ХУК**
+
+👉 *"Помнишь, как вы были всегда вместе?"*
+
+**Prompt:**
+flashback scene, children (brother and sister) laughing and playing, sunny day, warm nostalgic tone, soft blur edges
+
+---
+
+### **СЦЕНА 2**
+
+*"А сейчас — разные города"*
+
+**Prompt:**
+split screen, adult brother in one apartment, sister in another city, neutral mood, distance feeling
+
+---
+
+### **СЦЕНА 3**
+
+*"Но связь осталась"*
+
+**Prompt:**
+both casually checking phone and smiling slightly, subtle emotional connection
+
+---
+
+### **СЦЕНА 4 — РЕШЕНИЕ**
+
+*"Иногда достаточно одного жеста"*
+
+**Prompt:**
+telegram bot interface, button "Отправить открытку", clean UI, tap interaction
+
+---
+
+### **СЦЕНА 5 — ВЫГОДА**
+
+*"Чтобы снова почувствовать близость"*
+
+**Prompt:**
+both receive matching postcards, relaxed smiles, soft lighting, emotional warmth
+
+---
+
+### **СЦЕНА 6 — CTA**
+
+👉 *"Связь остаётся — если её поддерживать"*
+
+**Prompt:**
+split screen with glowing connection line, warm tones, emotional спокойствие
+
+---
+
+# 💡 Важно (чтобы “тепло” реально работало)
+
+* Делай **мягкую музыку (пиано / lo-fi)**
+* Меньше контраста → больше “уютного света”
+* Лица = ключ (эмоции важнее действий)
+
+---
+
+Если хочешь, дальше можем усилить:
+👉 сделать **озвучку (скрипты диктора под каждый ролик)** — это обычно +40% к удержанию
+👉 или собрать **1–2 идеальных ролика под тест (с максимальной вероятностью залёта)**

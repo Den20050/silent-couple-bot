@@ -1,0 +1,26 @@
+NAME   FSTYPE   FSVER LABEL  UUID                                 FSAVAIL FSUSE% MOUNTPOINTS
+loop0  squashfs 4.0                                                     0   100% /snap/certbot/5057
+loop1                                                                   0   100% /snap/snapd/25577
+loop2                                                                   0   100% /snap/lxd/35819
+loop3                                                                   0   100% /snap/core24/1225
+loop4  squashfs 4.0                                                     0   100% /snap/lxd/36558
+loop5                                                                   0   100% /snap/core24/1196
+loop6                                                                   0   100% /snap/core20/2669
+loop7                                                                   0   100% /snap/core20/2682
+loop8                                                                   0   100% /snap/core20/2769
+loop9                                                                   0   100% /snap/core24/1587
+loop10 squashfs 4.0                                                     0   100% /snap/snapd/25202
+loop11                                                                  0   100% /snap/certbot/4965
+vda                                                                              
+└─vda1 ext4     1.0          aba9ff73-8f7f-4913-85a7-a1b30fd8ddfd    6.8G    54% /
+vdb    vfat     FAT12 cidata 53C1-4813                                           
+Filesystem      Size  Used Avail Use% Mounted on
+tmpfs            96M  1.2M   95M   2% /run
+/dev/vda1        15G  8.0G  6.8G  54% /
+tmpfs           479M   28K  479M   1% /dev/shm
+tmpfs           5.0M     0  5.0M   0% /run/lock
+tmpfs            96M  4.0K   96M   1% /run/user/0
+               total        used        free      shared  buff/cache   available
+Mem:             957         698          72          20         185          91
+Swap:              0           0           0
+ 22:06:04 up 303 days,  5:54,  0 users,  load average: 0.00, 0.03, 0.05

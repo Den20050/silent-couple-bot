@@ -1,0 +1,181 @@
+Отлично, у тебя уже очень сильная база — из описания видно, что это продукт про **эмоциональную связь без усилий**. Ниже — 3 сценария в формате **готовых промтов для llamagen.ai** + чёткая раскадровка (6 сцен).
+
+Я сделал их так, чтобы:
+
+* были понятны визуально
+* легко генерировались
+* передавали эмоцию (ключ к конверсии)
+
+---
+
+# 🎬 СЦЕНАРИЙ 1
+
+## 👩‍👧 Мама и дочка-студентка
+
+### 🎯 Идея: тревога → спокойствие
+
+---
+
+### **СЦЕНА 1 — История**
+
+**Prompt:**
+comic style, warm colors, split scene, left side: mother in cozy kitchen looking at phone with worried face, right side: young female student in dorm room surrounded by books, distance feeling, soft lighting
+
+---
+
+### **СЦЕНА 2 — Проблема**
+
+**Prompt:**
+comic panel, mother sitting alone at night, dark kitchen, phone in hand, no messages, worried expression, text bubble: "Почему она не пишет...", emotional tension, shadows
+
+---
+
+### **СЦЕНА 3 — Усиление проблемы**
+
+**Prompt:**
+student rushing between classes, notifications ignored, stressed face, messy schedule, city background, text bubble: "Потом отвечу...", feeling of overload
+
+---
+
+### **СЦЕНА 4 — Решение**
+
+**Prompt:**
+simple clean UI of telegram bot, button "Отправить открытку", student smiling slightly and tapping button, warm glowing phone light, minimalistic interface
+
+---
+
+### **СЦЕНА 5 — Выгода**
+
+**Prompt:**
+mother receiving beautiful digital postcard "Со мной всё в порядке ❤️", her face relaxes, soft smile, warm light fills room, emotional relief
+
+---
+
+### **СЦЕНА 6 — Призыв**
+
+**Prompt:**
+bright friendly comic panel, both smiling holding phones, connection line between them glowing, text: "Тихие объятия — один клик, чтобы сказать: я рядом"
+
+---
+
+# 🎬 СЦЕНАРИЙ 2
+
+## 👴👵 Пожилые родители и дети в другой стране
+
+### 🎯 Идея: страх → контроль → спокойствие
+
+---
+
+### **СЦЕНА 1 — История**
+
+**Prompt:**
+elderly couple sitting on sofa, looking at framed photo of adult child, quiet home, evening light, emotional, nostalgic atmosphere
+
+---
+
+### **СЦЕНА 2 — Проблема**
+
+**Prompt:**
+elderly woman checking phone repeatedly, no messages, worried face, clock showing late time, tension, text bubble: "Уже ночь…"
+
+---
+
+### **СЦЕНА 3 — Усиление проблемы**
+
+**Prompt:**
+adult child in another country, busy office, different timezone night/day contrast, tired face, missed messages, stress, urban background
+
+---
+
+### **СЦЕНА 4 — Решение**
+
+**Prompt:**
+phone screen with telegram bot, big simple button "Я в порядке ❤️", adult child taps it, minimal effort, calm expression
+
+---
+
+### **СЦЕНА 5 — Выгода**
+
+**Prompt:**
+elderly couple smiling with relief, looking at phone with message "Я в безопасности ❤️", warm cozy lighting, emotional comfort
+
+---
+
+### **СЦЕНА 6 — Призыв**
+
+**Prompt:**
+clean comic panel, two locations connected by glowing line across map, text: "Даже на расстоянии — вы спокойны друг за друга"
+
+---
+
+# 🎬 СЦЕНАРИЙ 3
+
+## 👦👧 Брат и сестра в разных городах
+
+### 🎯 Идея: потеря контакта → лёгкий ритуал → восстановление связи
+
+---
+
+### **СЦЕНА 1 — История**
+
+**Prompt:**
+split screen comic, brother in one city apartment, sister in another city, both scrolling phones, neutral faces, slight loneliness, modern lifestyle
+
+---
+
+### **СЦЕНА 2 — Проблема**
+
+**Prompt:**
+chat window with long gap in messages, last message weeks ago, awkward silence feeling, both hesitate to write, text bubble: "Надо бы написать..."
+
+---
+
+### **СЦЕНА 3 — Усиление проблемы**
+
+**Prompt:**
+both start typing message then delete it, uncomfortable эмоции, overthinking, dim lighting, hesitation
+
+---
+
+### **СЦЕНА 4 — Решение**
+
+**Prompt:**
+telegram bot interface, button "Отправить открытку", easy one tap, clean UI, no typing required
+
+---
+
+### **СЦЕНА 5 — Выгода**
+
+**Prompt:**
+both receive matching postcards "Доброе утро ☀️", smiling naturally, relaxed faces, feeling of connection restored
+
+---
+
+### **СЦЕНА 6 — Призыв**
+
+**Prompt:**
+bright emotional comic panel, both laughing lightly, phones glowing, text: "Не нужно слов — просто будь рядом"
+
+---
+
+# 💡 Рекомендации для llamagen (очень важно)
+
+Добавь в каждый prompt (в конец, если нужно стабильное качество):
+
+**Style modifier:**
+
+```
+comic strip, soft cinematic lighting, emotional storytelling, consistent characters, pastel color palette, 2D illustration, high detail, expressive faces
+```
+
+---
+
+# 🚀 Если хочешь усилить конверсию
+
+Могу следующим шагом:
+
+* сделать **варианты под TikTok / Reels (вертикальные)**
+* или **A/B версии с разными триггерами (страх / тепло / вина / забота)**
+* или адаптировать под **конкретную ЦА (русскоязычные за границей, Европа и т.д.)**
+
+Скажи, куда дальше копаем 👍
