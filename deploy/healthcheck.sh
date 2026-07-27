@@ -113,3 +113,29 @@ else
 fi
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') [OK] healthcheck done (HTTP ${HTTP_CODE})" >> "$LOG_FILE"
+
+# ── Ensure Telegram webhook is disabled (bot uses long polling) ───────────────
+if [[ -f /home/telegram-bot/deploy/recover_pending_updates.py ]]; then
+    RECOVER_OUT=$(cd /home/telegram-bot && PYTHONPATH=/home/telegram-bot /home/telegram-bot/venv/bin/python -c "
+import asyncio
+from src.core.config import settings
+from src.services.telegram.bot_factory import create_bot
+
+async def main():
+    bot = create_bot(settings.tg_bot_token, proxy_url=settings.telegram_proxy_url)
+    try:
+        info = await bot.get_webhook_info()
+        if info.url:
+            await bot.delete_webhook(drop_pending_updates=False)
+            print('cleared_webhook=' + info.url)
+        elif info.pending_update_count:
+            print('pending=' + str(info.pending_update_count))
+    finally:
+        await bot.session.close()
+
+asyncio.run(main())
+" 2>&1 || true)
+    if [[ -n "$RECOVER_OUT" ]]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') [POLLING] ${RECOVER_OUT}" >> "$LOG_FILE"
+    fi
+fi
