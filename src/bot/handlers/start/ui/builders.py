@@ -1,5 +1,7 @@
 """UI builders for start handlers - keyboards and text formatting."""
 
+from urllib.parse import quote
+
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.enums import ParseMode
 
@@ -95,7 +97,7 @@ def get_invite_link_keyboard(invite_link: str) -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text=get_message("START_SHARE_BUTTON"),
-                    url=f"https://t.me/share/url?url={invite_link}&text={get_message('START_SHARE_TEXT').replace(' ', '%20')}",
+                    url=f"https://t.me/share/url?url={invite_link}&text={quote(get_message('START_SHARE_TEXT'))}",
                 ),
             ],
         ]
