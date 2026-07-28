@@ -376,6 +376,18 @@ class InviteFlow:
                 text=nickname_prompt,
                 save_message=False,
             )
+
+            expand_prompt = get_message("START_EXPAND_CIRCLE_PROMPT")
+            await self.messenger.send_message(
+                chat_id=user.tg_id,
+                text=expand_prompt,
+                save_message=False,
+            )
+            await self.messenger.send_message(
+                chat_id=partner.tg_id,
+                text=expand_prompt,
+                save_message=False,
+            )
             
             logger.info(
                 "Nickname requests sent to both users",
