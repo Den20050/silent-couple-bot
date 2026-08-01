@@ -41,7 +41,8 @@ def register_routers(dp: Dispatcher) -> None:
     # 1. Commands (e.g., /create_pair) - register FIRST
     dp.include_router(admin_router)
     dp.include_router(menu_router)
-    
+    dp.include_router(delete_router)  # Before FSM routers so delete callbacks aren't delayed
+
     # 2. FSM state handlers - register BEFORE general message handlers
     # IMPORTANT: FSM state handlers must be registered BEFORE general text handlers
     # to ensure FSM-filtered handlers have priority
@@ -52,9 +53,8 @@ def register_routers(dp: Dispatcher) -> None:
     # 3. Other handlers
     dp.include_router(subscription_router)
     dp.include_router(pay_router)
-    
+
     # 5. Other handlers
-    dp.include_router(delete_router)
     dp.include_router(link_router)
     dp.include_router(callbacks_router)
     
