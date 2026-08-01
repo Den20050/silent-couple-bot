@@ -2,6 +2,11 @@
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.bot.handlers.admin.use_cases.stats import (
+    DEFAULT_ADMIN_STATS_PERIOD_DAYS,
+    DEFAULT_ADMIN_STATS_TAB,
+    get_admin_statistics,
+)
 from src.core.logger import get_logger
 from src.services.messaging.ui.admin_ui import AdminUIService
 
@@ -29,16 +34,18 @@ class AdminApplicationService:
         self._session = session
         self._admin_ui = admin_ui
     
-    async def get_statistics(self) -> tuple[bool, str]:
-        """Get admin statistics.
-        
-        Returns:
-            Tuple of (success: bool, message_text: str)
-        """
+    async def get_statistics(
+        self,
+        period_days: int | None = DEFAULT_ADMIN_STATS_PERIOD_DAYS,
+        stats_tab: str = DEFAULT_ADMIN_STATS_TAB,
+    ) -> tuple[bool, str]:
+        """Get admin statistics."""
         try:
-            from src.bot.handlers.admin.use_cases.stats import get_admin_statistics
-            
-            stats = await get_admin_statistics(self._session)
+            stats = await get_admin_statistics(
+                self._session,
+                period_days=period_days,
+                stats_tab=stats_tab,
+            )
             message_text = self._admin_ui.format_statistics_message(stats)
             
             logger.info(

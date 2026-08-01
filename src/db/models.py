@@ -3,7 +3,9 @@
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import ARRAY, BigInteger, Boolean, CheckConstraint, Date, ForeignKey, Index, Text, func
+from decimal import Decimal
+
+from sqlalchemy import ARRAY, BigInteger, Boolean, CheckConstraint, Date, ForeignKey, Index, Numeric, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core.constants import DeliveryChat, PairMode, PairStatus, PicType, SubscriptionStatus
@@ -171,6 +173,32 @@ class Subscription(Base):
 
     __table_args__ = (
         Index("idx_subscriptions_period", "period_end", "status"),
+    )
+
+
+class PairPayment(Base):
+    """Successful pair payment record (one row per Robokassa invoice)."""
+
+    __tablename__ = "pair_payments"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    pair_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("pairs.id", ondelete="CASCADE"), nullable=False
+    )
+    payer_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    inv_id: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(Text, nullable=False)
+    plan_id: Mapped[str] = mapped_column(Text, nullable=False)
+    is_lifetime: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    paid_at: Mapped[datetime] = mapped_column(default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("idx_pair_payments_paid_at", "paid_at"),
+        Index("idx_pair_payments_pair_id", "pair_id"),
+        Index("idx_pair_payments_currency", "currency"),
     )
 
 
