@@ -383,11 +383,10 @@ async def handle_start_logic(
     
     # If start_param exists, it's an invite link
     if start_param:
-        pair_created = await invite_flow.process_invite_link(
+        await invite_flow.process_invite_link(
             message, start_param, user, session, state, pair_onboarding_service
         )
-        if pair_created:
-            return
+        return
     
     # Check if user already selected mode
     if user.preferred_mode:
@@ -527,17 +526,16 @@ async def handle_consent(
         )
         
         # Process invite link
-        pair_created = await invite_flow.process_invite_link(
+        from src.bot.handlers.start.flows.invite_flow import InviteLinkResult
+
+        result = await invite_flow.process_invite_link(
             fake_message, str(partner_tg_id), user, session, state
         )
         
-        if pair_created:
-            # Pair created and notifications already sent by _send_pair_created_notifications
-            # Just show alert and edit message to show pair created status
+        if result == InviteLinkResult.PAIR_CREATED:
             await callback.answer(
                 get_message("START_PAIR_CREATED_ALERT"), show_alert=False
             )
-            # Edit message to show pair created status (notifications already sent)
             await callback.message.edit_text(
                 get_message(
                     "START_PAIR_CREATED",
@@ -550,6 +548,11 @@ async def handle_consent(
                     days_text=get_days_text(TRIAL_PERIOD_DAYS),
                 )
             )
+        elif result == InviteLinkResult.PAYMENT_REQUIRED:
+            await callback.answer()
+            await callback.message.edit_text(get_message("START_BOTH_DEMO_USED"))
+        else:
+            await callback.answer()
         return
 
     # Regular consent (not from invite)

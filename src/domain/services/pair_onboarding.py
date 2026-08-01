@@ -1,6 +1,8 @@
 """Pair onboarding service - business logic for pair creation and onboarding."""
 
+from dataclasses import dataclass
 from datetime import date, timedelta
+from enum import Enum
 from typing import Optional
 
 from sqlalchemy import select
@@ -20,6 +22,24 @@ from src.db.repositories.pairs import PairsRepository
 from src.db.repositories.subscriptions import SubscriptionsRepository
 
 logger = get_logger(__name__)
+
+
+class PairCreationBlockReason(str, Enum):
+    """Why pair creation may be blocked or require payment."""
+
+    OK = "ok"
+    ALREADY_EXISTS = "already_exists"
+    DEMO_USED = "demo_used"
+    USER_NOT_FOUND = "user_not_found"
+
+
+@dataclass(frozen=True)
+class PairCreationValidation:
+    """Result of pair creation validation."""
+
+    ok: bool
+    reason: PairCreationBlockReason
+    message: str | None = None
 
 
 class PairOnboardingService:
@@ -43,7 +63,7 @@ class PairOnboardingService:
         self,
         user_id: int,
         partner_id: int,
-    ) -> tuple[bool, Optional[str]]:
+    ) -> PairCreationValidation:
         """Validate if pair can be created between two users.
         
         Args:
@@ -51,12 +71,16 @@ class PairOnboardingService:
             partner_id: Partner user ID
             
         Returns:
-            Tuple of (is_valid: bool, error_message: Optional[str])
+            PairCreationValidation with reason when blocked
         """
         # Check if pair already exists
         existing_pair = await self._pairs_repo.get_by_user_ids(user_id, partner_id)
         if existing_pair:
-            return False, get_message("START_PAIR_ALREADY_CREATED")
+            return PairCreationValidation(
+                ok=False,
+                reason=PairCreationBlockReason.ALREADY_EXISTS,
+                message=get_message("START_PAIR_ALREADY_CREATED"),
+            )
         
         # Check if this pair was previously broken with lifetime subscription
         uid_a, uid_b = (
@@ -70,12 +94,19 @@ class PairOnboardingService:
         )
         if lifetime_history.scalar_one_or_none():
             # Lifetime pairs can be restored without demo restrictions.
-            return True, None
+            return PairCreationValidation(
+                ok=True,
+                reason=PairCreationBlockReason.OK,
+            )
         
         user = await self._users_repo.get_by_id(user_id)
         partner = await self._users_repo.get_by_id(partner_id)
         if not user or not partner:
-            return False, get_message("MENU_USER_NOT_FOUND")
+            return PairCreationValidation(
+                ok=False,
+                reason=PairCreationBlockReason.USER_NOT_FOUND,
+                message=get_message("MENU_USER_NOT_FOUND"),
+            )
 
         # Check if THIS PAIR already used demo
         pair_used_demo = await self._pair_demo_repo.is_used(
@@ -89,9 +120,13 @@ class PairOnboardingService:
             await self._pair_demo_repo.mark_pair(user.tg_id, partner.tg_id)
             pair_used_demo = True
         if pair_used_demo:
-            return False, get_message("START_BOTH_DEMO_USED")
+            return PairCreationValidation(
+                ok=False,
+                reason=PairCreationBlockReason.DEMO_USED,
+                message=get_message("START_BOTH_DEMO_USED"),
+            )
         
-        return True, None
+        return PairCreationValidation(ok=True, reason=PairCreationBlockReason.OK)
     
     async def create_pair_from_invite(
         self,
@@ -169,6 +204,34 @@ class PairOnboardingService:
             pair_id=pair.id,
         )
         
+        return pair
+
+    async def create_pair_from_invite_requires_payment(
+        self,
+        inviter_id: int,
+        invited_id: int,
+        inviter_mode: str,
+        delivery_chat: str = DeliveryChat.BOT_DM.value,
+    ) -> Pair:
+        """Create pair without trial when demo for this pair was already used."""
+        pair = await self._pairs_repo.create(
+            uid_a=inviter_id,
+            uid_b=invited_id,
+            mode=inviter_mode,
+            delivery_chat=delivery_chat,
+        )
+        await self._pairs_repo.update_status(pair.id, PairStatus.PAST_DUE)
+        await self._subs_repo.create_past_due(
+            pair_id=pair.id,
+            payer_id=inviter_id,
+        )
+        await self._session.commit()
+        logger.info(
+            "Pair created in past_due (demo already used)",
+            inviter_id=inviter_id,
+            invited_id=invited_id,
+            pair_id=pair.id,
+        )
         return pair
     
     async def find_existing_pair(

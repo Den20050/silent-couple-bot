@@ -47,6 +47,18 @@ class SubscriptionsRepository:
         await self.session.flush()
         return subscription
 
+    async def create_past_due(self, pair_id: int, payer_id: int) -> Subscription:
+        """Create subscription that requires immediate payment."""
+        subscription = Subscription(
+            pair_id=pair_id,
+            payer_id=payer_id,
+            status=SubscriptionStatus.PAST_DUE.value,
+            period_end=date.today(),
+        )
+        self.session.add(subscription)
+        await self.session.flush()
+        return subscription
+
     async def update_payment(
         self,
         subscription_id: int,
