@@ -1,27 +1,55 @@
 """Invite flow handler for pair creation."""
 
+from enum import Enum
+
 from aiogram import Bot
 from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.storage.base import BaseStorage
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.constants import DeliveryChat, TRIAL_PERIOD_DAYS
 from src.core.logger import get_logger
 from src.core.messages import get_message, get_days_text
 from src.db.models import User
+from src.db.repositories.pairs import PairsRepository
 from src.db.repositories.users import UsersRepository
 from src.services.telegram.bot_provider import BotProvider
 from src.services.telegram.messenger import TelegramMessenger
 
-from src.domain.services.pair_onboarding import PairOnboardingService
+from src.domain.services.pair_onboarding import (
+    PairCreationBlockReason,
+    PairOnboardingService,
+)
+from src.bot.handlers.start.services.pair_service import format_partner_text
 from src.bot.handlers.start.ui.builders import (
     get_consent_keyboard,
     get_invite_link_keyboard,
 )
 
 logger = get_logger(__name__)
+
+
+class InviteLinkResult(str, Enum):
+    """Outcome of processing an invite link."""
+
+    PAIR_CREATED = "pair_created"
+    PAYMENT_REQUIRED = "payment_required"
+    PENDING_CONSENT = "pending_consent"
+    FAILED = "failed"
+
+
+def _build_pay_required_keyboard(pair_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=get_message("WORKER_WISH_PAY_BUTTON"),
+                    callback_data=f"pay_select_currency_{pair_id}",
+                )
+            ]
+        ]
+    )
 
 
 class InviteFlow:
@@ -101,7 +129,7 @@ class InviteFlow:
         session: AsyncSession,
         state: FSMContext | None = None,
         pair_onboarding_service: PairOnboardingService | None = None,
-    ) -> bool:
+    ) -> InviteLinkResult:
         """Process invite link and create pair if valid.
         
         Args:
@@ -112,7 +140,7 @@ class InviteFlow:
             state: FSM context
             
         Returns:
-            True if pair was created, False otherwise
+            InviteLinkResult describing what happened
         """
         try:
             partner_tg_id = int(start_param)
@@ -121,25 +149,24 @@ class InviteFlow:
             # Don't allow self-invite
             if partner_tg_id == tg_id:
                 await message.answer(get_message("START_CANNOT_INVITE_SELF"))
-                return False
+                return InviteLinkResult.FAILED
             
             users_repo = UsersRepository(session)
-            from src.db.repositories.pairs import PairsRepository
             pairs_repo = PairsRepository(session)
             partner = await users_repo.get_by_tg_id(partner_tg_id)
             if not partner:
                 await message.answer(get_message("START_PARTNER_NOT_FOUND"))
-                return False
+                return InviteLinkResult.FAILED
             
             # Partner must have consent unless they already have any pairs
             partner_pairs = await pairs_repo.get_all_by_user_tg_id(partner_tg_id)
             if not partner.consent and not partner_pairs:
                 await message.answer(get_message("START_PARTNER_NO_CONSENT"))
-                return False
+                return InviteLinkResult.FAILED
             
             if not partner.preferred_mode:
                 await message.answer(get_message("START_PARTNER_NO_MODE"))
-                return False
+                return InviteLinkResult.FAILED
             
             # Current user must have consent unless they already have any pairs
             user_pairs = await pairs_repo.get_all_by_user_tg_id(tg_id)
@@ -155,26 +182,41 @@ class InviteFlow:
                         f"consent_invite_{user.id}_{partner_tg_id}"
                     ),
                 )
-                return False
+                return InviteLinkResult.PENDING_CONSENT
             
             # Use domain service for pair onboarding
             if not pair_onboarding_service:
                 pair_onboarding_service = PairOnboardingService(session)
             
-            # Validate pair creation
-            is_valid, error_msg = await pair_onboarding_service.validate_pair_creation(
+            validation = await pair_onboarding_service.validate_pair_creation(
                 user.id, partner.id
             )
-            if not is_valid:
-                await message.answer(error_msg)
-                return False
+            if not validation.ok:
+                if validation.reason == PairCreationBlockReason.DEMO_USED:
+                    existing_pair = await pairs_repo.get_by_user_ids(user.id, partner.id)
+                    if existing_pair:
+                        await message.answer(get_message("START_PAIR_ALREADY_CREATED"))
+                        return InviteLinkResult.FAILED
+
+                    delivery_chat = DeliveryChat.BOT_DM.value
+                    pair = await pair_onboarding_service.create_pair_from_invite_requires_payment(
+                        inviter_id=partner.id,
+                        invited_id=user.id,
+                        inviter_mode=partner.preferred_mode,
+                        delivery_chat=delivery_chat,
+                    )
+                    await self._send_payment_required_notifications(
+                        message, pair, user, partner, session
+                    )
+                    return InviteLinkResult.PAYMENT_REQUIRED
+
+                if validation.message:
+                    await message.answer(validation.message)
+                return InviteLinkResult.FAILED
             
             # Double-check: if pair was already created (race condition protection)
-            from src.db.repositories.pairs import PairsRepository
-            pairs_repo = PairsRepository(session)
             existing_pair = await pairs_repo.get_by_user_ids(user.id, partner.id)
             if existing_pair:
-                # Pair already exists, don't create again and don't send notifications
                 logger.warning(
                     "Pair already exists, skipping creation",
                     tg_id=tg_id,
@@ -182,9 +224,8 @@ class InviteFlow:
                     pair_id=existing_pair.id,
                 )
                 await message.answer(get_message("START_PAIR_ALREADY_CREATED"))
-                return False
+                return InviteLinkResult.FAILED
             
-            # Always use bot_dm for delivery
             delivery_chat = DeliveryChat.BOT_DM.value
             
             # Create pair using domain service
@@ -207,11 +248,48 @@ class InviteFlow:
                 message, pair, user, partner, session
             )
             
-            return True
+            return InviteLinkResult.PAIR_CREATED
         except ValueError:
             await message.answer(get_message("START_INVALID_INVITE_LINK"))
-            return False
+            return InviteLinkResult.FAILED
     
+    async def _send_payment_required_notifications(
+        self,
+        message: Message,
+        pair,
+        user: User,
+        partner: User,
+        session: AsyncSession,
+    ) -> None:
+        """Notify both users that the pair needs payment (demo already used)."""
+        pairs_repo = PairsRepository(session)
+        invitee_nickname = pairs_repo.get_my_nickname_for_partner(pair, partner.id)
+        invitee_text = format_partner_text(user.username, invitee_nickname)
+
+        keyboard = _build_pay_required_keyboard(pair.id)
+        pay_text = get_message("START_BOTH_DEMO_USED")
+
+        await message.answer(
+            pay_text,
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML,
+        )
+        await self.messenger.send_message(
+            chat_id=partner.tg_id,
+            text=get_message(
+                "START_PAIR_RECONNECTED_REQUIRES_PAYMENT",
+                partner_text=invitee_text,
+            ),
+            reply_markup=keyboard,
+            save_message=False,
+        )
+        logger.info(
+            "Payment required notifications sent (demo already used)",
+            pair_id=pair.id,
+            invited_tg_id=user.tg_id,
+            inviter_tg_id=partner.tg_id,
+        )
+
     async def _send_pair_created_notifications(
         self,
         message: Message,
