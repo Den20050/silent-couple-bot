@@ -1,6 +1,7 @@
 """Robokassa webhook handler."""
 
 from datetime import date
+from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
@@ -15,9 +16,11 @@ from src.core.logger import get_logger
 from src.core.redis_client import create_redis_client
 from src.db.models import User
 from src.db.repositories.pairs import PairsRepository
+from src.db.repositories.pair_payments import PairPaymentsRepository
 from src.db.repositories.subscriptions import SubscriptionsRepository
 from src.db.repositories.daily_state import DailyStateRepository
 from src.services.payment import PaymentService
+from src.services.payment.plan_utils import plan_id_from_period_days
 from src.services.telegram import send_message_with_retry
 from src.db.base import async_session_maker
 
@@ -284,10 +287,13 @@ async def robokassa_webhook(
         pair_id = result["pair_id"]
         payment_id = result["payment_id"]  # Это inv_id
         is_lifetime = result.get("is_lifetime", False)
-        period_days = result.get("period_days")  # Can be None for lifetime
+        payment_period_days = result.get("period_days")  # Can be None for lifetime
+        payment_amount_raw = result.get("amount", "0")
+        payment_currency = (result.get("currency") or "RUB").upper()
 
         pairs_repo = PairsRepository(session)
         subs_repo = SubscriptionsRepository(session)
+        payments_repo = PairPaymentsRepository(session)
 
         pair = await pairs_repo.get_by_id(pair_id)
         if not pair:
@@ -304,7 +310,7 @@ async def robokassa_webhook(
             calculate_subscription_period_end,
         )
 
-        period_days = period_days or SUBSCRIPTION_PERIOD_DAYS
+        period_days = payment_period_days or SUBSCRIPTION_PERIOD_DAYS
         period_end = calculate_subscription_period_end(
             subscription=subscription,
             new_period_days=period_days,
@@ -323,6 +329,31 @@ async def robokassa_webhook(
         # Use updated subscription if available, otherwise use original
         if updated_subscription:
             subscription = updated_subscription
+
+        try:
+            payment_amount = Decimal(str(payment_amount_raw))
+        except (InvalidOperation, TypeError):
+            payment_amount = Decimal("0")
+
+        plan_id = plan_id_from_period_days(payment_period_days, is_lifetime)
+        payment_recorded = await payments_repo.record_payment(
+            pair_id=pair.id,
+            payer_id=subscription.payer_id,
+            inv_id=payment_id,
+            amount=payment_amount,
+            currency=payment_currency,
+            plan_id=plan_id,
+            is_lifetime=is_lifetime,
+        )
+        if payment_recorded:
+            logger.info(
+                "Pair payment recorded",
+                pair_id=pair.id,
+                inv_id=payment_id,
+                amount=str(payment_amount),
+                currency=payment_currency,
+                plan_id=plan_id,
+            )
 
         # Update pair status
         await pairs_repo.update_status(pair.id, PairStatus.ACTIVE)

@@ -24,9 +24,76 @@ from src.services.messaging.ui.menu_ui import MenuUIService
 from src.services.messaging.ui.admin_ui import AdminUIService
 from src.bot.handlers.menu.states import AdminStates
 
+from src.bot.handlers.admin.use_cases.stats import (
+    DEFAULT_ADMIN_STATS_PERIOD_DAYS,
+    DEFAULT_ADMIN_STATS_TAB,
+    get_admin_statistics,
+)
+
 logger = get_logger(__name__)
 
 router = Router(name="menu_admin")
+
+
+def _parse_stats_period(callback_data: str) -> int | None:
+    """Parse admin_stats_period:{days|all} callback (legacy)."""
+    raw = callback_data.removeprefix("admin_stats_period:")
+    if raw == "all":
+        return None
+    return int(raw)
+
+
+def _parse_stats_view(callback_data: str) -> tuple[str, int | None]:
+    """Parse admin_stats_view:{tab}:{period} callback."""
+    parts = callback_data.removeprefix("admin_stats_view:").split(":")
+    tab = parts[0] if parts and parts[0] in ("users", "payments") else DEFAULT_ADMIN_STATS_TAB
+    period_raw = parts[1] if len(parts) > 1 else str(DEFAULT_ADMIN_STATS_PERIOD_DAYS)
+    period_days = None if period_raw == "all" else int(period_raw)
+    return tab, period_days
+
+
+async def _show_admin_stats(
+    message_or_callback: Message | CallbackQuery,
+    session: AsyncSession,
+    menu_ui: MenuUIService,
+    period_days: int | None = DEFAULT_ADMIN_STATS_PERIOD_DAYS,
+    stats_tab: str = DEFAULT_ADMIN_STATS_TAB,
+) -> None:
+    admin_ui = AdminUIService()
+    stats = await get_admin_statistics(
+        session,
+        period_days=period_days,
+        stats_tab=stats_tab,
+    )
+    stats_message = admin_ui.format_statistics_message(stats)
+    keyboard = admin_ui.build_stats_keyboard(
+        stats.get("stats_tab", stats_tab),
+        stats.get("period_days", period_days),
+    )
+
+    if isinstance(message_or_callback, CallbackQuery):
+        await message_or_callback.message.edit_text(
+            stats_message,
+            reply_markup=keyboard,
+            parse_mode="HTML",
+        )
+        await message_or_callback.answer()
+        logger.info(
+            "Admin statistics requested",
+            admin_tg_id=message_or_callback.from_user.id,
+            **stats,
+        )
+    else:
+        await message_or_callback.answer(
+            stats_message,
+            reply_markup=keyboard,
+            parse_mode="HTML",
+        )
+        logger.info(
+            "Admin statistics requested",
+            admin_tg_id=message_or_callback.from_user.id,
+            **stats,
+        )
 
 
 @router.callback_query(lambda c: c.data == "menu_admin_enter")
@@ -65,38 +132,59 @@ async def handle_menu_admin_enter(
 async def handle_admin_stats_callback(
     callback: CallbackQuery,
     session: AsyncSession,
-    settings: Settings,
+    menu_ui: MenuUIService,
 ) -> None:
     """Handle admin stats callback from menu."""
     if not menu_ui._is_admin(callback.from_user.id):
         await callback.answer(get_message("MENU_ADMIN_ONLY"), show_alert=True)
         return
-    
+
     try:
-        from src.bot.handlers.admin.use_cases.stats import get_admin_statistics
+        await _show_admin_stats(callback, session, menu_ui)
+    except Exception as e:
+        logger.error("Error getting admin statistics", error=str(e), exc_info=True)
+        await callback.answer(get_message("ADMIN_STATS_ERROR"), show_alert=True)
 
-        stats = await get_admin_statistics(session)
-        stats_message = AdminUIService().format_statistics_message(stats)
 
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text=get_message("MENU_BACK_BUTTON"),
-                        callback_data="menu_back",
-                    ),
-                ],
-            ]
+@router.callback_query(F.data.startswith("admin_stats_view:"))
+async def handle_admin_stats_view_callback(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    menu_ui: MenuUIService,
+) -> None:
+    """Handle admin stats tab/period selection."""
+    if not menu_ui._is_admin(callback.from_user.id):
+        await callback.answer(get_message("MENU_ADMIN_ONLY"), show_alert=True)
+        return
+
+    try:
+        stats_tab, period_days = _parse_stats_view(callback.data)
+        await _show_admin_stats(
+            callback,
+            session,
+            menu_ui,
+            period_days=period_days,
+            stats_tab=stats_tab,
         )
+    except Exception as e:
+        logger.error("Error getting admin statistics", error=str(e), exc_info=True)
+        await callback.answer(get_message("ADMIN_STATS_ERROR"), show_alert=True)
 
-        await callback.message.edit_text(stats_message, reply_markup=keyboard, parse_mode="HTML")
-        await callback.answer()
-        
-        logger.info(
-            "Admin statistics requested",
-            admin_tg_id=callback.from_user.id,
-            **stats,
-        )
+
+@router.callback_query(F.data.startswith("admin_stats_period:"))
+async def handle_admin_stats_period_callback(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    menu_ui: MenuUIService,
+) -> None:
+    """Handle legacy admin stats period selection."""
+    if not menu_ui._is_admin(callback.from_user.id):
+        await callback.answer(get_message("MENU_ADMIN_ONLY"), show_alert=True)
+        return
+
+    try:
+        period_days = _parse_stats_period(callback.data)
+        await _show_admin_stats(callback, session, menu_ui, period_days=period_days)
     except Exception as e:
         logger.error("Error getting admin statistics", error=str(e), exc_info=True)
         await callback.answer(get_message("ADMIN_STATS_ERROR"), show_alert=True)
@@ -224,18 +312,7 @@ async def cmd_admin_stats(
         return
     
     try:
-        from src.bot.handlers.admin.use_cases.stats import get_admin_statistics
-
-        stats = await get_admin_statistics(session)
-        stats_message = AdminUIService().format_statistics_message(stats)
-
-        await message.answer(stats_message, parse_mode="HTML")
-        
-        logger.info(
-            "Admin statistics requested",
-            admin_tg_id=message.from_user.id,
-            **stats,
-        )
+        await _show_admin_stats(message, session, menu_ui)
     except Exception as e:
         logger.error("Error getting admin statistics", error=str(e), exc_info=True)
         await message.answer(get_message("ADMIN_STATS_ERROR"))
