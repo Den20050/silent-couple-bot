@@ -1,6 +1,9 @@
 """Delete command handler (GDPR) and pair unlink flow."""
 
+from html import escape
+
 from aiogram import Router, F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import select
@@ -22,6 +25,49 @@ from src.bot.handlers.start.services.pair_service import format_partner_text
 logger = get_logger(__name__)
 
 router = Router(name="delete")
+
+
+async def _safe_callback_answer(
+    callback: CallbackQuery,
+    text: str | None = None,
+    show_alert: bool = False,
+) -> None:
+    """Answer callback without failing handler on stale/expired query IDs."""
+    try:
+        await callback.answer(text, show_alert=show_alert)
+    except TelegramBadRequest as exc:
+        message = str(exc).lower()
+        if "query is too old" in message or "query id is invalid" in message:
+            logger.warning("Ignored expired callback answer", error=str(exc))
+            return
+        logger.warning("Telegram bad request while answering callback", error=str(exc))
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Unexpected callback.answer failure", error=str(exc))
+
+
+async def _edit_or_send(
+    callback: CallbackQuery,
+    text: str,
+    keyboard: InlineKeyboardMarkup,
+) -> None:
+    """Edit the callback message or send a new one if edit fails."""
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=keyboard,
+            parse_mode="HTML",
+        )
+    except TelegramBadRequest as exc:
+        logger.warning(
+            "Failed to edit delete flow message, sending a new one",
+            tg_id=callback.from_user.id,
+            error=str(exc),
+        )
+        await callback.message.answer(
+            text,
+            reply_markup=keyboard,
+            parse_mode="HTML",
+        )
 
 
 async def _get_partner_info(
@@ -131,8 +177,10 @@ def _build_confirm_keyboard(callback_data: str) -> InlineKeyboardMarkup:
 async def cmd_delete(
     message: Message,
     session: AsyncSession,
+    state: FSMContext,
 ) -> None:
     """Handle /delete command with confirmation flow."""
+    await state.clear()
     await _show_delete_flow(
         tg_id=message.from_user.id,
         session=session,
@@ -193,7 +241,7 @@ async def _show_delete_flow(
             pairs_repo=pairs_repo,
             users_repo=users_repo,
         )
-        text = get_message("DELETE_CONFIRM_SINGLE", partner_text=partner_text)
+        text = get_message("DELETE_CONFIRM_SINGLE", partner_text=escape(partner_text))
         keyboard = _build_confirm_keyboard(f"delete_confirm_pair_{pair.id}")
         if message:
             await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
@@ -226,12 +274,25 @@ async def _show_delete_flow(
 async def handle_delete_select_pair(
     callback: CallbackQuery,
     session: AsyncSession,
+    state: FSMContext,
 ) -> None:
     """Handle selecting a pair to delete."""
+    await state.clear()
+    await _safe_callback_answer(callback)
+
+    logger.info(
+        "Delete pair selected",
+        callback_data=callback.data,
+        tg_id=callback.from_user.id,
+    )
+
     try:
-        pair_id = int(callback.data.replace("delete_select_pair_", ""))
+        pair_id = int(callback.data.replace("delete_select_pair_", "", 1))
     except ValueError:
-        await callback.answer(get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+        await callback.message.answer(
+            get_message("CALLBACK_ERROR_GENERIC"),
+            parse_mode="HTML",
+        )
         return
 
     users_repo = UsersRepository(session)
@@ -239,7 +300,10 @@ async def handle_delete_select_pair(
     user = await users_repo.get_by_tg_id(callback.from_user.id)
     pair = await pairs_repo.get_by_id(pair_id)
     if not user or not pair or user.id not in (pair.uid_a, pair.uid_b):
-        await callback.answer(get_message("CALLBACK_ACCESS_DENIED"), show_alert=True)
+        await callback.message.answer(
+            get_message("CALLBACK_ACCESS_DENIED"),
+            parse_mode="HTML",
+        )
         return
 
     _partner, partner_text = await _get_partner_info(
@@ -249,41 +313,47 @@ async def handle_delete_select_pair(
         pairs_repo=pairs_repo,
         users_repo=users_repo,
     )
-    text = get_message("DELETE_CONFIRM_MULTI", partner_text=partner_text)
+    text = get_message("DELETE_CONFIRM_MULTI", partner_text=escape(partner_text))
     keyboard = _build_confirm_keyboard(f"delete_confirm_pair_{pair.id}")
-    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
-    await callback.answer()
+    await _edit_or_send(callback, text, keyboard)
 
 
 @router.callback_query(F.data == "delete_cancel")
 async def handle_delete_cancel(callback: CallbackQuery) -> None:
     """Cancel deletion flow."""
+    await _safe_callback_answer(callback)
     try:
         await callback.message.delete()
-        await callback.answer()
-    except Exception:
-        await callback.answer()
+    except Exception as exc:
+        logger.warning("Failed to delete cancel message", error=str(exc))
 
 
 @router.callback_query(F.data == "delete_confirm_account")
 async def handle_delete_confirm_account(
     callback: CallbackQuery,
     session: AsyncSession,
+    state: FSMContext,
 ) -> None:
     """Confirm account deletion when user has no pairs."""
+    await state.clear()
+    await _safe_callback_answer(callback)
+
     users_repo = UsersRepository(session)
     user = await users_repo.get_by_tg_id(callback.from_user.id)
     if not user:
-        await callback.answer(get_message("DELETE_DATA_NOT_FOUND"), show_alert=True)
+        await callback.message.answer(
+            get_message("DELETE_DATA_NOT_FOUND"),
+            parse_mode="HTML",
+        )
         return
 
     await session.delete(user)
     await session.commit()
-    await callback.message.edit_text(
+    await _edit_or_send(
+        callback,
         get_message("DELETE_ACCOUNT_REMOVED"),
-        parse_mode="HTML",
+        InlineKeyboardMarkup(inline_keyboard=[]),
     )
-    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("delete_confirm_pair_"))
@@ -291,12 +361,19 @@ async def handle_delete_confirm_pair(
     callback: CallbackQuery,
     session: AsyncSession,
     telegram_messenger: TelegramMessenger,
+    state: FSMContext,
 ) -> None:
     """Confirm pair deletion (and account deletion if it was the last pair)."""
+    await state.clear()
+    await _safe_callback_answer(callback)
+
     try:
-        pair_id = int(callback.data.replace("delete_confirm_pair_", ""))
+        pair_id = int(callback.data.replace("delete_confirm_pair_", "", 1))
     except ValueError:
-        await callback.answer(get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+        await callback.message.answer(
+            get_message("CALLBACK_ERROR_GENERIC"),
+            parse_mode="HTML",
+        )
         return
 
     users_repo = UsersRepository(session)
@@ -307,7 +384,10 @@ async def handle_delete_confirm_pair(
     user = await users_repo.get_by_tg_id(callback.from_user.id)
     pair = await pairs_repo.get_by_id(pair_id)
     if not user or not pair or user.id not in (pair.uid_a, pair.uid_b):
-        await callback.answer(get_message("CALLBACK_ACCESS_DENIED"), show_alert=True)
+        await callback.message.answer(
+            get_message("CALLBACK_ACCESS_DENIED"),
+            parse_mode="HTML",
+        )
         return
 
     partner, partner_text = await _get_partner_info(
@@ -356,14 +436,16 @@ async def handle_delete_confirm_pair(
     await session.commit()
 
     if delete_account and pre_pairs_count == 1:
-        await callback.message.edit_text(
+        await _edit_or_send(
+            callback,
             get_message("DELETE_ACCOUNT_REMOVED"),
-            parse_mode="HTML",
+            InlineKeyboardMarkup(inline_keyboard=[]),
         )
     else:
-        await callback.message.edit_text(
-            get_message("DELETE_LINK_REMOVED", partner_text=partner_text),
-            parse_mode="HTML",
+        await _edit_or_send(
+            callback,
+            get_message("DELETE_LINK_REMOVED", partner_text=escape(partner_text)),
+            InlineKeyboardMarkup(inline_keyboard=[]),
         )
         if delete_account:
             await telegram_messenger.send_message(
@@ -375,9 +457,10 @@ async def handle_delete_confirm_pair(
     if partner_tg_id:
         await telegram_messenger.send_message(
             chat_id=partner_tg_id,
-            text=get_message("DELETE_PARTNER_NOTICE", partner_text=partner_view_text),
+            text=get_message(
+                "DELETE_PARTNER_NOTICE",
+                partner_text=escape(partner_view_text),
+            ),
             parse_mode="HTML",
         )
-
-    await callback.answer()
 
