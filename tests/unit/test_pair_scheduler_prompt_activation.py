@@ -101,8 +101,8 @@ async def test_prompt_send_succeeds_even_if_activation_fails(monkeypatch: pytest
 
     scheduler = PairScheduler(session=object(), telegram_messenger=messenger, lock_service=lock_service)
 
-    attempt_ctx_by_pair_id = {
-        123: WishRequestAttemptContext(
+    attempt_ctx_by_tg_id = {
+        111: WishRequestAttemptContext(
             first_sent_key="k:first",
             last_sent_key="k:last",
             count_key="k:count",
@@ -111,18 +111,17 @@ async def test_prompt_send_succeeds_even_if_activation_fails(monkeypatch: pytest
     }
 
     # Act
-    updated, succeeded, pairs_marked = await scheduler.send_aggregated_wish_requests(
+    updated, succeeded = await scheduler.send_aggregated_wish_requests(
         user_to_pair_ids={111: {123}},
         pic_type="evening",
         today=date(2026, 1, 20),
         now_utc=datetime(2026, 1, 20, 18, 0, 0, tzinfo=timezone.utc),
-        attempt_ctx_by_pair_id=attempt_ctx_by_pair_id,
+        attempt_ctx_by_tg_id=attempt_ctx_by_tg_id,
     )
 
     # Assert: prompt was sent once and considered successful despite activation failure.
     assert updated == 1
     assert succeeded == {111}
-    assert pairs_marked == {123}
     assert messenger.sent == [(111, "evening:2026-01-20:111")]
     # Attempt tracking should have been updated (count key set at least once).
     assert any(call[0] == "k:count" for call in lock_service.set_calls)
@@ -150,8 +149,8 @@ async def test_prompt_edit_succeeds_even_if_activation_fails(monkeypatch: pytest
     messenger = _FakeMessenger()
     scheduler = PairScheduler(session=object(), telegram_messenger=messenger, lock_service=lock_service)
 
-    attempt_ctx_by_pair_id = {
-        123: WishRequestAttemptContext(
+    attempt_ctx_by_tg_id = {
+        111: WishRequestAttemptContext(
             first_sent_key="k:first",
             last_sent_key="k:last",
             count_key="k:count",
@@ -159,16 +158,15 @@ async def test_prompt_edit_succeeds_even_if_activation_fails(monkeypatch: pytest
         )
     }
 
-    updated, succeeded, pairs_marked = await scheduler.send_aggregated_wish_requests(
+    updated, succeeded = await scheduler.send_aggregated_wish_requests(
         user_to_pair_ids={111: {123}},
         pic_type="evening",
         today=date(2026, 1, 20),
         now_utc=datetime(2026, 1, 20, 18, 1, 0, tzinfo=timezone.utc),
-        attempt_ctx_by_pair_id=attempt_ctx_by_pair_id,
+        attempt_ctx_by_tg_id=attempt_ctx_by_tg_id,
     )
 
     assert updated == 1
     assert succeeded == {111}
-    assert pairs_marked == {123}
     assert messenger.edited == [(111, 555)]
     assert messenger.sent == []

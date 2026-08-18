@@ -11,6 +11,7 @@ from src.db.models import Pair
 from src.db.repositories.pairs import PairsRepository
 from src.services.messaging.templates import ButtonTemplates
 from src.services.payment.currency_rates import CurrencyRatesService
+from src.services.payment.first_payment_bonus import bonus_effective_plan_name
 
 
 class PaymentUIService:
@@ -106,6 +107,8 @@ class PaymentUIService:
         currency_code: str,
         pair_id: int | None = None,
         currency_rates_service: Optional[CurrencyRatesService] = None,
+        *,
+        first_payment_bonus_eligible: bool = False,
     ) -> InlineKeyboardMarkup:
         """Build tariffs selection keyboard for specific currency.
         
@@ -166,7 +169,9 @@ class PaymentUIService:
             if saving_str:
                 button_text = get_message(
                     "PAY_TARIFF_LINE_WITH_SAVING",
-                    name=plan["name"],
+                    name=self._tariff_display_name(
+                        plan_id, plan["name"], first_payment_bonus_eligible
+                    ),
                     price=price_str,
                     symbol=currency_info["symbol"],
                     saving=saving_str,
@@ -174,7 +179,9 @@ class PaymentUIService:
             else:
                 button_text = get_message(
                     "PAY_TARIFF_LINE",
-                    name=plan["name"],
+                    name=self._tariff_display_name(
+                        plan_id, plan["name"], first_payment_bonus_eligible
+                    ),
                     price=price_str,
                     symbol=currency_info["symbol"],
                 )
@@ -212,6 +219,8 @@ class PaymentUIService:
         self, 
         currency_code: str,
         currency_rates_service: Optional[CurrencyRatesService] = None,
+        *,
+        first_payment_bonus_eligible: bool = False,
     ) -> str:
         """Build tariffs selection message.
         
@@ -272,7 +281,9 @@ class PaymentUIService:
                 tariffs_list.append(
                     get_message(
                         "PAY_TARIFF_LINE_WITH_SAVING",
-                        name=plan["name"],
+                        name=self._tariff_display_name(
+                            plan_id, plan["name"], first_payment_bonus_eligible
+                        ),
                         price=price_str,
                         symbol=currency_info["symbol"],
                         saving=saving_str,
@@ -282,13 +293,37 @@ class PaymentUIService:
                 tariffs_list.append(
                     get_message(
                         "PAY_TARIFF_LINE",
-                        name=plan["name"],
+                        name=self._tariff_display_name(
+                            plan_id, plan["name"], first_payment_bonus_eligible
+                        ),
                         price=price_str,
                         symbol=currency_info["symbol"],
                     )
                 )
         
-        return get_message("PAY_SELECT_TARIFF", tariffs_list="\n".join(tariffs_list))
+        bonus_banner = (
+            get_message("PAY_FIRST_PAYMENT_BONUS_BANNER")
+            if first_payment_bonus_eligible
+            else ""
+        )
+        return get_message(
+            "PAY_SELECT_TARIFF",
+            bonus_banner=bonus_banner,
+            tariffs_list="\n".join(tariffs_list),
+        )
+    
+    @staticmethod
+    def _tariff_display_name(
+        plan_id: str,
+        base_name: str,
+        first_payment_bonus_eligible: bool,
+    ) -> str:
+        if not first_payment_bonus_eligible:
+            return base_name
+        effective = bonus_effective_plan_name(plan_id)
+        if effective:
+            return f"{base_name} → {effective} 🎁"
+        return base_name
     
     def build_terms_confirmation_keyboard(
         self,

@@ -49,111 +49,77 @@ class _FakeMessenger:
 
 
 @pytest.mark.asyncio
-async def test_send_wish_uses_pair_window_after_owner_set() -> None:
-    """If a pair has an owner, the pair-level window is used (shared for both users)."""
-
+async def test_should_prompt_user_inside_personal_window() -> None:
     scheduler = PairScheduler(
         session=object(), telegram_messenger=_FakeMessenger(), lock_service=_FakeLockService()
     )
-    # Patch repos (we're unit-testing window logic only).
     scheduler.daily_state_repo = _FakeDailyStateRepo()  # type: ignore[assignment]
 
-    pair = SimpleNamespace(
+    user = SimpleNamespace(
         id=1,
-        status="trial",
-        # Shared windows become active only when owner is set:
-        notification_window_owner_id=10,
-        morning_window_start_hour=6,
+        utc_offset=3,
+        morning_window_start_hour=7,
         evening_window_start_hour=21,
     )
+    now_utc = datetime(2026, 1, 20, 4, 30, 0)  # 07:30 MSK
 
-    # now_utc 03:30, user_a utc+3 => 06:30 (in 06–07 window)
-    now_utc = datetime(2026, 1, 20, 3, 30, 0)
-    user_a = SimpleNamespace(utc_offset=3, morning_window_start_hour=8, evening_window_start_hour=22)
-    user_b = SimpleNamespace(utc_offset=0, morning_window_start_hour=8, evening_window_start_hour=22)
-
-    eligible, reason, attempt_ctx = await scheduler.send_wish_for_pair(
-        pair=pair,
-        user_a=user_a,
-        user_b=user_b,
+    should, reason, ctx = await scheduler.should_prompt_user(
+        user=user,
         pic_type="morning",
         today=date(2026, 1, 20),
         now_utc=now_utc,
     )
 
-    assert eligible is True
+    assert should is True
     assert reason == "eligible"
-    assert attempt_ctx is not None
+    assert ctx is not None
 
 
 @pytest.mark.asyncio
-async def test_send_wish_uses_user_windows_when_owner_not_set() -> None:
-    """If owner is not set, per-user windows remain in effect (backward compatible)."""
-
+async def test_should_prompt_user_outside_personal_window() -> None:
     scheduler = PairScheduler(
         session=object(), telegram_messenger=_FakeMessenger(), lock_service=_FakeLockService()
     )
     scheduler.daily_state_repo = _FakeDailyStateRepo()  # type: ignore[assignment]
 
-    pair = SimpleNamespace(
+    user = SimpleNamespace(
         id=1,
-        status="trial",
-        notification_window_owner_id=None,
-        # Even if pair fields exist, they are ignored until owner is set:
-        morning_window_start_hour=6,
-        evening_window_start_hour=21,
+        utc_offset=3,
+        morning_window_start_hour=8,
+        evening_window_start_hour=22,
     )
+    now_utc = datetime(2026, 1, 20, 4, 30, 0)  # 07:30 MSK
 
-    # now_utc 03:30, user local 06:30, but both users chose 08–09 => outside.
-    now_utc = datetime(2026, 1, 20, 3, 30, 0)
-    user_a = SimpleNamespace(utc_offset=3, morning_window_start_hour=8, evening_window_start_hour=22)
-    user_b = SimpleNamespace(utc_offset=3, morning_window_start_hour=8, evening_window_start_hour=22)
-
-    eligible, reason, attempt_ctx = await scheduler.send_wish_for_pair(
-        pair=pair,
-        user_a=user_a,
-        user_b=user_b,
+    should, reason, ctx = await scheduler.should_prompt_user(
+        user=user,
         pic_type="morning",
         today=date(2026, 1, 20),
         now_utc=now_utc,
     )
 
-    assert eligible is False
+    assert should is False
     assert reason == "outside_time_window"
-    assert attempt_ctx is None
+    assert ctx is None
 
 
 @pytest.mark.asyncio
-async def test_send_wish_eligible_at_any_minute_within_window() -> None:
-    """Pair is eligible immediately when the window opens (no minute-level gating)."""
-
+async def test_check_pair_needs_wish_prompt_skips_already_sent() -> None:
     scheduler = PairScheduler(
         session=object(), telegram_messenger=_FakeMessenger(), lock_service=_FakeLockService()
     )
-    scheduler.daily_state_repo = _FakeDailyStateRepo()  # type: ignore[assignment]
 
-    pair = SimpleNamespace(
-        id=1,
-        status="trial",
-        notification_window_owner_id=10,
-        morning_window_start_hour=6,
-        evening_window_start_hour=21,
-    )
-    # now_utc 03:00, user_a utc+3 => 06:00 (window opens exactly now)
-    now_utc = datetime(2026, 1, 20, 3, 0, 0)
-    user_a = SimpleNamespace(utc_offset=3, morning_window_start_hour=8, evening_window_start_hour=22)
-    user_b = SimpleNamespace(utc_offset=0, morning_window_start_hour=8, evening_window_start_hour=22)
+    class _SentRepo(_FakeDailyStateRepo):
+        async def get_or_create(self, _pair_id: int, _day: date) -> _DailyState:
+            return _DailyState(morning_initiator=99)
 
-    eligible, reason, attempt_ctx = await scheduler.send_wish_for_pair(
+    scheduler.daily_state_repo = _SentRepo()  # type: ignore[assignment]
+    pair = SimpleNamespace(id=1, status="active")
+
+    ok, reason = await scheduler.check_pair_needs_wish_prompt(
         pair=pair,
-        user_a=user_a,
-        user_b=user_b,
         pic_type="morning",
         today=date(2026, 1, 20),
-        now_utc=now_utc,
     )
 
-    assert eligible is True
-    assert reason == "eligible"
-    assert attempt_ctx is not None
-
+    assert ok is False
+    assert reason == "already_sent_today"

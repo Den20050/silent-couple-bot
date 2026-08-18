@@ -1,6 +1,6 @@
 """Morning request handlers."""
 
-from datetime import date
+from datetime import date, datetime
 
 from aiogram import Router, F
 from aiogram.exceptions import TelegramBadRequest
@@ -29,6 +29,7 @@ from src.bot.handlers.callbacks.use_cases.schedule_reminders import (
 from src.services.messaging.ui.wish_request_ui import WishRequestUIService
 from src.services.messaging.wish_request_prompt_refresher import refresh_aggregated_wish_prompt
 from src.services.messaging.active_action_message import is_message_active, ActionKind
+from src.services.pair_time_window import is_user_in_time_window
 from src.bot.handlers.start.services.pair_service import format_partner_text
 
 logger = get_logger(__name__)
@@ -155,12 +156,18 @@ async def handle_request_morning(
         )
         return
 
+    if not is_user_in_time_window(user, "morning", datetime.utcnow()):
+        await telegram_messenger.send_message(
+            chat_id=tg_id,
+            text=get_message("CALLBACK_OUTSIDE_TIME_WINDOW"),
+        )
+        return
+
     today = date.fromisoformat(day_iso) if day_iso else date.today()
     daily_state_repo = DailyStateRepository(session)
     ui_builder = WishRequestUIService(session)
 
-    # Send wish to partner
-    success, partner_nickname = await send_wish_to_partner(
+    success, partner_nickname, delivered_immediately = await send_wish_to_partner(
         session=session,
         pair=pair,
         user_id=user_id,
@@ -228,19 +235,24 @@ async def handle_request_morning(
     )
     await telegram_messenger.send_message(
         chat_id=tg_id,
-        text=get_message("CALLBACK_WISH_DELIVERED", partner_text=partner_text),
+        text=get_message(
+            "CALLBACK_WISH_DELIVERED"
+            if delivered_immediately
+            else "CALLBACK_WISH_DELIVERY_DEFERRED",
+            partner_text=partner_text,
+        ),
     )
 
-    # Schedule reminder tasks
-    partner_tg_id = user_b.tg_id if user_a.tg_id == tg_id else user_a.tg_id
-    recipient_user = user_b if user_a.id == user_id else user_a
+    if delivered_immediately:
+        partner_tg_id = user_b.tg_id if user_a.tg_id == tg_id else user_a.tg_id
+        recipient_user = user_b if user_a.id == user_id else user_a
 
-    await schedule_reminder_tasks(
-        pair_id=pair_id,
-        initiator_tg_id=tg_id,
-        recipient_tg_id=partner_tg_id,
-        recipient_user_id=recipient_user.id,
-        pic_type="morning",
-        settings=settings,
-    )
+        await schedule_reminder_tasks(
+            pair_id=pair_id,
+            initiator_tg_id=tg_id,
+            recipient_tg_id=partner_tg_id,
+            recipient_user_id=recipient_user.id,
+            pic_type="morning",
+            settings=settings,
+        )
 

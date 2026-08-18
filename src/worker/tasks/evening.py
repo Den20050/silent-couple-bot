@@ -71,12 +71,10 @@ async def evening_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> 
             reasons: Counter[str] = Counter()
             user_to_pair_ids: dict[int, set[int]] = {}
             from src.worker.services.pair_scheduler import WishRequestAttemptContext
-            attempt_ctx_by_pair_id: dict[int, WishRequestAttemptContext] = {}
+            attempt_ctx_by_tg_id: dict[int, WishRequestAttemptContext] = {}
             
-            # Process active pairs - send wishes
             for pair in pairs:
                 try:
-                    # Get users
                     user_a_result = await session.execute(
                         select(User).where(User.id == pair.uid_a)
                     )
@@ -87,21 +85,28 @@ async def evening_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> 
                     )
                     user_b = user_b_result.scalar_one()
                     
-                    # Try to send wish
-                    eligible, reason, attempt_ctx = await scheduler.send_wish_for_pair(
+                    pair_ok, reason = await scheduler.check_pair_needs_wish_prompt(
                         pair=pair,
-                        user_a=user_a,
-                        user_b=user_b,
                         pic_type="evening",
                         today=today,
-                        now_utc=now_utc,
                     )
                     reasons[reason] += 1
-                    
-                    if eligible and attempt_ctx is not None:
-                        user_to_pair_ids.setdefault(user_a.tg_id, set()).add(pair.id)
-                        user_to_pair_ids.setdefault(user_b.tg_id, set()).add(pair.id)
-                        attempt_ctx_by_pair_id[pair.id] = attempt_ctx
+                    if not pair_ok:
+                        continue
+
+                    for user in (user_a, user_b):
+                        should_prompt, user_reason, attempt_ctx = (
+                            await scheduler.should_prompt_user(
+                                user=user,
+                                pic_type="evening",
+                                today=today,
+                                now_utc=now_utc,
+                            )
+                        )
+                        reasons[user_reason] += 1
+                        if should_prompt and attempt_ctx is not None:
+                            user_to_pair_ids.setdefault(user.tg_id, set()).add(pair.id)
+                            attempt_ctx_by_tg_id[user.tg_id] = attempt_ctx
                 except Exception as e:
                     logger.error(
                         "Error sending evening wish",
@@ -112,13 +117,33 @@ async def evening_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> 
                     await session.rollback()
                     continue
             
+            from src.services.messaging.pending_wish_delivery import (
+                flush_pending_deliveries,
+            )
+            from src.bot.handlers.callbacks.use_cases.schedule_reminders import (
+                schedule_reminder_tasks,
+            )
+
+            redis_client = await lock_service.get_redis_client()
+            deferred_count = await flush_pending_deliveries(
+                session=session,
+                messenger=worker_context.messenger,
+                redis=redis_client,
+                now_utc=now_utc,
+                pic_type="evening",
+                schedule_reminders_fn=schedule_reminder_tasks,
+                settings=settings,
+            )
+            if deferred_count:
+                logger.info("Deferred evening wishes delivered", count=deferred_count)
+
             if user_to_pair_ids:
-                updated_count, _succeeded_users, _pairs_marked = await scheduler.send_aggregated_wish_requests(
+                updated_count, _succeeded_users = await scheduler.send_aggregated_wish_requests(
                     user_to_pair_ids=user_to_pair_ids,
                     pic_type="evening",
                     today=today,
                     now_utc=now_utc,
-                    attempt_ctx_by_pair_id=attempt_ctx_by_pair_id,
+                    attempt_ctx_by_tg_id=attempt_ctx_by_tg_id,
                 )
                 notified_users_count = updated_count
             

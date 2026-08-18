@@ -305,18 +305,43 @@ async def robokassa_webhook(
             logger.error("Subscription not found", pair_id=pair_id)
             return "ERROR"
 
-        # Calculate period_end with remaining days added if subscription is still active
+        user_a_result = await session.execute(select(User).where(User.id == pair.uid_a))
+        user_a = user_a_result.scalar_one_or_none()
+        user_b_result = await session.execute(select(User).where(User.id == pair.uid_b))
+        user_b = user_b_result.scalar_one_or_none()
+        if not user_a or not user_b:
+            logger.error("Pair users not found", pair_id=pair_id)
+            return "ERROR"
+
+        from src.db.repositories.pair_first_payment_bonus import (
+            PairFirstPaymentBonusRepository,
+        )
+        from src.services.payment.first_payment_bonus import (
+            resolve_first_payment_bonus_days,
+        )
         from src.services.payment.subscription_calculator import (
             calculate_subscription_period_end,
         )
 
-        period_days = payment_period_days or SUBSCRIPTION_PERIOD_DAYS
+        bonus_repo = PairFirstPaymentBonusRepository(session)
+        bonus_days, is_first_payment = await resolve_first_payment_bonus_days(
+            bonus_repo,
+            user_a.tg_id,
+            user_b.tg_id,
+            is_lifetime=is_lifetime,
+        )
+
+        base_period_days = payment_period_days or SUBSCRIPTION_PERIOD_DAYS
+        period_days = base_period_days + bonus_days
         period_end = calculate_subscription_period_end(
             subscription=subscription,
             new_period_days=period_days,
             is_lifetime=is_lifetime,
             standard_month_days=30,
         )
+
+        if is_first_payment:
+            await bonus_repo.mark_used(user_a.tg_id, user_b.tg_id)
 
         # Update subscription (используем payment_id как yoo_id для совместимости)
         updated_subscription = await subs_repo.update_payment(
@@ -384,12 +409,6 @@ async def robokassa_webhook(
         # Reset last_past_due_notification_date to allow fresh notifications if needed
         subscription.last_past_due_notification_date = None
 
-        # Notify both users
-        user_a_result = await session.execute(select(User).where(User.id == pair.uid_a))
-        user_a = user_a_result.scalar_one()
-        user_b_result = await session.execute(select(User).where(User.id == pair.uid_b))
-        user_b = user_b_result.scalar_one()
-
         period_text = (
             get_message("WEBHOOK_LIFETIME_TEXT")
             if is_lifetime
@@ -405,6 +424,11 @@ async def robokassa_webhook(
             chat_id=user_b.tg_id,
             text=get_message("PAY_ACCESS_GRANTED"),
         )
+
+        if bonus_days > 0:
+            bonus_text = get_message("PAY_FIRST_PAYMENT_BONUS_APPLIED")
+            await send_message_with_retry(chat_id=user_a.tg_id, text=bonus_text)
+            await send_message_with_retry(chat_id=user_b.tg_id, text=bonus_text)
         
         # Send subscription details
         await send_message_with_retry(
@@ -422,9 +446,12 @@ async def robokassa_webhook(
             "Robokassa payment processed and access granted",
             pair_id=pair_id,
             inv_id=payment_id,
+            base_period_days=base_period_days,
+            bonus_days=bonus_days,
             period_days=period_days,
             period_end=period_end,
             is_lifetime=is_lifetime,
+            first_payment_promo_consumed=is_first_payment,
             user_a_tg_id=user_a.tg_id,
             user_b_tg_id=user_b.tg_id,
         )

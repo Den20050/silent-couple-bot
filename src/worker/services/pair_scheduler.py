@@ -1,25 +1,23 @@
 """Pair scheduling service for sending wishes and reminders."""
 
 import asyncio
-from datetime import date, datetime, timedelta
-from datetime import time as time_type
+from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.constants import PicType, PairStatus
+from src.core.constants import PairStatus
 from src.core.config import settings
 from src.core.logger import get_logger
-from src.core.messages import get_message
 from src.db.repositories.daily_state import DailyStateRepository
 from src.db.repositories.pairs import PairsRepository
 from src.db.repositories.users import UsersRepository
 from src.services.image import ImageService
 from src.services.messaging.caption_service import CaptionService
 from src.core.protocols.messenger import MessengerProtocol
-from src.worker.services.time_window_service import TimeWindowService
+from src.services.pair_time_window import is_user_in_time_window
 from src.worker.services.lock_service import LockService
-from dataclasses import dataclass
 
 from src.services.messaging.ui.wish_request_ui import WishRequestUIService
 from src.services.messaging.active_action_message import activate_message, ActionKind
@@ -27,25 +25,24 @@ from src.services.messaging.active_action_message import activate_message, Actio
 logger = get_logger(__name__)
 
 _WISH_REQUEST_PROMPT_MESSAGE_TTL_SECONDS = 48 * 3600
-
-# Telegram global rate limit: 30 messages/second to different chats.
-# We use batches of 25 (headroom for retries) sent concurrently, with a
-# 1-second pause between batches, giving a sustained rate of 25 msg/s.
-# At that rate 5 000 users are delivered in ~3.3 minutes, well inside any
-# 1-hour notification window.
 _SEND_BATCH_SIZE = 25
 _SEND_BATCH_INTERVAL_S = 1.0
 
 
 def _wish_request_prompt_message_id_key(tg_id: int, pic_type: str, day: date) -> str:
-    """Redis key for storing single aggregated request prompt message_id."""
     return f"wish_request_prompt_message_id:{tg_id}:{pic_type}:{day.isoformat()}"
 
+
+def _user_attempt_key_prefix(user_id: int, pic_type: str, day: date) -> str:
+    return (
+        f"{settings.redis_key_prefix_wish_request}:user:{user_id}:"
+        f"{pic_type}:{day.isoformat()}"
+    )
 
 
 @dataclass(frozen=True)
 class WishRequestAttemptContext:
-    """Redis attempt-tracking context for a pair/day/pic_type."""
+    """Redis attempt-tracking context for a user/day/pic_type."""
 
     first_sent_key: str
     last_sent_key: str
@@ -55,20 +52,13 @@ class WishRequestAttemptContext:
 
 class PairScheduler:
     """Service for scheduling and sending pair wishes."""
-    
+
     def __init__(
         self,
         session: AsyncSession,
         telegram_messenger: MessengerProtocol,
         lock_service: LockService,
     ) -> None:
-        """Initialize pair scheduler.
-        
-        Args:
-            session: Database session
-            telegram_messenger: Telegram messenger instance
-            lock_service: LockService instance for Redis operations
-        """
         self.session = session
         self.telegram_messenger = telegram_messenger
         self.lock_service = lock_service
@@ -77,152 +67,72 @@ class PairScheduler:
         self.users_repo = UsersRepository(session)
         self.image_service = ImageService(session)
         self.caption_service = CaptionService(session)
-    
-    # NOTE: public-ish DTO so worker tasks can track attempt state per pair
 
-
-    async def _mark_attempt_sent(self, ctx: WishRequestAttemptContext, now_utc: datetime) -> None:
-        """Update Redis attempt tracking for a pair/pic_type/day after we notified at least one user."""
+    async def _mark_attempt_sent(
+        self, ctx: WishRequestAttemptContext, now_utc: datetime
+    ) -> None:
         new_count = ctx.attempt_count + 1
         now_iso = now_utc.isoformat()
 
         if ctx.attempt_count == 0:
-            await self.lock_service.set_key_with_ttl(ctx.first_sent_key, now_iso, 86400)
+            await self.lock_service.set_key_with_ttl(
+                ctx.first_sent_key, now_iso, 86400
+            )
 
         await self.lock_service.set_key_with_ttl(ctx.last_sent_key, now_iso, 86400)
         await self.lock_service.set_key_with_ttl(ctx.count_key, str(new_count), 86400)
 
-    async def send_wish_for_pair(
+    async def check_pair_needs_wish_prompt(
         self,
         pair,
-        user_a,
-        user_b,
+        pic_type: str,
+        today: date,
+    ) -> tuple[bool, str]:
+        """Return whether a pair still needs a wish today (ignores time windows)."""
+        if pair.status == PairStatus.PAST_DUE.value:
+            return False, "pair_status_past_due"
+
+        daily_state = await self.daily_state_repo.get_or_create(pair.id, today)
+
+        if pic_type == "morning":
+            if daily_state.morning_initiator is not None:
+                return False, "already_sent_today"
+        elif pic_type == "evening":
+            if daily_state.evening_initiator is not None:
+                return False, "already_sent_today"
+        else:
+            return False, "invalid_pic_type"
+
+        return True, "pair_needs_prompt"
+
+    async def should_prompt_user(
+        self,
+        user,
         pic_type: str,
         today: date,
         now_utc: datetime,
     ) -> tuple[bool, str, WishRequestAttemptContext | None]:
-        """Plan wish request for a pair (does NOT send messages directly).
-        
-        Args:
-            pair: Pair object
-            user_a: User A object
-            user_b: User B object
-            pic_type: Picture type ("morning" or "evening")
-            today: Current date
-            now_utc: Current UTC datetime
-            
-        Returns:
-            Tuple of (should_notify, reason). If should_notify is False, reason describes skip cause.
-        """
-        def _skip(reason: str, **extra: object) -> tuple[bool, str]:
-            logger.debug(
-                "Skipping wish send for pair",
-                pair_id=getattr(pair, "id", None),
-                pic_type=pic_type,
-                reason=reason,
-                **extra,
-            )
-            return False, reason
+        """Check if this user should receive a wish-request prompt now."""
+        if pic_type not in ("morning", "evening"):
+            return False, "invalid_pic_type", None
 
-        # Check if subscription is past due
-        if pair.status == PairStatus.PAST_DUE.value:
-            ok, reason = _skip("pair_status_past_due")
-            return ok, reason, None
-        
-        # Get daily state
-        daily_state = await self.daily_state_repo.get_or_create(pair.id, today)
-        
-        # Check if already sent today
-        if pic_type == "morning":
-            if daily_state.morning_initiator is not None:
-                ok, reason = _skip(
-                    "already_sent_today", initiator=daily_state.morning_initiator
-                )
-                return ok, reason, None
-        else:  # evening
-            if daily_state.evening_initiator is not None:
-                ok, reason = _skip(
-                    "already_sent_today", initiator=daily_state.evening_initiator
-                )
-                return ok, reason, None
-        
-        # Check if at least one user is in their time window (per-user preferences)
-        user_a_local_time = TimeWindowService.get_user_local_time(now_utc, user_a.utc_offset)
-        user_b_local_time = TimeWindowService.get_user_local_time(now_utc, user_b.utc_offset)
-        
-        def _window_for_user(user_obj, which: str) -> tuple[time_type, time_type]:
-            # If pair has a window owner, windows become shared for the pair.
-            # Otherwise, keep backward-compatible behavior: per-user windows.
-            shared_owner_id = getattr(pair, "notification_window_owner_id", None)
-            if shared_owner_id is not None:
-                if which == "morning":
-                    start_hour = getattr(pair, "morning_window_start_hour", None)
-                else:
-                    start_hour = getattr(pair, "evening_window_start_hour", None)
-            else:
-                if which == "morning":
-                    start_hour = getattr(user_obj, "morning_window_start_hour", None)
-                else:
-                    start_hour = getattr(user_obj, "evening_window_start_hour", None)
+        if not is_user_in_time_window(user, pic_type, now_utc):  # type: ignore[arg-type]
+            return False, "outside_time_window", None
 
-            # Fallback to global config windows if field is missing (e.g., before migration)
-            if start_hour is None:
-                if which == "morning":
-                    return settings.morning_start_time, settings.morning_end_time
-                return settings.evening_start_time, settings.evening_end_time
+        prefix = _user_attempt_key_prefix(user.id, pic_type, today)
+        first_sent_key = f"{prefix}:first_sent"
+        last_sent_key = f"{prefix}:last_sent"
+        count_key = f"{prefix}:count"
 
-            start = time_type(int(start_hour), 0)
-            end = time_type((int(start_hour) + 1) % 24, 0)
-            return start, end
-
-        if pic_type == "morning":
-            a_start, a_end = _window_for_user(user_a, "morning")
-            b_start, b_end = _window_for_user(user_b, "morning")
-        else:
-            a_start, a_end = _window_for_user(user_a, "evening")
-            b_start, b_end = _window_for_user(user_b, "evening")
-
-        user_a_in_window = TimeWindowService.is_in_time_window(user_a_local_time, a_start, a_end)
-        user_b_in_window = TimeWindowService.is_in_time_window(user_b_local_time, b_start, b_end)
-        
-        # If neither user is in their time window, skip
-        if not user_a_in_window and not user_b_in_window:
-            ok, reason = _skip(
-                "outside_time_window",
-                user_a_local_time=str(user_a_local_time),
-                user_b_local_time=str(user_b_local_time),
-                user_a_utc_offset=getattr(user_a, "utc_offset", None),
-                user_b_utc_offset=getattr(user_b, "utc_offset", None),
-            )
-            return ok, reason, None
-
-        # Check wish request attempt limit (max 3 attempts per day with 1 hour intervals)
-        wish_request_key_prefix = f"{settings.redis_key_prefix_wish_request}:{pair.id}:{pic_type}:{today.isoformat()}"
-        first_sent_key = f"{wish_request_key_prefix}:first_sent"
-        last_sent_key = f"{wish_request_key_prefix}:last_sent"
-        count_key = f"{wish_request_key_prefix}:count"
-        
-        # Get current attempt count
         count_str = await self.lock_service.get_key(count_key)
         attempt_count = int(count_str) if count_str else 0
-        
-        # If already sent 3 attempts, don't send more
+
         if attempt_count >= 3:
-            logger.debug(
-                "Wish request limit reached for pair",
-                pair_id=pair.id,
-                pic_type=pic_type,
-                attempt_count=attempt_count,
-            )
-            ok, reason = _skip("attempt_limit_reached", attempt_count=attempt_count)
-            return ok, reason, None
-        
-        # Check if we should send based on attempt count and time intervals
+            return False, "attempt_limit_reached", None
+
         if attempt_count == 0:
-            # First attempt - send immediately
             should_send = True
         elif attempt_count == 1:
-            # Second attempt - check if 1 hour passed since first
             first_sent_str = await self.lock_service.get_key(first_sent_key)
             if first_sent_str:
                 try:
@@ -230,11 +140,10 @@ class PairScheduler:
                     hours_passed = (now_utc - first_sent_time).total_seconds() / 3600
                     should_send = hours_passed >= 1.0
                 except (ValueError, TypeError):
-                    should_send = True  # If parsing fails, allow sending
+                    should_send = True
             else:
-                should_send = True  # If first_sent not found, allow sending
-        else:  # attempt_count == 2
-            # Third attempt - check if 1 hour passed since last
+                should_send = True
+        else:
             last_sent_str = await self.lock_service.get_key(last_sent_key)
             if last_sent_str:
                 try:
@@ -242,49 +151,42 @@ class PairScheduler:
                     hours_passed = (now_utc - last_sent_time).total_seconds() / 3600
                     should_send = hours_passed >= 1.0
                 except (ValueError, TypeError):
-                    should_send = True  # If parsing fails, allow sending
+                    should_send = True
             else:
-                should_send = True  # If last_sent not found, allow sending
-        
+                should_send = True
+
         if not should_send:
-            logger.debug(
-                "Wish request not sent - time interval not met",
-                pair_id=pair.id,
-                pic_type=pic_type,
-                attempt_count=attempt_count,
-            )
-            ok, reason = _skip("attempt_interval_not_met", attempt_count=attempt_count)
-            return ok, reason, None
-        
-        attempt_ctx = WishRequestAttemptContext(
+            return False, "attempt_interval_not_met", None
+
+        ctx = WishRequestAttemptContext(
             first_sent_key=first_sent_key,
             last_sent_key=last_sent_key,
             count_key=count_key,
             attempt_count=attempt_count,
         )
-
-        # If we reached here, the pair is eligible to be included in the aggregated prompt.
-        return True, "eligible", attempt_ctx
+        return True, "eligible", ctx
 
     async def _send_prompt_to_user(
         self,
         tg_id: int,
-        pair_ids: set[int],
-        ui_builder: "WishRequestUIService",
+        ui_builder: WishRequestUIService,
         pic_type: str,
         today: date,
     ) -> bool:
-        """Send or edit the wish-request prompt for a single user.
-
-        Returns True when the Telegram API call succeeded (new send or edit),
-        False on any error.  All exceptions are caught and logged internally.
-        """
         try:
             ui = await ui_builder.build_for_user(
                 user_tg_id=tg_id,
                 pic_type=pic_type,
                 day=today,
             )
+            if not ui.reply_markup.get("inline_keyboard"):
+                logger.debug(
+                    "Skipping wish prompt: empty keyboard for user",
+                    tg_id=tg_id,
+                    pic_type=pic_type,
+                )
+                return False
+
             key = _wish_request_prompt_message_id_key(tg_id, pic_type, today)
             message_id_raw = await self.lock_service.get_key(key)
             if message_id_raw:
@@ -298,13 +200,8 @@ class PairScheduler:
                             reply_markup=ui.reply_markup,
                         )
                     except Exception as e:
-                        # Telegram may reject a no-op edit with "message is not modified".
-                        # Treat it as success to avoid spamming users with new messages.
                         if "message is not modified" not in str(e).lower():
                             raise
-                    # Keep only this message interactive for the user (best-effort).
-                    # IMPORTANT: activation must never be fatal; otherwise we can spam users
-                    # with repeated prompts on every cron tick.
                     try:
                         await activate_message(
                             redis=await self.lock_service.get_redis_client(),
@@ -323,7 +220,6 @@ class PairScheduler:
                         )
                     return True
                 except Exception:
-                    # If edit fails (message deleted, etc.), fall back to sending a new prompt.
                     pass
 
             msg = await self.telegram_messenger.send_message(
@@ -336,7 +232,6 @@ class PairScheduler:
                 str(msg.message_id),
                 _WISH_REQUEST_PROMPT_MESSAGE_TTL_SECONDS,
             )
-            # Best-effort: don't let activation errors break idempotency.
             try:
                 await activate_message(
                     redis=await self.lock_service.get_redis_client(),
@@ -371,61 +266,45 @@ class PairScheduler:
         pic_type: str,
         today: date,
         now_utc: datetime,
-        attempt_ctx_by_pair_id: dict[int, WishRequestAttemptContext],
-    ) -> tuple[int, set[int], set[int]]:
-        """Send/update aggregated wish request prompts for specified users.
-
-        Users are processed in concurrent batches of _SEND_BATCH_SIZE with a
-        _SEND_BATCH_INTERVAL_S pause between batches.  This saturates Telegram's
-        30 msg/s limit without exceeding it, delivering 5 000 messages in ~3 min.
-
-        Returns:
-            (users_updated_count, successfully_notified_user_tg_ids, pairs_marked_as_attempt_sent)
-        """
+        attempt_ctx_by_tg_id: dict[int, WishRequestAttemptContext],
+    ) -> tuple[int, set[int]]:
+        """Send/update aggregated wish request prompts for specified users."""
         ui_builder = WishRequestUIService(self.session)
         updated = 0
         succeeded: set[int] = set()
-        delivered_pair_ids: set[int] = set()
 
         items = list(user_to_pair_ids.items())
 
         for batch_start in range(0, len(items), _SEND_BATCH_SIZE):
             batch = items[batch_start : batch_start + _SEND_BATCH_SIZE]
 
-            # Send this batch concurrently — all within Telegram's 30 msg/s window.
             results: list[bool] = await asyncio.gather(  # type: ignore[assignment]
                 *[
-                    self._send_prompt_to_user(tg_id, pair_ids, ui_builder, pic_type, today)
-                    for tg_id, pair_ids in batch
+                    self._send_prompt_to_user(tg_id, ui_builder, pic_type, today)
+                    for tg_id, _pair_ids in batch
                 ]
             )
 
-            for (tg_id, pair_ids), success in zip(batch, results):
+            for (tg_id, _pair_ids), success in zip(batch, results):
                 if success:
                     updated += 1
                     succeeded.add(tg_id)
-                    delivered_pair_ids.update(pair_ids)
 
-            # Pause between batches to maintain ~25 msg/s sustained rate.
             if batch_start + _SEND_BATCH_SIZE < len(items):
                 await asyncio.sleep(_SEND_BATCH_INTERVAL_S)
 
-        # Mark attempt tracking only for pairs for which at least one user prompt succeeded.
-        pairs_marked: set[int] = set()
-        for pair_id in delivered_pair_ids:
-            ctx = attempt_ctx_by_pair_id.get(pair_id)
+        for tg_id in succeeded:
+            ctx = attempt_ctx_by_tg_id.get(tg_id)
             if ctx is None:
                 continue
             try:
                 await self._mark_attempt_sent(ctx, now_utc=now_utc)
-                pairs_marked.add(pair_id)
             except Exception as e:
                 logger.warning(
                     "Failed to mark wish request attempt as sent",
-                    pair_id=pair_id,
+                    tg_id=tg_id,
                     pic_type=pic_type,
                     error=str(e),
                 )
 
-        return updated, succeeded, pairs_marked
-
+        return updated, succeeded
