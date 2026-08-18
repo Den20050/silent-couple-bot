@@ -6,13 +6,26 @@ Pairs do not share or override another user's schedule.
 
 from __future__ import annotations
 
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from typing import Any, Literal
 
 from src.core.config import settings
-from src.worker.services.time_window_service import TimeWindowService
 
 PicType = Literal["morning", "evening"]
+
+
+def _get_user_local_time(utc_now: datetime, utc_offset: int) -> time:
+    return (utc_now + timedelta(hours=utc_offset)).time()
+
+
+def _is_in_time_window(
+    user_local_time: time,
+    window_start: time,
+    window_end: time,
+) -> bool:
+    if window_start <= window_end:
+        return window_start <= user_local_time <= window_end
+    return user_local_time >= window_start or user_local_time <= window_end
 
 
 def get_user_window_bounds(user_obj: Any, pic_type: PicType) -> tuple[time, time]:
@@ -38,6 +51,6 @@ def is_user_in_time_window(
     now_utc: datetime,
 ) -> bool:
     """True when the user's local time is inside their own window."""
-    user_local = TimeWindowService.get_user_local_time(now_utc, user_obj.utc_offset)
+    user_local = _get_user_local_time(now_utc, user_obj.utc_offset)
     start, end = get_user_window_bounds(user_obj, pic_type)
-    return TimeWindowService.is_in_time_window(user_local, start, end)
+    return _is_in_time_window(user_local, start, end)
