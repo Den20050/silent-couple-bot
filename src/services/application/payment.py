@@ -16,6 +16,10 @@ from src.domain.services.subscription_status import SubscriptionStatusService
 from src.services.messaging.templates import ButtonTemplates
 from src.services.messaging.ui.payment_ui import PaymentUIService
 from src.services.payment.currency_rates import CurrencyRatesService
+from src.services.payment.first_payment_bonus import (
+    bonus_effective_plan_name,
+    is_first_payment_bonus_eligible,
+)
 
 logger = get_logger(__name__)
 
@@ -55,6 +59,25 @@ class PaymentApplicationService:
         self._payment_ui = payment_ui
         self._settings = settings
         self._currency_rates_service = currency_rates_service
+    
+    async def _is_first_payment_bonus_eligible(self, pair) -> bool:
+        from src.db.repositories.pair_first_payment_bonus import (
+            PairFirstPaymentBonusRepository,
+        )
+        from src.db.repositories.users import UsersRepository
+
+        users_repo = UsersRepository(self._session)
+        user_a = await users_repo.get_by_id(pair.uid_a)
+        user_b = await users_repo.get_by_id(pair.uid_b)
+        if not user_a or not user_b:
+            return False
+
+        bonus_repo = PairFirstPaymentBonusRepository(self._session)
+        return await is_first_payment_bonus_eligible(
+            bonus_repo,
+            user_a.tg_id,
+            user_b.tg_id,
+        )
     
     async def show_pair_selection(
         self,
@@ -315,14 +338,17 @@ class PaymentApplicationService:
                 )
 
         # Show tariffs using UI service with dynamic rates
+        bonus_eligible = await self._is_first_payment_bonus_eligible(pair)
         message_text = await self._payment_ui.build_tariffs_message(
             currency_code,
             currency_rates_service=self._currency_rates_service,
+            first_payment_bonus_eligible=bonus_eligible,
         )
         keyboard = await self._payment_ui.build_tariffs_keyboard(
             currency_code,
             pair_id=pair_id,
             currency_rates_service=self._currency_rates_service,
+            first_payment_bonus_eligible=bonus_eligible,
         )
         return True, message_text, keyboard
     
@@ -430,12 +456,18 @@ class PaymentApplicationService:
         
         price_str = f"{price_in_currency:.{decimals}f}".rstrip('0').rstrip('.')
         
+        bonus_eligible = await self._is_first_payment_bonus_eligible(pair)
+
         # Build confirmation message
-        period_text = (
-            get_message("PAY_LIFETIME_TEXT")
-            if is_lifetime
-            else f"{period_days} дней"
-        )
+        if is_lifetime:
+            period_text = get_message("PAY_LIFETIME_TEXT")
+        elif bonus_eligible and (effective := bonus_effective_plan_name(plan_id)):
+            period_text = get_message(
+                "PAY_FIRST_PAYMENT_BONUS_PERIOD",
+                effective_name=effective,
+            )
+        else:
+            period_text = f"{period_days} дней"
         
         message_text = get_message(
             "PAY_CONFIRM_TERMS_MESSAGE",
@@ -444,6 +476,11 @@ class PaymentApplicationService:
             symbol=currency_info["symbol"],
             period_text=period_text,
         )
+        
+        if bonus_eligible and not is_lifetime:
+            message_text = (
+                f"{get_message('PAY_FIRST_PAYMENT_BONUS_BANNER')}{message_text}"
+            )
         
         # Build confirmation keyboard
         keyboard = self._payment_ui.build_terms_confirmation_keyboard(
@@ -596,11 +633,16 @@ class PaymentApplicationService:
             keyboard = self._payment_ui.build_payment_keyboard(
                 payment_url, price_str, currency_info["symbol"], pair_id=pair_id
             )
-            period_text = (
-                get_message("PAY_LIFETIME_TEXT")
-                if is_lifetime
-                else f"{period_days} дней"
-            )
+            bonus_eligible = await self._is_first_payment_bonus_eligible(pair)
+            if is_lifetime:
+                period_text = get_message("PAY_LIFETIME_TEXT")
+            elif bonus_eligible and (effective := bonus_effective_plan_name(plan_id)):
+                period_text = get_message(
+                    "PAY_FIRST_PAYMENT_BONUS_PERIOD",
+                    effective_name=effective,
+                )
+            else:
+                period_text = f"{period_days} дней"
             message_text = get_message(
                 "PAY_CREATE_PAYMENT_MESSAGE",
                 plan_name=plan_name,

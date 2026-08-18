@@ -240,6 +240,15 @@ class PairDemoHash(Base):
     created_at: Mapped[datetime] = mapped_column(default=func.now(), nullable=False)
 
 
+class PairFirstPaymentBonusHash(Base):
+    """First-payment promo (+1 month) consumed for a tg_id pair combination."""
+
+    __tablename__ = "pair_first_payment_bonus_hash"
+
+    pair_hash: Mapped[str] = mapped_column(Text, primary_key=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=func.now(), nullable=False)
+
+
 class LifetimePairHistory(Base):
     """History of broken pairs with lifetime subscriptions."""
 

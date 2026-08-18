@@ -41,19 +41,9 @@ class WishRequestUIService:
         pic_type: str,
         day: date,
     ) -> WishRequestUI:
-        """Build prompt text and keyboard for a user.
-
-        Args:
-            user_tg_id: Telegram ID of the user who will receive the prompt.
-            pic_type: "morning" or "evening".
-            day: Day to show status for.
-
-        Returns:
-            WishRequestUI with text and inline keyboard (dict).
-        """
+        """Build prompt text and keyboard for a user."""
         user = await self._users_repo.get_by_tg_id(user_tg_id)
         if not user:
-            # If user is not in DB, return a minimal safe UI.
             return WishRequestUI(
                 text=get_message("MENU_USER_NOT_FOUND"),
                 reply_markup={"inline_keyboard": []},
@@ -84,7 +74,6 @@ class WishRequestUIService:
                 partner_nickname,
             )
 
-            # Past due pairs: show pay CTA instead of wish send
             if pair.status == "past_due":
                 pay_rows.append(
                     [
@@ -118,4 +107,3 @@ class WishRequestUIService:
 
         reply_markup = {"inline_keyboard": pending_rows + pay_rows + sent_rows}
         return WishRequestUI(text=text, reply_markup=reply_markup)
-

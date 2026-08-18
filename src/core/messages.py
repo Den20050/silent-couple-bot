@@ -186,9 +186,19 @@ class Messages:
     PAY_SELECT_PAIR = "Выберите пару для оплаты подписки:"
     PAY_SELECT_CURRENCY = "💳 Выберите валюту для оплаты подписки:"
     PAY_SELECT_TARIFF = (
+        "{bonus_banner}"
         "💳 Выберите тариф подписки:\n\n{tariffs_list}\n\n"
         "Внимание! Подписка не подлежит возврату при разрыве пары, и не "
         "восстанавливается при повторной регистрации пары"
+    )
+    PAY_FIRST_PAYMENT_BONUS_BANNER = (
+        "🎁 <b>Первый платёж — +1 месяц в подарок!</b>\n"
+        "1 месяц по цене тарифа → <b>2 месяца</b> для вас обоих.\n"
+        "<i>Один раз на пару. Не действует на «Навсегда».</i>\n\n"
+    )
+    PAY_FIRST_PAYMENT_BONUS_PERIOD = "{effective_name} (+1 мес. 🎁)"
+    PAY_FIRST_PAYMENT_BONUS_APPLIED = (
+        "🎁 <b>+1 месяц в подарок</b> добавлен к подписке — это ваш первый платёж за эту пару!"
     )
     PAY_TARIFF_LINE = "• {name} - {price} {symbol}"
     PAY_TARIFF_LINE_WITH_SAVING = (
@@ -215,6 +225,14 @@ class Messages:
     CALLBACK_ERROR = "Ошибка"
     CALLBACK_PAIR_NOT_FOUND = "Пара не найдена"
     CALLBACK_NO_IMAGES_AVAILABLE = "Нет доступных картинок"
+    CALLBACK_WISH_DELIVERY_DEFERRED = (
+        "✅ Пожелание будет доставлено пользователю {partner_text}, "
+        "когда у партнёра наступит его время для получения"
+    )
+    CALLBACK_OUTSIDE_TIME_WINDOW = (
+        "⏰ Сейчас не ваше время для отправки пожелания. "
+        "Дождитесь уведомления от бота."
+    )
     CALLBACK_PARTNER_ALREADY_SENT = "Ваш партнёр уже отправил пожелание"
     CALLBACK_WISH_SENT = "✅ Вы отправили пожелание"
     CALLBACK_WISH_RESPONDED = "✅ Вы ответили на пожелание"
