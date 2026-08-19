@@ -12,6 +12,7 @@ from src.core.messages import get_message
 from src.bot.handlers.settings.states import SettingsStates
 from src.services.application.settings import SettingsApplicationService
 from src.bot.handlers.start.ui.builders import get_notif_time_morning_keyboard
+from src.services.messaging.ui.notification_window_ui import notif_time_morning_prompt_text
 
 logger = get_logger(__name__)
 
@@ -333,7 +334,7 @@ async def handle_settings_change_time_window(
     if len(active_pairs) == 1:
         pair = active_pairs[0]
         await callback.message.edit_text(
-            get_message("NOTIF_TIME_MORNING_PROMPT"),
+            notif_time_morning_prompt_text(user),
             reply_markup=get_notif_time_morning_keyboard(pair_id=pair.id),
             parse_mode=ParseMode.HTML,
         )
@@ -404,7 +405,7 @@ async def handle_settings_change_time_window_for_pair(
         return
 
     await callback.message.edit_text(
-        get_message("NOTIF_TIME_MORNING_PROMPT"),
+        notif_time_morning_prompt_text(user),
         reply_markup=get_notif_time_morning_keyboard(pair_id=pair.id),
         parse_mode=ParseMode.HTML,
     )
@@ -447,7 +448,7 @@ async def handle_settings_select_pair_for_time_window(
         return
 
     await callback.message.edit_text(
-        get_message("NOTIF_TIME_MORNING_PROMPT"),
+        notif_time_morning_prompt_text(user),
         reply_markup=get_notif_time_morning_keyboard(pair_id=pair.id),
         parse_mode=ParseMode.HTML,
     )

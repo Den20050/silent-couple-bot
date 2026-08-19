@@ -29,7 +29,7 @@ from src.bot.handlers.callbacks.use_cases.schedule_reminders import (
 from src.services.messaging.ui.wish_request_ui import WishRequestUIService
 from src.services.messaging.wish_request_prompt_refresher import refresh_aggregated_wish_prompt
 from src.services.messaging.active_action_message import is_message_active, ActionKind
-from src.services.pair_time_window import is_user_in_time_window
+from src.services.pair_time_window import can_user_send_wish
 from src.bot.handlers.start.services.pair_service import format_partner_text
 
 logger = get_logger(__name__)
@@ -156,10 +156,10 @@ async def handle_request_morning(
         )
         return
 
-    if not is_user_in_time_window(user, "morning", datetime.utcnow()):
+    if not can_user_send_wish(user, "morning", datetime.utcnow()):
         await telegram_messenger.send_message(
             chat_id=tg_id,
-            text=get_message("CALLBACK_OUTSIDE_TIME_WINDOW"),
+            text=get_message("CALLBACK_SEND_PERIOD_CLOSED"),
         )
         return
 

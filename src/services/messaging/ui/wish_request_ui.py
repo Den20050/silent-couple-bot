@@ -8,7 +8,7 @@ separate action (no "send to all" option).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +16,7 @@ from src.core.messages import get_message
 from src.db.repositories.daily_state import DailyStateRepository
 from src.db.repositories.pairs import PairsRepository
 from src.db.repositories.users import UsersRepository
+from src.services.pair_time_window import can_user_send_wish
 
 
 @dataclass(frozen=True)
@@ -40,14 +41,21 @@ class WishRequestUIService:
         user_tg_id: int,
         pic_type: str,
         day: date,
+        *,
+        now_utc: datetime | None = None,
     ) -> WishRequestUI:
         """Build prompt text and keyboard for a user."""
+        if now_utc is None:
+            now_utc = datetime.utcnow()
+
         user = await self._users_repo.get_by_tg_id(user_tg_id)
         if not user:
             return WishRequestUI(
                 text=get_message("MENU_USER_NOT_FOUND"),
                 reply_markup={"inline_keyboard": []},
             )
+
+        send_allowed = can_user_send_wish(user, pic_type, now_utc)  # type: ignore[arg-type]
 
         pairs = await self._pairs_repo.get_all_by_user_tg_id(user_tg_id)
         visible_pairs = [p for p in pairs if p.status in ("trial", "active", "past_due")]
@@ -97,7 +105,7 @@ class WishRequestUIService:
                     "callback_data": f"wish_sent_{pic_type}_{pair.id}",
                 }
                 sent_rows.append([button])
-            else:
+            elif send_allowed:
                 cb = f"{callback_prefix}_{pair.id}_{user.id}|{day.isoformat()}"
                 button = {
                     "text": f"📨 {partner_text}",
