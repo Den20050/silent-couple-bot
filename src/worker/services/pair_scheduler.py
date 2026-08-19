@@ -33,6 +33,16 @@ def _wish_request_prompt_message_id_key(tg_id: int, pic_type: str, day: date) ->
     return f"wish_request_prompt_message_id:{tg_id}:{pic_type}:{day.isoformat()}"
 
 
+def _keyboard_has_send_actions(reply_markup: dict, pic_type: str) -> bool:
+    prefix = f"request_{pic_type}_"
+    for row in reply_markup.get("inline_keyboard", []):
+        for button in row:
+            callback_data = button.get("callback_data", "")
+            if callback_data.startswith(prefix):
+                return True
+    return False
+
+
 def _user_attempt_key_prefix(user_id: int, pic_type: str, day: date) -> str:
     return (
         f"{settings.redis_key_prefix_wish_request}:user:{user_id}:"
@@ -172,16 +182,18 @@ class PairScheduler:
         ui_builder: WishRequestUIService,
         pic_type: str,
         today: date,
+        now_utc: datetime,
     ) -> bool:
         try:
             ui = await ui_builder.build_for_user(
                 user_tg_id=tg_id,
                 pic_type=pic_type,
                 day=today,
+                now_utc=now_utc,
             )
-            if not ui.reply_markup.get("inline_keyboard"):
+            if not _keyboard_has_send_actions(ui.reply_markup, pic_type):
                 logger.debug(
-                    "Skipping wish prompt: empty keyboard for user",
+                    "Skipping wish prompt: no send actions for user",
                     tg_id=tg_id,
                     pic_type=pic_type,
                 )
@@ -280,7 +292,9 @@ class PairScheduler:
 
             results: list[bool] = await asyncio.gather(  # type: ignore[assignment]
                 *[
-                    self._send_prompt_to_user(tg_id, ui_builder, pic_type, today)
+                    self._send_prompt_to_user(
+                        tg_id, ui_builder, pic_type, today, now_utc
+                    )
                     for tg_id, _pair_ids in batch
                 ]
             )

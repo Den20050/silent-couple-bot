@@ -27,6 +27,11 @@ from src.bot.handlers.start.services.pair_service import (
     find_existing_pair,
     format_partner_text,
 )
+from src.services.messaging.ui.notification_window_ui import (
+    notif_time_evening_prompt_text,
+    notif_time_morning_prompt_text,
+)
+from src.services.pair_time_window import format_window_range
 from src.bot.handlers.start.ui.builders import (
     get_consent_keyboard,
     get_mode_keyboard,
@@ -43,11 +48,6 @@ from src.bot.handlers.start.flows import (
 )
 
 logger = get_logger(__name__)
-
-
-def _format_hour_range(start_hour: int) -> str:
-    end_hour = (start_hour + 1) % 24
-    return f"{start_hour:02d}–{end_hour:02d}"
 
 
 class PairCreationStates(StatesGroup):
@@ -311,7 +311,7 @@ async def handle_start_logic(
                 if len(active_pairs) == 1:
                     pair_id_for_prompt = active_pairs[0].id
                 await message.answer(
-                    get_message("NOTIF_TIME_MORNING_PROMPT"),
+                    notif_time_morning_prompt_text(user),
                     reply_markup=get_notif_time_morning_keyboard(pair_id=pair_id_for_prompt),
                     parse_mode="HTML",
                 )
@@ -800,6 +800,7 @@ async def handle_notif_time_selection(
             await callback.message.edit_reply_markup(reply_markup=None)
             return
 
+        user = await users_repo.update_morning_window_start_hour(tg_id, start_hour)
         await session.commit()
 
         # Notify partner that owner set the window (best-effort).
@@ -808,7 +809,7 @@ async def handle_notif_time_selection(
         )
         partner = await users_repo.get_by_id(partner_id)
         if partner:
-            morning_range = _format_hour_range(updated_pair.morning_window_start_hour)
+            morning_range = format_window_range(updated_pair.morning_window_start_hour)
             try:
                 await messenger.send_message(
                     chat_id=partner.tg_id,
@@ -828,7 +829,7 @@ async def handle_notif_time_selection(
                 )
 
         await callback.message.edit_text(
-            get_message("NOTIF_TIME_EVENING_PROMPT"),
+            notif_time_evening_prompt_text(user),
             reply_markup=get_notif_time_evening_keyboard(pair_id=pair_id),
             parse_mode="HTML",
         )
@@ -852,6 +853,7 @@ async def handle_notif_time_selection(
             await callback.message.edit_reply_markup(reply_markup=None)
             return
 
+        user = await users_repo.update_evening_window_start_hour(tg_id, start_hour)
         await session.commit()
 
         partner_id = (
@@ -859,7 +861,7 @@ async def handle_notif_time_selection(
         )
         partner = await users_repo.get_by_id(partner_id)
         if partner:
-            evening_range = _format_hour_range(updated_pair.evening_window_start_hour)
+            evening_range = format_window_range(updated_pair.evening_window_start_hour)
             try:
                 await messenger.send_message(
                     chat_id=partner.tg_id,
@@ -878,8 +880,8 @@ async def handle_notif_time_selection(
                     error=str(e),
                 )
 
-        morning_range = _format_hour_range(updated_pair.morning_window_start_hour)
-        evening_range = _format_hour_range(updated_pair.evening_window_start_hour)
+        morning_range = format_window_range(updated_pair.morning_window_start_hour)
+        evening_range = format_window_range(updated_pair.evening_window_start_hour)
         await callback.message.edit_text(
             get_message(
                 "NOTIF_TIME_DONE",

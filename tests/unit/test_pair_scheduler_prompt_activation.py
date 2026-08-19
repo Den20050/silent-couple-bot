@@ -20,10 +20,27 @@ class _FakeWishRequestUIService:
     def __init__(self, _session: object) -> None:
         pass
 
-    async def build_for_user(self, user_tg_id: int, pic_type: str, day: date) -> _UI:
+    async def build_for_user(
+        self,
+        user_tg_id: int,
+        pic_type: str,
+        day: date,
+        **kwargs: object,
+    ) -> _UI:
         return _UI(
             text=f"{pic_type}:{day.isoformat()}:{user_tg_id}",
-            reply_markup={"inline_keyboard": [[{"text": "OK", "callback_data": "x"}]]},
+            reply_markup={
+                "inline_keyboard": [
+                    [
+                        {
+                            "text": "OK",
+                            "callback_data": (
+                                f"request_{pic_type}_1_1|{day.isoformat()}"
+                            ),
+                        }
+                    ]
+                ]
+            },
         )
 
 

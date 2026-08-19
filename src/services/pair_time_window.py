@@ -45,6 +45,12 @@ def get_user_window_bounds(user_obj: Any, pic_type: PicType) -> tuple[time, time
     return start, end
 
 
+def format_window_range(start_hour: int) -> str:
+    """Format a 1-hour window as «07–08»."""
+    end_hour = (int(start_hour) + 1) % 24
+    return f"{int(start_hour):02d}–{end_hour:02d}"
+
+
 def is_user_in_time_window(
     user_obj: Any,
     pic_type: PicType,
@@ -54,3 +60,29 @@ def is_user_in_time_window(
     user_local = _get_user_local_time(now_utc, user_obj.utc_offset)
     start, end = get_user_window_bounds(user_obj, pic_type)
     return _is_in_time_window(user_local, start, end)
+
+
+def _window_start_time(user_obj: Any, pic_type: PicType) -> time:
+    start, _end = get_user_window_bounds(user_obj, pic_type)
+    return start
+
+
+def can_user_send_wish(
+    user_obj: Any,
+    pic_type: PicType,
+    now_utc: datetime,
+) -> bool:
+    """True while the user may still press «send» for this pic_type today.
+
+    Morning wishes can be sent until the evening window starts.
+    Evening wishes can be sent until the morning window starts (next day included).
+    """
+    user_local = _get_user_local_time(now_utc, user_obj.utc_offset)
+    morning_start = _window_start_time(user_obj, "morning")
+    evening_start = _window_start_time(user_obj, "evening")
+
+    if pic_type == "morning":
+        return user_local < evening_start
+    if pic_type == "evening":
+        return user_local < morning_start or user_local >= evening_start
+    return False
