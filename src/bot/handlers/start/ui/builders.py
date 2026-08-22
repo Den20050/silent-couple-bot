@@ -6,6 +6,13 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.enums import ParseMode
 
 from src.core.messages import get_message
+from src.services.messaging.templates import ButtonTemplates
+
+
+def _notif_time_back_callback(pair_id: int | None) -> str:
+    if pair_id is not None:
+        return f"settings_time_window_back:{pair_id}"
+    return "settings_time_window_back"
 
 
 def get_mode_keyboard() -> InlineKeyboardMarkup:
@@ -159,6 +166,7 @@ def get_notif_time_morning_keyboard(pair_id: int | None = None) -> InlineKeyboar
                     callback_data=f"notif_time:morning:8{suffix}",
                 )
             ],
+            [ButtonTemplates.back_button(_notif_time_back_callback(pair_id))],
         ]
     )
 
@@ -190,5 +198,6 @@ def get_notif_time_evening_keyboard(pair_id: int | None = None) -> InlineKeyboar
                     callback_data=f"notif_time:evening:22{suffix}",
                 )
             ],
+            [ButtonTemplates.back_button(_notif_time_back_callback(pair_id))],
         ]
     )
