@@ -459,6 +459,46 @@ async def handle_settings_select_pair_for_time_window(
     )
 
 
+@router.callback_query(F.data.regexp(r"^settings_time_window_back(?::\d+)?$"))
+async def handle_settings_time_window_back(
+    callback: CallbackQuery,
+    session: AsyncSession,  # noqa: ARG001
+    state: FSMContext,
+    settings_application_service: SettingsApplicationService,
+) -> None:
+    """Return from time window selection to settings."""
+    await state.clear()
+    tg_id = callback.from_user.id
+    pair_id: int | None = None
+    if callback.data and ":" in callback.data:
+        try:
+            pair_id = int(callback.data.rsplit(":", 1)[1])
+        except ValueError:
+            pair_id = None
+
+    if pair_id is not None:
+        success, message_text, reply_markup = (
+            await settings_application_service.show_settings_for_pair(
+                tg_id=tg_id,
+                pair_id=pair_id,
+            )
+        )
+    else:
+        success, message_text, reply_markup = (
+            await settings_application_service.show_settings(tg_id=tg_id)
+        )
+
+    if not success:
+        await callback.answer(message_text, show_alert=True)
+        return
+
+    await safe_edit_callback_message(
+        callback,
+        message_text,
+        reply_markup=reply_markup,
+    )
+
+
 @router.callback_query(F.data.startswith("settings_select_partner_for_nickname:"))
 async def handle_select_partner_for_nickname(
     callback: CallbackQuery,
