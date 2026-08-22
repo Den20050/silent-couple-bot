@@ -30,6 +30,7 @@ from src.bot.handlers.start.services.pair_service import (
 from src.services.messaging.ui.notification_window_ui import (
     notif_time_evening_prompt_text,
     notif_time_morning_prompt_text,
+    partner_id_for_pair,
 )
 from src.services.pair_time_window import format_window_range
 from src.bot.handlers.start.ui.builders import (
@@ -307,11 +308,16 @@ async def handle_start_logic(
                 await users_repo.update_notification_windows_prompted(tg_id, True)
                 await session.commit()
                 pair_id_for_prompt = None
+                partner_for_prompt = None
                 # If user has exactly one active pair, include pair_id to avoid ambiguity.
                 if len(active_pairs) == 1:
-                    pair_id_for_prompt = active_pairs[0].id
+                    pair = active_pairs[0]
+                    pair_id_for_prompt = pair.id
+                    partner_for_prompt = await users_repo.get_by_id(
+                        partner_id_for_pair(pair, user.id)
+                    )
                 await message.answer(
-                    notif_time_morning_prompt_text(user),
+                    notif_time_morning_prompt_text(user, partner_for_prompt),
                     reply_markup=get_notif_time_morning_keyboard(pair_id=pair_id_for_prompt),
                     parse_mode="HTML",
                 )
@@ -789,47 +795,18 @@ async def handle_notif_time_selection(
             return
         assert target_pair is not None and pair_id is not None
 
-        updated_pair = await pairs_repo.update_notification_window(
-            pair_id=pair_id,
-            user_id=user.id,
-            which="morning",
-            start_hour=start_hour,
-        )
-        if not updated_pair:
-            await callback.answer(get_message("NOTIF_TIME_ONLY_OWNER"), show_alert=True)
-            await callback.message.edit_reply_markup(reply_markup=None)
-            return
-
         user = await users_repo.update_morning_window_start_hour(tg_id, start_hour)
+        if not user:
+            await callback.answer(get_message("SETTINGS_ERROR"), show_alert=True)
+            return
         await session.commit()
 
-        # Notify partner that owner set the window (best-effort).
-        partner_id = (
-            updated_pair.uid_b if updated_pair.uid_a == user.id else updated_pair.uid_a
+        partner = await users_repo.get_by_id(
+            partner_id_for_pair(target_pair, user.id)
         )
-        partner = await users_repo.get_by_id(partner_id)
-        if partner:
-            morning_range = format_window_range(updated_pair.morning_window_start_hour)
-            try:
-                await messenger.send_message(
-                    chat_id=partner.tg_id,
-                    text=get_message(
-                        "NOTIF_TIME_SET_BY_PARTNER",
-                        which_icon="🕒",
-                        which_label="Утро",
-                        range_text=morning_range,
-                    ),
-                    parse_mode="HTML",
-                )
-            except Exception as e:
-                logger.debug(
-                    "Failed to notify partner about morning window",
-                    pair_id=pair_id,
-                    error=str(e),
-                )
 
         await callback.message.edit_text(
-            notif_time_evening_prompt_text(user),
+            notif_time_evening_prompt_text(user, partner),
             reply_markup=get_notif_time_evening_keyboard(pair_id=pair_id),
             parse_mode="HTML",
         )
@@ -842,46 +819,14 @@ async def handle_notif_time_selection(
             return
         assert target_pair is not None and pair_id is not None
 
-        updated_pair = await pairs_repo.update_notification_window(
-            pair_id=pair_id,
-            user_id=user.id,
-            which="evening",
-            start_hour=start_hour,
-        )
-        if not updated_pair:
-            await callback.answer(get_message("NOTIF_TIME_ONLY_OWNER"), show_alert=True)
-            await callback.message.edit_reply_markup(reply_markup=None)
-            return
-
         user = await users_repo.update_evening_window_start_hour(tg_id, start_hour)
+        if not user:
+            await callback.answer(get_message("SETTINGS_ERROR"), show_alert=True)
+            return
         await session.commit()
 
-        partner_id = (
-            updated_pair.uid_b if updated_pair.uid_a == user.id else updated_pair.uid_a
-        )
-        partner = await users_repo.get_by_id(partner_id)
-        if partner:
-            evening_range = format_window_range(updated_pair.evening_window_start_hour)
-            try:
-                await messenger.send_message(
-                    chat_id=partner.tg_id,
-                    text=get_message(
-                        "NOTIF_TIME_SET_BY_PARTNER",
-                        which_icon="🌙",
-                        which_label="Вечер",
-                        range_text=evening_range,
-                    ),
-                    parse_mode="HTML",
-                )
-            except Exception as e:
-                logger.debug(
-                    "Failed to notify partner about evening window",
-                    pair_id=pair_id,
-                    error=str(e),
-                )
-
-        morning_range = format_window_range(updated_pair.morning_window_start_hour)
-        evening_range = format_window_range(updated_pair.evening_window_start_hour)
+        morning_range = format_window_range(user.morning_window_start_hour)
+        evening_range = format_window_range(user.evening_window_start_hour)
         await callback.message.edit_text(
             get_message(
                 "NOTIF_TIME_DONE",

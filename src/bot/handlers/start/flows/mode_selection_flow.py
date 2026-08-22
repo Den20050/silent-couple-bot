@@ -18,7 +18,10 @@ from src.bot.handlers.start.ui.builders import (
     get_invite_link_keyboard,
     get_notif_time_morning_keyboard,
 )
-from src.services.messaging.ui.notification_window_ui import notif_time_morning_prompt_text
+from src.services.messaging.ui.notification_window_ui import (
+    notif_time_morning_prompt_text,
+    partner_id_for_pair,
+)
 
 logger = get_logger(__name__)
 
@@ -84,12 +87,16 @@ class ModeSelectionFlow:
                     p for p in all_pairs if p.status in ("trial", "active")
                 ]
                 if len(active_pairs) == 1:
+                    pair = active_pairs[0]
+                    partner = await users_repo.get_by_id(
+                        partner_id_for_pair(pair, user.id)
+                    )
                     await users_repo.update_notification_windows_prompted(tg_id, True)
                     await session.commit()
                     await callback.message.answer(
-                        notif_time_morning_prompt_text(user),
+                        notif_time_morning_prompt_text(user, partner),
                         reply_markup=get_notif_time_morning_keyboard(
-                            pair_id=active_pairs[0].id
+                            pair_id=pair.id
                         ),
                         parse_mode=ParseMode.HTML,
                     )
