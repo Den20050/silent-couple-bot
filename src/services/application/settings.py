@@ -534,6 +534,7 @@ class SettingsApplicationService:
         keyboard = self._settings_ui.build_settings_keyboard(
             pair_mode=updated_pair.mode,
             is_active=True,
+            pair_id=pair_id,
         )
         
         logger.info(

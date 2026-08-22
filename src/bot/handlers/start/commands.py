@@ -27,6 +27,7 @@ from src.bot.handlers.start.services.pair_service import (
     find_existing_pair,
     format_partner_text,
 )
+from src.bot.handlers.settings.callback_message import safe_edit_callback_message
 from src.services.messaging.ui.notification_window_ui import (
     notif_time_evening_prompt_text,
     notif_time_morning_prompt_text,
@@ -805,12 +806,11 @@ async def handle_notif_time_selection(
             partner_id_for_pair(target_pair, user.id)
         )
 
-        await callback.message.edit_text(
+        await safe_edit_callback_message(
+            callback,
             notif_time_evening_prompt_text(user, partner),
             reply_markup=get_notif_time_evening_keyboard(pair_id=pair_id),
-            parse_mode="HTML",
         )
-        await callback.answer()
         return
 
     if which == "evening":
@@ -827,16 +827,15 @@ async def handle_notif_time_selection(
 
         morning_range = format_window_range(user.morning_window_start_hour)
         evening_range = format_window_range(user.evening_window_start_hour)
-        await callback.message.edit_text(
+        await safe_edit_callback_message(
+            callback,
             get_message(
                 "NOTIF_TIME_DONE",
                 morning_range=morning_range,
                 evening_range=evening_range,
             ),
             reply_markup=None,
-            parse_mode="HTML",
         )
-        await callback.answer()
         return
 
     await callback.answer("Ошибка выбора времени", show_alert=True)
