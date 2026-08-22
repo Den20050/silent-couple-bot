@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.logger import get_logger
 from src.core.messages import get_message
+from src.bot.handlers.settings.callback_message import safe_edit_callback_message
 from src.bot.handlers.settings.states import SettingsStates
 from src.services.application.settings import SettingsApplicationService
 from src.bot.handlers.start.ui.builders import get_notif_time_morning_keyboard
@@ -136,7 +137,7 @@ async def handle_settings_back_to_menu(
         await callback.answer(get_message("SETTINGS_ERROR"), show_alert=True)
 
 
-@router.callback_query(F.data.startswith("settings_select_pair:"))
+@router.callback_query(F.data.regexp(r"^settings_select_pair:\d+$"))
 async def handle_select_pair_for_settings(
     callback: CallbackQuery,
     settings_application_service: SettingsApplicationService,
@@ -337,10 +338,16 @@ async def handle_settings_change_time_window(
     if len(active_pairs) == 1:
         pair = active_pairs[0]
         partner = await users_repo.get_by_id(partner_id_for_pair(pair, user.id))
-        await callback.message.edit_text(
+        logger.info(
+            "Open morning time window prompt",
+            tg_id=tg_id,
+            pair_id=pair.id,
+            source="settings_change_time_window_single_pair",
+        )
+        await safe_edit_callback_message(
+            callback,
             notif_time_morning_prompt_text(user, partner),
             reply_markup=get_notif_time_morning_keyboard(pair_id=pair.id),
-            parse_mode=ParseMode.HTML,
         )
     elif len(active_pairs) > 1:
         # Ask which pair to configure.
@@ -361,18 +368,18 @@ async def handle_settings_change_time_window(
                 ]
             )
         buttons.append([ButtonTemplates.back_button("settings_back_to_menu")])
-        await callback.message.edit_text(
+        await safe_edit_callback_message(
+            callback,
             get_message("NOTIF_TIME_SELECT_PAIR_PROMPT"),
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
-            parse_mode=ParseMode.HTML,
         )
     else:
         await callback.answer(get_message("SETTINGS_NO_PAIR"), show_alert=True)
         return
-    await callback.answer()
+    return
 
 
-@router.callback_query(F.data.startswith("settings_change_time_window:"))
+@router.callback_query(F.data.regexp(r"^settings_change_time_window:\d+$"))
 async def handle_settings_change_time_window_for_pair(
     callback: CallbackQuery,
     session: AsyncSession,
@@ -399,15 +406,20 @@ async def handle_settings_change_time_window_for_pair(
         return
 
     partner = await users_repo.get_by_id(partner_id_for_pair(pair, user.id))
-    await callback.message.edit_text(
+    logger.info(
+        "Open morning time window prompt",
+        tg_id=tg_id,
+        pair_id=pair_id,
+        source="settings_change_time_window_for_pair",
+    )
+    await safe_edit_callback_message(
+        callback,
         notif_time_morning_prompt_text(user, partner),
         reply_markup=get_notif_time_morning_keyboard(pair_id=pair.id),
-        parse_mode=ParseMode.HTML,
     )
-    await callback.answer()
 
 
-@router.callback_query(F.data.startswith("settings_select_pair_for_time_window:"))
+@router.callback_query(F.data.regexp(r"^settings_select_pair_for_time_window:\d+$"))
 async def handle_settings_select_pair_for_time_window(
     callback: CallbackQuery,
     session: AsyncSession,
@@ -434,12 +446,17 @@ async def handle_settings_select_pair_for_time_window(
         return
 
     partner = await users_repo.get_by_id(partner_id_for_pair(pair, user.id))
-    await callback.message.edit_text(
+    logger.info(
+        "Open morning time window prompt",
+        tg_id=tg_id,
+        pair_id=pair_id,
+        source="settings_select_pair_for_time_window",
+    )
+    await safe_edit_callback_message(
+        callback,
         notif_time_morning_prompt_text(user, partner),
         reply_markup=get_notif_time_morning_keyboard(pair_id=pair.id),
-        parse_mode=ParseMode.HTML,
     )
-    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("settings_select_partner_for_nickname:"))
