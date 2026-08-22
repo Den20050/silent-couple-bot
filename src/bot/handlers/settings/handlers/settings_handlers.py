@@ -12,7 +12,10 @@ from src.core.messages import get_message
 from src.bot.handlers.settings.states import SettingsStates
 from src.services.application.settings import SettingsApplicationService
 from src.bot.handlers.start.ui.builders import get_notif_time_morning_keyboard
-from src.services.messaging.ui.notification_window_ui import notif_time_morning_prompt_text
+from src.services.messaging.ui.notification_window_ui import (
+    notif_time_morning_prompt_text,
+    partner_id_for_pair,
+)
 
 logger = get_logger(__name__)
 
@@ -333,8 +336,9 @@ async def handle_settings_change_time_window(
     active_pairs = [p for p in pairs if p.status in ("trial", "active")]
     if len(active_pairs) == 1:
         pair = active_pairs[0]
+        partner = await users_repo.get_by_id(partner_id_for_pair(pair, user.id))
         await callback.message.edit_text(
-            notif_time_morning_prompt_text(user),
+            notif_time_morning_prompt_text(user, partner),
             reply_markup=get_notif_time_morning_keyboard(pair_id=pair.id),
             parse_mode=ParseMode.HTML,
         )
@@ -394,18 +398,9 @@ async def handle_settings_change_time_window_for_pair(
         await callback.answer(get_message("SETTINGS_NO_PAIR"), show_alert=True)
         return
 
-    # If owner is already set and user isn't the owner, block settings change.
-    if getattr(pair, "notification_window_owner_id", None) not in (None, user.id):
-        await callback.message.edit_text(
-            get_message("NOTIF_TIME_ONLY_OWNER"),
-            reply_markup=None,
-            parse_mode=ParseMode.HTML,
-        )
-        await callback.answer()
-        return
-
+    partner = await users_repo.get_by_id(partner_id_for_pair(pair, user.id))
     await callback.message.edit_text(
-        notif_time_morning_prompt_text(user),
+        notif_time_morning_prompt_text(user, partner),
         reply_markup=get_notif_time_morning_keyboard(pair_id=pair.id),
         parse_mode=ParseMode.HTML,
     )
@@ -438,17 +433,9 @@ async def handle_settings_select_pair_for_time_window(
         await callback.answer(get_message("SETTINGS_NO_PAIR"), show_alert=True)
         return
 
-    if getattr(pair, "notification_window_owner_id", None) not in (None, user.id):
-        await callback.message.edit_text(
-            get_message("NOTIF_TIME_ONLY_OWNER"),
-            reply_markup=None,
-            parse_mode=ParseMode.HTML,
-        )
-        await callback.answer()
-        return
-
+    partner = await users_repo.get_by_id(partner_id_for_pair(pair, user.id))
     await callback.message.edit_text(
-        notif_time_morning_prompt_text(user),
+        notif_time_morning_prompt_text(user, partner),
         reply_markup=get_notif_time_morning_keyboard(pair_id=pair.id),
         parse_mode=ParseMode.HTML,
     )
