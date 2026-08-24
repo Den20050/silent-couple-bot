@@ -18,7 +18,7 @@ from src.services.messaging.ui.wish_request_ui import WishRequestUIService
 logger = get_logger(__name__)
 
 
-def _prompt_message_id_key(tg_id: int, pic_type: str, day: date) -> str:
+def prompt_message_id_key(tg_id: int, pic_type: str, day: date) -> str:
     return f"wish_request_prompt_message_id:{tg_id}:{pic_type}:{day.isoformat()}"
 
 
@@ -51,7 +51,7 @@ async def refresh_aggregated_wish_prompt(
         if redis_client is None:
             return
 
-        key = _prompt_message_id_key(tg_id=tg_id, pic_type=pic_type, day=day)
+        key = prompt_message_id_key(tg_id=tg_id, pic_type=pic_type, day=day)
         msg_id_raw = await redis_client.get(key)
         await redis_client.aclose()
 

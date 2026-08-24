@@ -16,7 +16,10 @@ from src.core.protocols.messenger import MessengerProtocol
 from src.db.repositories.users import UsersRepository
 from src.services.messaging.wish_photo_message_id import wish_photo_message_id_key
 from src.services.messaging.wish_request_prompt_refresher import refresh_aggregated_wish_prompt
-from src.services.pair_time_window import is_user_in_time_window
+from src.services.pair_time_window import (
+    is_delivery_period_expired,
+    is_user_in_delivery_period,
+)
 
 logger = get_logger(__name__)
 
@@ -161,6 +164,41 @@ async def deliver_pending_wish(
     return True
 
 
+async def annul_pending_for_recipient(
+    redis: Redis,
+    *,
+    recipient_user_id: int,
+    pic_type: str,
+) -> int:
+    """Drop pending deliveries for a recipient when a period expires."""
+    raw_keys = await redis.smembers(_PENDING_INDEX_KEY)
+    if not raw_keys:
+        return 0
+
+    removed = 0
+    for raw_key in raw_keys:
+        key = raw_key.decode() if isinstance(raw_key, bytes) else raw_key
+        raw_payload = await redis.get(key)
+        if not raw_payload:
+            await redis.srem(_PENDING_INDEX_KEY, key)
+            continue
+        if isinstance(raw_payload, bytes):
+            raw_payload = raw_payload.decode()
+        try:
+            pending = PendingWishDelivery.from_json(raw_payload)
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+            await _remove_pending(redis, key)
+            removed += 1
+            continue
+        if (
+            pending.pic_type == pic_type
+            and pending.recipient_user_id == recipient_user_id
+        ):
+            await _remove_pending(redis, key)
+            removed += 1
+    return removed
+
+
 async def flush_pending_deliveries(
     *,
     session: AsyncSession,
@@ -207,7 +245,17 @@ async def flush_pending_deliveries(
             await _remove_pending(redis, key)
             continue
 
-        if not is_user_in_time_window(recipient, pending.pic_type, now_utc):  # type: ignore[arg-type]
+        if is_delivery_period_expired(recipient, pending.pic_type, now_utc):  # type: ignore[arg-type]
+            await _remove_pending(redis, key)
+            logger.debug(
+                "Annulled expired pending wish",
+                pair_id=pending.pair_id,
+                pic_type=pending.pic_type,
+                day=str(pending.day),
+            )
+            continue
+
+        if not is_user_in_delivery_period(recipient, pending.pic_type, now_utc):  # type: ignore[arg-type]
             continue
 
         try:

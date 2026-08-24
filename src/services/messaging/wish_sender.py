@@ -15,7 +15,10 @@ from src.services.messaging.pending_wish_delivery import (
 )
 from src.services.messaging.wish_request_prompt_refresher import refresh_aggregated_wish_prompt
 from src.services.messaging.wish_photo_message_id import wish_photo_message_id_key
-from src.services.pair_time_window import is_user_in_time_window
+from src.services.pair_time_window import (
+    is_user_in_delivery_period,
+    should_defer_wish_delivery,
+)
 from src.db.repositories.daily_state import DailyStateRepository
 from src.db.repositories.pairs import PairsRepository
 from src.db.repositories.users import UsersRepository
@@ -118,15 +121,12 @@ class WishSenderService:
         )
 
         now_utc = datetime.utcnow()
-        recipient_in_window = is_user_in_time_window(
-            partner, pic_type, now_utc  # type: ignore[arg-type]
-        )
 
         partner_nickname = self.pairs_repo.get_my_nickname_for_partner(pair, user_id)
         if not partner_nickname:
             partner_nickname = "партнёру"
 
-        if not recipient_in_window:
+        if should_defer_wish_delivery(partner, pic_type, now_utc):  # type: ignore[arg-type]
             if self._redis is None:
                 logger.error(
                     "Cannot defer wish delivery without Redis",
@@ -151,6 +151,14 @@ class WishSenderService:
             )
             await self.session.commit()
             return True, partner_nickname, False
+
+        if not is_user_in_delivery_period(partner, pic_type, now_utc):  # type: ignore[arg-type]
+            logger.warning(
+                "Wish delivery period expired for recipient",
+                pair_id=pair.id,
+                pic_type=pic_type,
+            )
+            return False, None, False
 
         button_text = get_message("RESPOND_BUTTON")
         callback_prefix = "tap_morning" if pic_type == "morning" else "tap_evening"
