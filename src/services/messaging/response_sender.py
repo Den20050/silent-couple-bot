@@ -1,6 +1,8 @@
 """Service for sending responses to wishes."""
 
-from datetime import date
+from datetime import date, datetime
+
+from src.services.pair_time_window import is_wish_response_still_valid
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -139,6 +141,14 @@ class ResponseSenderService:
         current_user = await self.users_repo.get_by_tg_id(tg_id)
         if not current_user:
             return False, "CALLBACK_USER_NOT_FOUND"
+
+        if not is_wish_response_still_valid(
+            current_user,
+            pic_type,  # type: ignore[arg-type]
+            check_day,
+            datetime.utcnow(),
+        ):
+            return False, "CALLBACK_SEND_PERIOD_CLOSED"
 
         initiator_user = await self.users_repo.get_by_tg_id(initiator_tg_id)
         if not initiator_user:

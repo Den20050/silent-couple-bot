@@ -54,6 +54,16 @@ async def evening_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> 
         )
         
         async with worker_context.session_factory() as session:
+            redis_client = await lock_service.get_redis_client()
+            from src.services.messaging.period_transition import run_period_transitions
+
+            await run_period_transitions(
+                session=session,
+                messenger=worker_context.messenger,
+                redis=redis_client,
+                now_utc=now_utc,
+            )
+
             scheduler = worker_context.create_pair_scheduler(session)
             
             from src.db.repositories.pairs import PairsRepository

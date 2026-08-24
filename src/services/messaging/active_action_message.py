@@ -111,6 +111,24 @@ async def activate_message(
         )
 
 
+async def clear_active_message_if_matches(
+    redis: Optional[Redis],
+    tg_id: int,
+    *,
+    kind: str,
+    message_id: int,
+) -> None:
+    """Remove active pointer when it still references the given message."""
+    if redis is None:
+        return
+    active_id = await get_active_message_id(redis, tg_id, kind=kind)
+    if active_id == message_id:
+        try:
+            await redis.delete(_active_key(tg_id, kind))
+        except Exception:
+            pass
+
+
 async def is_message_active(
     *,
     redis: Optional[Redis],

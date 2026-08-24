@@ -16,7 +16,7 @@ from src.db.repositories.users import UsersRepository
 from src.services.image import ImageService
 from src.services.messaging.caption_service import CaptionService
 from src.core.protocols.messenger import MessengerProtocol
-from src.services.pair_time_window import is_user_in_time_window
+from src.services.pair_time_window import is_user_in_prompt_window
 from src.worker.services.lock_service import LockService
 
 from src.services.messaging.ui.wish_request_ui import WishRequestUIService
@@ -126,7 +126,7 @@ class PairScheduler:
         if pic_type not in ("morning", "evening"):
             return False, "invalid_pic_type", None
 
-        if not is_user_in_time_window(user, pic_type, now_utc):  # type: ignore[arg-type]
+        if not is_user_in_prompt_window(user, pic_type, now_utc):  # type: ignore[arg-type]
             return False, "outside_time_window", None
 
         prefix = _user_attempt_key_prefix(user.id, pic_type, today)
