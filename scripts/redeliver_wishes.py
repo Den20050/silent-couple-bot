@@ -8,6 +8,7 @@ from datetime import date, datetime
 
 from sqlalchemy import select
 
+from src.bot.bootstrap.bot_factory import create_bot_and_dispatcher
 from src.core.di.container import create_container, initialize_container
 from src.core.logger import get_logger
 from src.db.models import DailyState, Pair, User
@@ -21,6 +22,7 @@ logger = get_logger(__name__)
 async def redeliver_for_day(target_day: date, pic_type: str = "morning") -> int:
     container = create_container()
     await initialize_container(container)
+    create_bot_and_dispatcher(container)
     delivered = 0
     try:
         async with container.session_factory() as session:
