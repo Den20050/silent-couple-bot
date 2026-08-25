@@ -4,7 +4,12 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from datetime import date, datetime
+from pathlib import Path
+
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
 from sqlalchemy import select
 
@@ -122,8 +127,6 @@ async def redeliver_for_day(target_day: date, pic_type: str = "morning") -> int:
 
 
 def main() -> None:
-    import sys
-
     day = date.fromisoformat(sys.argv[1]) if len(sys.argv) > 1 else date.today()
     pic_type = sys.argv[2] if len(sys.argv) > 2 else "morning"
     count = asyncio.run(redeliver_for_day(day, pic_type))
