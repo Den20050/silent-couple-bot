@@ -17,8 +17,8 @@ from src.db.repositories.users import UsersRepository
 from src.services.messaging.wish_photo_message_id import wish_photo_message_id_key
 from src.services.messaging.wish_request_prompt_refresher import refresh_aggregated_wish_prompt
 from src.services.pair_time_window import (
+    is_deferred_wish_annulled,
     is_user_in_delivery_period,
-    is_wish_period_annulled,
 )
 
 logger = get_logger(__name__)
@@ -169,6 +169,8 @@ async def annul_pending_for_recipient(
     *,
     recipient_user_id: int,
     pic_type: str,
+    recipient: Any,
+    now_utc: datetime,
 ) -> int:
     """Drop pending deliveries for a recipient when a period expires."""
     raw_keys = await redis.smembers(_PENDING_INDEX_KEY)
@@ -193,6 +195,9 @@ async def annul_pending_for_recipient(
         if (
             pending.pic_type == pic_type
             and pending.recipient_user_id == recipient_user_id
+            and is_deferred_wish_annulled(
+                recipient, pending.pic_type, pending.day, now_utc
+            )
         ):
             await _remove_pending(redis, key)
             removed += 1
@@ -245,7 +250,9 @@ async def flush_pending_deliveries(
             await _remove_pending(redis, key)
             continue
 
-        if is_wish_period_annulled(recipient, pending.pic_type, now_utc):  # type: ignore[arg-type]
+        if is_deferred_wish_annulled(
+            recipient, pending.pic_type, pending.day, now_utc
+        ):  # type: ignore[arg-type]
             await _remove_pending(redis, key)
             logger.debug(
                 "Annulled expired pending wish",
