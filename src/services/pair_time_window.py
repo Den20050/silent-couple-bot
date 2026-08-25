@@ -102,13 +102,34 @@ def is_user_in_delivery_period(
     return False
 
 
+def is_wish_period_annulled(
+    user_obj: Any,
+    pic_type: PicType,
+    now_utc: datetime,
+) -> bool:
+    """True when this pic_type is void because the opposite period has started.
+
+    Unlike :func:`is_delivery_period_expired`, this is False while waiting for
+    the delivery period to begin (deferred wishes must be kept until then).
+    """
+    user_local = _get_user_local_time(now_utc, user_obj.utc_offset)
+    morning_start = _window_start_time(user_obj, "morning")
+    evening_start = _window_start_time(user_obj, "evening")
+
+    if pic_type == "morning":
+        return user_local >= evening_start
+    if pic_type == "evening":
+        return morning_start <= user_local < evening_start
+    return False
+
+
 def is_delivery_period_expired(
     user_obj: Any,
     pic_type: PicType,
     now_utc: datetime,
 ) -> bool:
-    """True once the opposite period has started and this pic_type is no longer valid."""
-    return not is_user_in_delivery_period(user_obj, pic_type, now_utc)
+    """True when wishes of this pic_type should be annulled (opposite period started)."""
+    return is_wish_period_annulled(user_obj, pic_type, now_utc)
 
 
 def can_user_send_wish(

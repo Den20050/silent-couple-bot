@@ -19,7 +19,7 @@ from src.services.messaging.active_action_message import (
 from src.services.messaging.pending_wish_delivery import annul_pending_for_recipient
 from src.services.messaging.wish_photo_message_id import wish_photo_message_id_key
 from src.services.messaging.wish_request_prompt_refresher import prompt_message_id_key
-from src.services.pair_time_window import is_delivery_period_expired
+from src.services.pair_time_window import is_wish_period_annulled
 
 logger = get_logger(__name__)
 
@@ -218,7 +218,7 @@ async def run_period_transitions(
     for user in users:
         local_date = (now_utc + timedelta(hours=user.utc_offset)).date()
         try:
-            if is_delivery_period_expired(user, "morning", now_utc):
+            if is_wish_period_annulled(user, "morning", now_utc):
                 await _expire_period_for_user(
                     session=session,
                     messenger=messenger,
@@ -229,7 +229,7 @@ async def run_period_transitions(
                     delete_prompt=True,
                     wish_photo_days=[local_date],
                 )
-            if is_delivery_period_expired(user, "evening", now_utc):
+            if is_wish_period_annulled(user, "evening", now_utc):
                 await _expire_period_for_user(
                     session=session,
                     messenger=messenger,

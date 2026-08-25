@@ -17,8 +17,8 @@ from src.db.repositories.users import UsersRepository
 from src.services.messaging.wish_photo_message_id import wish_photo_message_id_key
 from src.services.messaging.wish_request_prompt_refresher import refresh_aggregated_wish_prompt
 from src.services.pair_time_window import (
-    is_delivery_period_expired,
     is_user_in_delivery_period,
+    is_wish_period_annulled,
 )
 
 logger = get_logger(__name__)
@@ -245,7 +245,7 @@ async def flush_pending_deliveries(
             await _remove_pending(redis, key)
             continue
 
-        if is_delivery_period_expired(recipient, pending.pic_type, now_utc):  # type: ignore[arg-type]
+        if is_wish_period_annulled(recipient, pending.pic_type, now_utc):  # type: ignore[arg-type]
             await _remove_pending(redis, key)
             logger.debug(
                 "Annulled expired pending wish",
