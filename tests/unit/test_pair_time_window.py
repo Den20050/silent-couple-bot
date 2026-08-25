@@ -9,6 +9,7 @@ from src.services.pair_time_window import (
     is_user_in_delivery_period,
     is_user_in_prompt_window,
     is_user_in_time_window,
+    is_wish_period_annulled,
     is_wish_response_still_valid,
     should_defer_wish_delivery,
 )
@@ -110,7 +111,22 @@ def test_evening_response_valid_until_next_morning() -> None:
     )
 
 
-def test_is_delivery_period_expired_opposite_period() -> None:
+def test_is_wish_period_annulled_only_after_opposite_period() -> None:
     user = _user(morning_hour=7, evening_hour=21)
-    assert is_delivery_period_expired(user, "morning", datetime(2026, 8, 12, 18, 0, 0))
-    assert not is_delivery_period_expired(user, "evening", datetime(2026, 8, 12, 18, 0, 0))
+    # 06:46 MSK — before morning delivery, must NOT annul deferred morning wish
+    assert not is_wish_period_annulled(user, "morning", datetime(2026, 8, 25, 3, 46, 0))
+    # 10:00 MSK — inside morning delivery period
+    assert not is_wish_period_annulled(user, "morning", datetime(2026, 8, 25, 7, 0, 0))
+    # 21:00 MSK — evening started, morning annulled
+    assert is_wish_period_annulled(user, "morning", datetime(2026, 8, 25, 18, 0, 0))
+    # 10:00 MSK — daytime, evening wishes annulled
+    assert is_wish_period_annulled(user, "evening", datetime(2026, 8, 25, 7, 0, 0))
+    # 22:00 MSK — evening delivery period active
+    assert not is_wish_period_annulled(user, "evening", datetime(2026, 8, 25, 19, 0, 0))
+
+
+def test_is_delivery_period_expired_matches_annulled() -> None:
+    user = _user(morning_hour=7, evening_hour=21)
+    now = datetime(2026, 8, 25, 18, 0, 0)
+    assert is_delivery_period_expired(user, "morning", now)
+    assert not is_delivery_period_expired(user, "evening", now)
