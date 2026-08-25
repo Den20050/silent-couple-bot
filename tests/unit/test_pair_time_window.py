@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 from src.services.pair_time_window import (
     can_user_send_wish,
+    is_deferred_wish_annulled,
     is_delivery_period_expired,
     is_user_in_delivery_period,
     is_user_in_prompt_window,
@@ -119,10 +120,36 @@ def test_is_wish_period_annulled_only_after_opposite_period() -> None:
     assert not is_wish_period_annulled(user, "morning", datetime(2026, 8, 25, 7, 0, 0))
     # 21:00 MSK — evening started, morning annulled
     assert is_wish_period_annulled(user, "morning", datetime(2026, 8, 25, 18, 0, 0))
-    # 10:00 MSK — daytime, evening wishes annulled
-    assert is_wish_period_annulled(user, "evening", datetime(2026, 8, 25, 7, 0, 0))
+    # 10:00 MSK — daytime, evening period not annulled yet
+    assert not is_wish_period_annulled(user, "evening", datetime(2026, 8, 25, 7, 0, 0))
     # 22:00 MSK — evening delivery period active
     assert not is_wish_period_annulled(user, "evening", datetime(2026, 8, 25, 19, 0, 0))
+    # 07:30 MSK — morning prompt started, previous evening annulled
+    assert is_wish_period_annulled(user, "evening", datetime(2026, 8, 25, 4, 30, 0))
+
+
+def test_is_deferred_wish_annulled_evening_before_window() -> None:
+    user = _user(morning_hour=6, evening_hour=21)
+    wish_day = date(2026, 8, 25)
+    # 20:14 MSK — deferred evening wish for today must survive until 21:00
+    assert not is_deferred_wish_annulled(
+        user, "evening", wish_day, datetime(2026, 8, 25, 17, 14, 0)
+    )
+    # 07:30 MSK next day — yesterday's evening wish is void
+    assert is_deferred_wish_annulled(
+        user, "evening", wish_day, datetime(2026, 8, 26, 4, 30, 0)
+    )
+
+
+def test_is_deferred_wish_annulled_morning_before_window() -> None:
+    user = _user(morning_hour=7, evening_hour=21)
+    wish_day = date(2026, 8, 25)
+    assert not is_deferred_wish_annulled(
+        user, "morning", wish_day, datetime(2026, 8, 25, 3, 46, 0)
+    )
+    assert is_deferred_wish_annulled(
+        user, "morning", wish_day, datetime(2026, 8, 25, 18, 0, 0)
+    )
 
 
 def test_is_delivery_period_expired_matches_annulled() -> None:

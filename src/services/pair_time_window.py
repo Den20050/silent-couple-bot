@@ -119,7 +119,38 @@ def is_wish_period_annulled(
     if pic_type == "morning":
         return user_local >= evening_start
     if pic_type == "evening":
-        return morning_start <= user_local < evening_start
+        # Previous evening period ends when the morning window starts.
+        return is_user_in_prompt_window(user_obj, "morning", now_utc)
+    return False
+
+
+def is_deferred_wish_annulled(
+    user_obj: Any,
+    pic_type: PicType,
+    wish_day: date,
+    now_utc: datetime,
+) -> bool:
+    """True when a specific deferred wish should be dropped without delivery."""
+    local_dt = _get_user_local_datetime(now_utc, user_obj.utc_offset)
+    local_date = local_dt.date()
+    evening_start = _window_start_time(user_obj, "evening")
+    morning_start = _window_start_time(user_obj, "morning")
+
+    if wish_day > local_date:
+        return False
+
+    if pic_type == "morning":
+        if wish_day < local_date:
+            return True
+        if should_defer_wish_delivery(user_obj, pic_type, now_utc):
+            return False
+        return local_dt.time() >= evening_start
+
+    if pic_type == "evening":
+        if wish_day < local_date:
+            return local_dt.time() >= morning_start
+        return False
+
     return False
 
 

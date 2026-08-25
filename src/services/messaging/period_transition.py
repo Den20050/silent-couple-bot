@@ -168,6 +168,8 @@ async def _expire_period_for_user(
         redis,
         recipient_user_id=user.id,
         pic_type=pic_type,
+        recipient=user,
+        now_utc=now_utc,
     )
     await _strip_wish_photos_for_days(
         messenger,
