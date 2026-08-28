@@ -9,6 +9,8 @@ from src.core.constants import SUPPORTED_CURRENCIES
 from src.core.logger import get_logger
 from src.core.messages import get_message
 from src.services.application.payment import PaymentApplicationService
+from src.services.messaging.user_command_session import cleanup_back_to_chat, track_user_command
+from src.services.telegram.messenger import TelegramMessenger
 
 logger = get_logger(__name__)
 
@@ -23,6 +25,7 @@ async def cmd_pay(
 ) -> None:
     """Handle /pay command."""
     tg_id = message.from_user.id
+    await track_user_command(message)
     
     # Check if user has multiple pairs
     from src.db.repositories.pairs import PairsRepository
@@ -306,11 +309,11 @@ async def handle_confirm_and_pay(
 async def handle_pay_back_to_menu(
     callback: CallbackQuery,
     session: AsyncSession,  # noqa: ARG001
+    telegram_messenger: TelegramMessenger,
 ) -> None:
     """Handle back to menu from payment tariffs - delete message."""
     try:
-        # Delete the message with tariffs
-        await callback.message.delete()
+        await cleanup_back_to_chat(callback, telegram_messenger)
         await callback.answer()
     except Exception as e:
         logger.error(

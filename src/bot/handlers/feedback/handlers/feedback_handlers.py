@@ -12,6 +12,7 @@ from src.core.messages import get_message
 from src.db.repositories.users import UsersRepository
 from src.bot.handlers.feedback.use_cases.send_feedback import send_feedback_to_admin
 from src.bot.handlers.feedback.states import FeedbackStates
+from src.services.messaging.user_command_session import track_user_command
 
 logger = get_logger(__name__)
 
@@ -30,6 +31,8 @@ async def cmd_feedback(message: Message, session: AsyncSession, state: FSMContex
         if not user:
             await message.answer(get_message("FEEDBACK_START_REQUIRED"))
             return
+
+        await track_user_command(message)
 
         # Set FSM state and request description
         await state.set_state(FeedbackStates.waiting_description)
