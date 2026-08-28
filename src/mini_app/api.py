@@ -29,10 +29,7 @@ def set_api_runtime(*, session_factory, container) -> None:
 class TimezoneSyncRequest(BaseModel):
     initData: str
     timezone_name: str | None = None
-    utc_offset: int = Field(default=3)
-
-
-class StartContinueRequest(TimezoneSyncRequest):
+    utc_offset: int = Field(default=0)
     start_param: str | None = None
 
 
@@ -82,9 +79,7 @@ async def _build_fsm_context(tg_id: int):
     return FSMContext(storage=storage, key=key)
 
 
-@router.post("/timezone/sync")
-async def timezone_sync(body: TimezoneSyncRequest) -> dict[str, str]:
-    tg_id, _ = _require_user(body)
+async def _sync_timezone(body: TimezoneSyncRequest, tg_id: int) -> None:
     session_factory = _runtime.get("session_factory")
     if session_factory is None:
         raise HTTPException(status_code=503, detail="Service unavailable")
@@ -98,11 +93,18 @@ async def timezone_sync(body: TimezoneSyncRequest) -> dict[str, str]:
         )
     if not ok:
         raise HTTPException(status_code=400, detail="Timezone sync failed")
+
+
+@router.post("/timezone/sync")
+async def timezone_sync(body: TimezoneSyncRequest) -> dict[str, str]:
+    tg_id, _ = _require_user(body)
+    await _sync_timezone(body, tg_id)
     return {"status": "ok"}
 
 
-@router.post("/start/continue")
-async def start_continue(body: StartContinueRequest) -> dict[str, str]:
+@router.post("/timezone/register")
+async def timezone_register(body: TimezoneSyncRequest) -> dict[str, str]:
+    """First-time registration: sync TZ, confirm, continue onboarding."""
     tg_id, username = _require_user(body)
     session_factory = _runtime.get("session_factory")
     container = _runtime.get("container")
@@ -119,13 +121,13 @@ async def start_continue(body: StartContinueRequest) -> dict[str, str]:
         if not ok:
             raise HTTPException(status_code=400, detail="Timezone sync failed")
 
-        from src.bot.handlers.start.commands import continue_start_after_timezone_sync
+        from src.bot.handlers.start.start_flow import finish_register_after_timezone_sync
 
         state = await _build_fsm_context(tg_id)
         if state is not None:
             await state.clear()
 
-        await continue_start_after_timezone_sync(
+        await finish_register_after_timezone_sync(
             tg_id=tg_id,
             username=username,
             start_param=body.start_param,
@@ -137,3 +139,40 @@ async def start_continue(body: StartContinueRequest) -> dict[str, str]:
         await session.commit()
 
     return {"status": "ok"}
+
+
+@router.post("/start/update-timezone")
+async def start_update_timezone(body: TimezoneSyncRequest) -> dict[str, str]:
+    """Existing paired user: sync TZ, delete prompt, show confirmation + pairs."""
+    tg_id, _ = _require_user(body)
+    session_factory = _runtime.get("session_factory")
+    container = _runtime.get("container")
+    if session_factory is None or container is None:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+
+    async with session_factory() as session:
+        ok = await sync_user_timezone(
+            session,
+            tg_id,
+            timezone_name=body.timezone_name,
+            utc_offset=body.utc_offset,
+        )
+        if not ok:
+            raise HTTPException(status_code=400, detail="Timezone sync failed")
+
+        from src.bot.handlers.start.start_flow import finish_start_update_after_timezone_sync
+
+        await finish_start_update_after_timezone_sync(
+            tg_id=tg_id,
+            session=session,
+            messenger=container.telegram_messenger,
+        )
+        await session.commit()
+
+    return {"status": "ok"}
+
+
+@router.post("/start/continue")
+async def start_continue(body: TimezoneSyncRequest) -> dict[str, str]:
+    """Legacy endpoint — redirects to register flow."""
+    return await timezone_register(body)

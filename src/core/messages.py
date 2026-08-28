@@ -41,11 +41,19 @@ class Messages:
     WELCOME_NEXT_BUTTON = "Дальше ➡️"
     WELCOME_ACCEPT_BUTTON = "Принимаю ✅"
     START_CONTINUE_BUTTON = "🚀 Продолжить"
+    START_APPLY_TIMEZONE_BUTTON = "📍 Установить местное время"
+    START_FLOW_BACK_BUTTON = "◀️ Назад"
+    START_REGISTER_TIMEZONE_PROMPT = (
+        "Для корректной работы бота нужен часовой пояс вашего телефона.\n\n"
+        "Нажмите «Установить местное время» — мы возьмём его из настроек устройства."
+    )
     START_TIMEZONE_SYNC_PROMPT = (
         "Нажмите «Продолжить» — бот подстроит окна уведомлений под время вашего телефона.\n\n"
         "🕒 Если вы переехали или сменили часовой пояс — отправьте /start и снова нажмите "
         "«Продолжить». Новое местное время применится автоматически."
     )
+    START_TIMEZONE_CONFIRMED = "✅ Часовой пояс: {timezone_label}"
+    START_TIMEZONE_UPDATED = "✅ Часовой пояс обновлён: {timezone_label}"
     START_WELCOME = "Добро пожаловать! 📄 Ознакомьтесь с политикой конфиденциальности:"
     START_CONSENT_PROMPT = "Ознакомились? Теперь можете принять условия:"
     START_CONSENT_BUTTON = "Принимаю ✅"

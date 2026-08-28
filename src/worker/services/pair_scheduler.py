@@ -17,6 +17,7 @@ from src.services.image import ImageService
 from src.services.messaging.caption_service import CaptionService
 from src.core.protocols.messenger import MessengerProtocol
 from src.services.pair_time_window import is_user_in_prompt_window
+from src.services.timezone import is_timezone_configured
 from src.worker.services.lock_service import LockService
 
 from src.services.messaging.ui.wish_request_ui import WishRequestUIService
@@ -125,6 +126,9 @@ class PairScheduler:
         """Check if this user should receive a wish-request prompt now."""
         if pic_type not in ("morning", "evening"):
             return False, "invalid_pic_type", None
+
+        if not is_timezone_configured(user):
+            return False, "timezone_not_configured", None
 
         if not is_user_in_prompt_window(user, pic_type, now_utc):  # type: ignore[arg-type]
             return False, "outside_time_window", None

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.config import settings
 from src.core.logger import get_logger
 from src.db.repositories.users import UsersRepository
-from src.services.timezone import detect_timezone_from_ip
+from src.services.timezone import detect_timezone_from_ip, is_timezone_configured
 
 logger = get_logger(__name__)
 
@@ -41,9 +41,8 @@ class TimezoneMiddleware(BaseMiddleware):
                 # User will be created in handler
                 return await handler(event, data)
 
-            # Only detect if timezone is default (3) - means not detected yet
-            # Try to detect from IP if available (works with webhook, not polling)
-            if settings.timezone_detect_from_ip_enabled and user.utc_offset == 3:
+            # Only detect from IP when timezone was not synced via Mini App yet
+            if settings.timezone_detect_from_ip_enabled and not is_timezone_configured(user):
                 # Get IP from data dict (passed by webhook server via middleware)
                 # Note: Cannot setattr on frozen Pydantic models, so IP is passed via data
                 consent_ip = data.get("ip") or getattr(event, "ip", None)

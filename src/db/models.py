@@ -20,7 +20,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     tg_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False, index=True)
     username: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    utc_offset: Mapped[int] = mapped_column(default=3)  # Default UTC+3
+    utc_offset: Mapped[Optional[int]] = mapped_column(nullable=True)
     timezone_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # Preferred 1-hour notification windows (user local time)
     # Defaults match MORNING_START=07:00-08:00 and EVENING_START=21:00-22:00

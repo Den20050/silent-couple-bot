@@ -40,7 +40,6 @@ from src.bot.handlers.start.ui.builders import (
     get_policy_keyboard,
     get_welcome_next_keyboard,
     get_welcome_accept_keyboard,
-    get_start_sync_keyboard,
     get_notif_time_morning_keyboard,
     get_notif_time_evening_keyboard,
 )
@@ -425,51 +424,6 @@ async def handle_start_logic(
     await message.answer(
         get_message("START_MODE_SELECTION_PROMPT"),
         reply_markup=get_mode_keyboard(),
-    )
-
-
-@handle_errors(error_key="START_ERROR")
-async def cmd_start(
-    message: Message,
-    session: AsyncSession,
-    state: FSMContext,
-    bot_provider: BotProvider,
-    messenger: TelegramMessenger,
-) -> None:
-    """Handle /start command — show timezone sync, then continue via Mini App."""
-    tg_id = message.from_user.id
-    username = message.from_user.username
-    message_text = message.text or ""
-    start_param = message_text.split()[1] if len(message_text.split()) > 1 else None
-
-    logger.info(
-        "/start command handler called",
-        tg_id=tg_id,
-        username=username,
-        start_param=start_param,
-    )
-
-    await state.clear()
-    logger.debug("FSM state cleared on /start", tg_id=tg_id)
-
-    if bot_provider is None or messenger is None:
-        await send_error_to_user(message)
-        return
-
-    try:
-        bot = bot_provider.get_bot()
-        menu_button = MenuButtonCommands()
-        await bot.set_chat_menu_button(
-            chat_id=message.chat.id, menu_button=menu_button
-        )
-    except Exception as e:
-        logger.warning("Failed to set menu button for user", error=str(e))
-
-    await get_or_create_user(message, session)
-
-    await message.answer(
-        get_message("START_TIMEZONE_SYNC_PROMPT"),
-        reply_markup=get_start_sync_keyboard(start_param),
     )
 
 
