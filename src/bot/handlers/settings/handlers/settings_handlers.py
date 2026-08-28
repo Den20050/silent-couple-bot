@@ -12,6 +12,11 @@ from src.core.messages import get_message
 from src.bot.handlers.settings.callback_message import safe_edit_callback_message
 from src.bot.handlers.settings.states import SettingsStates
 from src.services.application.settings import SettingsApplicationService
+from src.services.telegram.messenger import TelegramMessenger
+from src.services.messaging.user_command_session import (
+    cleanup_back_to_chat,
+    track_user_command,
+)
 from src.bot.handlers.start.ui.builders import get_notif_time_morning_keyboard
 from src.services.messaging.ui.notification_window_ui import (
     notif_time_morning_prompt_text,
@@ -31,6 +36,7 @@ async def cmd_settings(
     """Handle /settings command."""
     try:
         tg_id = message.from_user.id
+        await track_user_command(message)
         
         success, message_text, reply_markup = await settings_application_service.show_settings(tg_id=tg_id)
         
@@ -58,6 +64,7 @@ async def handle_settings_back(
     state: FSMContext,
     settings_application_service: SettingsApplicationService,
     subscription_status_service,  # SubscriptionStatusService injected via middleware
+    messenger: TelegramMessenger,
 ) -> None:
     """Handle back button in settings.
     
@@ -110,7 +117,7 @@ async def handle_settings_back(
             await callback.answer()
         else:
             # Single pair or no pairs - delete message and return to chat
-            await callback.message.delete()
+            await cleanup_back_to_chat(callback, messenger)
             await callback.answer()
         
     except Exception as e:
@@ -123,13 +130,13 @@ async def handle_settings_back_to_menu(
     callback: CallbackQuery,
     session: AsyncSession,  # noqa: ARG001
     state: FSMContext,
+    messenger: TelegramMessenger,
 ) -> None:
     """Handle back to menu button in settings (deletes message and returns to chat)."""
     try:
         # Clear any active FSM state (e.g., waiting_nickname)
         await state.clear()
-        # Simply delete the message to return user to chat
-        await callback.message.delete()
+        await cleanup_back_to_chat(callback, messenger)
         await callback.answer()
         
     except Exception as e:

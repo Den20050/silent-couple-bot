@@ -15,6 +15,8 @@ from src.services.application.payment import PaymentApplicationService
 from src.services.application.settings import SettingsApplicationService
 from src.services.application.subscription import SubscriptionApplicationService
 from src.services.messaging.ui.menu_ui import MenuUIService
+from src.services.messaging.user_command_session import cleanup_back_to_chat, track_user_command
+from src.services.telegram.messenger import TelegramMessenger
 
 logger = get_logger(__name__)
 
@@ -31,6 +33,7 @@ async def cmd_share(
     try:
         # Clear any active FSM state
         await state.clear()
+        await track_user_command(message)
         
         success, message_text, keyboard = await menu_application_service.show_share_menu()
         
@@ -59,6 +62,8 @@ async def cmd_bot_info(
 ) -> None:
     """Handle /bot_info command - show bot information."""
     try:
+        await track_user_command(message)
+
         # Debug: log loaded settings
         logger.info(
             "Bot info settings loaded",
@@ -108,6 +113,7 @@ async def cmd_create_pair(
     try:
         # Clear any active FSM state (e.g., waiting_nickname)
         await state.clear()
+        await track_user_command(message)
         
         success, message_text, reply_markup = await pair_application_service.handle_create_pair_command(
             message=message,
@@ -328,14 +334,14 @@ async def handle_menu_back(
     callback: CallbackQuery,
     session: AsyncSession,  # noqa: ARG001
     state: FSMContext,
+    telegram_messenger: TelegramMessenger,
 ) -> None:
     """Handle back button - delete message and return to chat."""
     try:
         # Clear any active FSM state (e.g., feedback description input)
         await state.clear()
         
-        # Simply delete the message to return user to chat
-        await callback.message.delete()
+        await cleanup_back_to_chat(callback, telegram_messenger)
         await callback.answer()
     except Exception as e:
         logger.error("Error in handle_menu_back", error=str(e), exc_info=True)

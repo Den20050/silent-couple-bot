@@ -12,6 +12,7 @@ from src.core.messages import get_message
 from src.core.redis_client import create_redis_client
 from src.db.repositories.pairs import PairsRepository
 from src.db.repositories.users import UsersRepository
+from src.services.messaging.user_command_session import delete_user_command_message, track_user_command
 from src.services.telegram.bot_provider import BotProvider
 from src.services.telegram.messenger import TelegramMessenger
 from src.services.timezone import format_timezone_label, is_timezone_configured
@@ -77,6 +78,10 @@ async def cleanup_start_flow_messages(
         ids_to_delete.append(session.user_start_message_id)
 
     await _delete_messages(messenger, tg_id, ids_to_delete)
+
+    if include_user_start:
+        await delete_user_command_message(messenger, redis, tg_id)
+
     await clear_start_flow_session(redis, tg_id)
 
 
@@ -110,6 +115,8 @@ async def cmd_start(
         return
 
     await _set_menu_button(bot_provider, message.chat.id, tg_id)
+
+    await track_user_command(message)
 
     user, _is_new = await get_or_create_user(message, session)
     await session.flush()

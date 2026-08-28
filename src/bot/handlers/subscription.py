@@ -10,6 +10,7 @@ from src.core.logger import get_logger
 from src.db.repositories.users import UsersRepository
 from src.domain.services.subscription_status import SubscriptionStatusService
 from src.services.messaging.ui.menu_ui import MenuUIService
+from src.services.messaging.user_command_session import track_user_command
 
 logger = get_logger(__name__)
 
@@ -33,6 +34,8 @@ async def cmd_subscription(
         if not user:
             await message.answer(get_message("SUBSCRIPTION_START_REQUIRED"))
             return
+
+        await track_user_command(message)
 
         # Get all pairs for user (handles multiple pairs)
         from src.db.repositories.pairs import PairsRepository
