@@ -32,26 +32,20 @@ router = Router(name="settings_handlers")
 async def cmd_settings(
     message: Message,
     settings_application_service: SettingsApplicationService,
+    redis,
 ) -> None:
     """Handle /settings command."""
     try:
         tg_id = message.from_user.id
-        await track_user_command(message)
-        
+
         success, message_text, reply_markup = await settings_application_service.show_settings(tg_id=tg_id)
-        
-        if success:
-            await message.answer(
-                message_text,
-                reply_markup=reply_markup,
-                parse_mode=ParseMode.HTML,
-            )
-        else:
-            await message.answer(
-                message_text,
-                reply_markup=reply_markup,
-                parse_mode=ParseMode.HTML,
-            )
+
+        await message.answer(
+            message_text,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML,
+        )
+        await track_user_command(message, redis)
     except Exception as e:
         logger.error("Error in cmd_settings", error=str(e), exc_info=True)
         await message.answer(get_message("SETTINGS_ERROR"))
@@ -65,6 +59,7 @@ async def handle_settings_back(
     settings_application_service: SettingsApplicationService,
     subscription_status_service,  # SubscriptionStatusService injected via middleware
     telegram_messenger: TelegramMessenger,
+    redis,
 ) -> None:
     """Handle back button in settings.
     
@@ -117,8 +112,9 @@ async def handle_settings_back(
             await callback.answer()
         else:
             # Single pair or no pairs - delete message and return to chat
-            await cleanup_back_to_chat(callback, telegram_messenger)
             await callback.answer()
+            await cleanup_back_to_chat(callback, telegram_messenger, redis=redis)
+            return
         
     except Exception as e:
         logger.error("Error in handle_settings_back", error=str(e), exc_info=True)
@@ -131,13 +127,14 @@ async def handle_settings_back_to_menu(
     session: AsyncSession,  # noqa: ARG001
     state: FSMContext,
     telegram_messenger: TelegramMessenger,
+    redis,
 ) -> None:
     """Handle back to menu button in settings (deletes message and returns to chat)."""
     try:
         # Clear any active FSM state (e.g., waiting_nickname)
         await state.clear()
-        await cleanup_back_to_chat(callback, telegram_messenger)
         await callback.answer()
+        await cleanup_back_to_chat(callback, telegram_messenger, redis=redis)
         
     except Exception as e:
         logger.error("Error in handle_settings_back_to_menu", error=str(e), exc_info=True)

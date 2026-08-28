@@ -51,6 +51,7 @@ class ContainerMiddleware(BaseMiddleware):
         data["telegram_messenger"] = self.container.telegram_messenger
         data["payment_service"] = self.container.payment_service
         data["bot_provider"] = self.container.bot_provider
+        data["redis"] = self.container.redis
         
         # Inject UI services
         from src.services.messaging.ui.admin_ui import AdminUIService

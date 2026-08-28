@@ -22,10 +22,10 @@ async def cmd_pay(
     message: Message,
     session: AsyncSession,
     payment_application_service: PaymentApplicationService,
+    redis,
 ) -> None:
     """Handle /pay command."""
     tg_id = message.from_user.id
-    await track_user_command(message)
     
     # Check if user has multiple pairs
     from src.db.repositories.pairs import PairsRepository
@@ -46,6 +46,7 @@ async def cmd_pay(
             await message.answer(message_text, reply_markup=keyboard)
         else:
             await message.answer(message_text)
+    await track_user_command(message, redis)
 
 
 @router.callback_query(F.data == "pay_now")
@@ -310,11 +311,12 @@ async def handle_pay_back_to_menu(
     callback: CallbackQuery,
     session: AsyncSession,  # noqa: ARG001
     telegram_messenger: TelegramMessenger,
+    redis,
 ) -> None:
     """Handle back to menu from payment tariffs - delete message."""
     try:
-        await cleanup_back_to_chat(callback, telegram_messenger)
         await callback.answer()
+        await cleanup_back_to_chat(callback, telegram_messenger, redis=redis)
     except Exception as e:
         logger.error(
             "Error in handle_pay_back_to_menu",

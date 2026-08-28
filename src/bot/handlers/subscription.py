@@ -23,6 +23,7 @@ async def cmd_subscription(
     session: AsyncSession,
     subscription_status_service: SubscriptionStatusService,
     menu_ui: MenuUIService,
+    redis,
 ) -> None:
     """Handle /subscription command."""
     try:
@@ -34,8 +35,6 @@ async def cmd_subscription(
         if not user:
             await message.answer(get_message("SUBSCRIPTION_START_REQUIRED"))
             return
-
-        await track_user_command(message)
 
         # Get all pairs for user (handles multiple pairs)
         from src.db.repositories.pairs import PairsRepository
@@ -105,6 +104,7 @@ async def cmd_subscription(
             reply_markup=keyboard,
             parse_mode="HTML",
         )
+        await track_user_command(message, redis)
     except Exception as e:
         logger.error(
             "Error in cmd_subscription", error=str(e), exc_info=True

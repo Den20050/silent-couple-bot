@@ -28,13 +28,13 @@ async def cmd_share(
     message: Message,
     state: FSMContext,
     menu_application_service: MenuApplicationService,
+    redis,
 ) -> None:
     """Handle /share command - show share bot menu."""
     try:
         # Clear any active FSM state
         await state.clear()
-        await track_user_command(message)
-        
+
         success, message_text, keyboard = await menu_application_service.show_share_menu()
         
         if success:
@@ -43,6 +43,7 @@ async def cmd_share(
                 reply_markup=keyboard,
                 parse_mode="HTML",
             )
+            await track_user_command(message, redis)
         else:
             await message.answer(message_text)
     except Exception as e:
@@ -59,11 +60,10 @@ async def cmd_bot_info(
     message: Message,
     menu_ui: MenuUIService,
     settings: Settings,
+    redis,
 ) -> None:
     """Handle /bot_info command - show bot information."""
     try:
-        await track_user_command(message)
-
         # Debug: log loaded settings
         logger.info(
             "Bot info settings loaded",
@@ -83,6 +83,7 @@ async def cmd_bot_info(
             reply_markup=keyboard,
             parse_mode="HTML",
         )
+        await track_user_command(message, redis)
     except Exception as e:
         logger.error(
             "Error in cmd_bot_info",
@@ -97,10 +98,10 @@ async def cmd_resource_info(
     message: Message,
     menu_ui: MenuUIService,
     settings: Settings,
+    redis,
 ) -> None:
     """Alias for /bot_info - show resource information (from env via Settings)."""
-    # Reuse the same implementation to keep behaviour identical.
-    await cmd_bot_info(message=message, menu_ui=menu_ui, settings=settings)
+    await cmd_bot_info(message=message, menu_ui=menu_ui, settings=settings, redis=redis)
 
 
 @router.message(Command("create_pair"))
@@ -108,13 +109,13 @@ async def cmd_create_pair(
     message: Message,
     state: FSMContext,
     pair_application_service: PairApplicationService,
+    redis,
 ) -> None:
     """Handle /create_pair command - show mode selection for creating new pair."""
     try:
         # Clear any active FSM state (e.g., waiting_nickname)
         await state.clear()
-        await track_user_command(message)
-        
+
         success, message_text, reply_markup = await pair_application_service.handle_create_pair_command(
             message=message,
         )
@@ -124,6 +125,7 @@ async def cmd_create_pair(
                 message_text,
                 reply_markup=reply_markup,
             )
+            await track_user_command(message, redis)
         else:
             await message.answer(message_text)
     except Exception as e:
@@ -335,14 +337,13 @@ async def handle_menu_back(
     session: AsyncSession,  # noqa: ARG001
     state: FSMContext,
     telegram_messenger: TelegramMessenger,
+    redis,
 ) -> None:
     """Handle back button - delete message and return to chat."""
     try:
-        # Clear any active FSM state (e.g., feedback description input)
         await state.clear()
-        
-        await cleanup_back_to_chat(callback, telegram_messenger)
         await callback.answer()
+        await cleanup_back_to_chat(callback, telegram_messenger, redis=redis)
     except Exception as e:
         logger.error("Error in handle_menu_back", error=str(e), exc_info=True)
         await callback.answer(

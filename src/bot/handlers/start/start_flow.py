@@ -92,6 +92,7 @@ async def cmd_start(
     state: FSMContext,
     bot_provider: BotProvider,
     messenger: TelegramMessenger,
+    redis,
 ) -> None:
     """Handle /start — route by timezone and pair state."""
     tg_id = message.from_user.id
@@ -116,12 +117,9 @@ async def cmd_start(
 
     await _set_menu_button(bot_provider, message.chat.id, tg_id)
 
-    await track_user_command(message)
-
     user, _is_new = await get_or_create_user(message, session)
     await session.flush()
 
-    redis = await create_redis_client()
     pairs_repo = PairsRepository(session)
     all_pairs = await pairs_repo.get_all_by_user_tg_id(tg_id)
 
@@ -135,6 +133,7 @@ async def cmd_start(
             )
             flow_session.prompt_message_id = prompt.message_id
             await save_start_flow_session(redis, tg_id, flow_session)
+            await track_user_command(message, redis)
             return
         await handle_start_logic(message, session, state, bot_provider, messenger)
         return
@@ -156,6 +155,7 @@ async def cmd_start(
         )
         flow_session.prompt_message_id = prompt.message_id
         await save_start_flow_session(redis, tg_id, flow_session)
+        await track_user_command(message, redis)
         return
 
     # New user without pairs — must set timezone before onboarding
@@ -167,6 +167,7 @@ async def cmd_start(
         )
         flow_session.prompt_message_id = prompt.message_id
         await save_start_flow_session(redis, tg_id, flow_session)
+        await track_user_command(message, redis)
         return
 
     await handle_start_logic(message, session, state, bot_provider, messenger)
@@ -263,31 +264,31 @@ async def finish_start_update_after_timezone_sync(
 async def handle_start_flow_back(
     callback: CallbackQuery,
     messenger: TelegramMessenger,
+    redis,
 ) -> None:
     """Back before timezone sync — remove all /start session messages."""
     tg_id = callback.from_user.id
-    redis = await create_redis_client()
+    await callback.answer()
     await cleanup_start_flow_messages(
         tg_id=tg_id,
         messenger=messenger,
         redis=redis,
         include_user_start=True,
     )
-    await callback.answer()
 
 
 @handle_errors(error_key="START_ERROR", show_alert=False)
 async def handle_start_flow_cleanup(
     callback: CallbackQuery,
     messenger: TelegramMessenger,
+    redis,
 ) -> None:
     """Back after timezone sync — remove pairs, confirmation and /start command."""
     tg_id = callback.from_user.id
-    redis = await create_redis_client()
+    await callback.answer()
     await cleanup_start_flow_messages(
         tg_id=tg_id,
         messenger=messenger,
         redis=redis,
         include_user_start=True,
     )
-    await callback.answer()

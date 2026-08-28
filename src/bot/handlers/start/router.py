@@ -35,27 +35,30 @@ async def start_handler(
     state: FSMContext,
     bot_provider: BotProvider,
     telegram_messenger: TelegramMessenger,
+    redis,
 ) -> None:
     """Handle /start command."""
-    await cmd_start(message, session, state, bot_provider, telegram_messenger)
+    await cmd_start(message, session, state, bot_provider, telegram_messenger, redis)
 
 
 @router.callback_query(F.data == "start_flow:back")
 async def start_flow_back_handler(
     callback: CallbackQuery,
     telegram_messenger: TelegramMessenger,
+    redis,
 ) -> None:
     """Dismiss /start flow before timezone sync."""
-    await handle_start_flow_back(callback, telegram_messenger)
+    await handle_start_flow_back(callback, telegram_messenger, redis)
 
 
 @router.callback_query(F.data == "start_flow:cleanup")
 async def start_flow_cleanup_handler(
     callback: CallbackQuery,
     telegram_messenger: TelegramMessenger,
+    redis,
 ) -> None:
     """Dismiss /start flow after timezone sync."""
-    await handle_start_flow_cleanup(callback, telegram_messenger)
+    await handle_start_flow_cleanup(callback, telegram_messenger, redis)
 
 
 @router.callback_query(F.data.startswith("consent_"))
