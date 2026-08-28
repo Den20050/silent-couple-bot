@@ -31,6 +31,19 @@ _TAB_OPTIONS: list[tuple[str, str]] = [
 class AdminUIService:
     """Service for building admin-related UI elements."""
 
+    def build_back_keyboard(self) -> InlineKeyboardMarkup:
+        """Single-row back button for admin prompts and sub-screens."""
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=get_message("MENU_BACK_BUTTON"),
+                        callback_data="menu_back",
+                    ),
+                ],
+            ]
+        )
+
     def _period_token(self, period_days: int | None) -> str:
         return "all" if period_days is None else str(period_days)
 
