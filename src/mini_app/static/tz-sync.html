@@ -25,7 +25,7 @@
     </style>
 </head>
 <body>
-    <div class="status" id="status">Обновляем время…</div>
+    <div class="status" id="status">Время подстраивается под вас…</div>
     <script>
         (function () {
             const tg = window.Telegram.WebApp;
@@ -37,49 +37,58 @@
             const action = params.get('action') || 'sync';
 
             function endpointFor(actionName) {
-                if (actionName === 'start_continue') return '/api/start/continue';
+                if (actionName === 'register') return '/api/timezone/register';
+                if (actionName === 'start_update') return '/api/start/update-timezone';
                 return '/api/timezone/sync';
             }
 
             async function run() {
-                const timezoneName = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                const utcOffset = -new Date().getTimezoneOffset() / 60;
-                const initData = tg.initData;
+                try {
+                    const timezoneName = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                    const utcOffset = -new Date().getTimezoneOffset() / 60;
+                    const initData = tg.initData;
 
-                if (!initData) {
-                    statusEl.textContent = 'Откройте через Telegram.';
-                    return;
-                }
+                    if (!initData) {
+                        statusEl.textContent = 'Откройте через Telegram.';
+                        return;
+                    }
 
-                const payload = {
-                    initData,
-                    timezone_name: timezoneName,
-                    utc_offset: utcOffset,
-                };
+                    const payload = {
+                        initData: initData,
+                        timezone_name: timezoneName,
+                        utc_offset: utcOffset,
+                    };
 
-                for (const [key, value] of params.entries()) {
-                    if (key !== 'action') {
-                        payload[key] = value;
+                    for (const [key, value] of params.entries()) {
+                        if (key !== 'action') {
+                            payload[key] = value;
+                        }
+                    }
+
+                    const response = await fetch(endpointFor(action), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                    });
+
+                    if (!response.ok) {
+                        statusEl.textContent =
+                            'Не удалось выполнить действие. Закройте окно и попробуйте снова.';
+                        return;
+                    }
+                } catch (err) {
+                    statusEl.textContent =
+                        'Ошибка соединения. Проверьте интернет и попробуйте снова.';
+                } finally {
+                    try {
+                        tg.close();
+                    } catch (closeErr) {
+                        /* ignore */
                     }
                 }
-
-                const response = await fetch(endpointFor(action), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                });
-
-                if (!response.ok) {
-                    statusEl.textContent = 'Не удалось выполнить действие. Закройте окно и попробуйте снова.';
-                    return;
-                }
-
-                tg.close();
             }
 
-            run().catch(function () {
-                statusEl.textContent = 'Ошибка соединения. Проверьте интернет и попробуйте снова.';
-            });
+            run();
         })();
     </script>
 </body>

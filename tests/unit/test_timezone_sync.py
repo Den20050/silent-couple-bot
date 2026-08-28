@@ -25,8 +25,13 @@ def test_get_effective_utc_offset_prefers_timezone_name() -> None:
     assert get_effective_utc_offset(user) == 3
 
 
-def test_get_effective_utc_offset_falls_back_to_stored_offset() -> None:
+def test_get_effective_utc_offset_unconfigured_returns_zero() -> None:
     user = SimpleNamespace(timezone_name=None, utc_offset=5)
+    assert get_effective_utc_offset(user) == 0
+
+
+def test_get_effective_utc_offset_falls_back_to_stored_offset() -> None:
+    user = SimpleNamespace(timezone_name="Invalid/Zone", utc_offset=5)
     assert get_effective_utc_offset(user) == 5
 
 

@@ -3,7 +3,6 @@
 from urllib.parse import quote
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
-from aiogram.enums import ParseMode
 
 from src.core.messages import get_message
 from src.services.messaging.templates import ButtonTemplates
@@ -16,17 +15,51 @@ def _notif_time_back_callback(pair_id: int | None) -> str:
     return "settings_time_window_back"
 
 
-def get_start_sync_keyboard(start_param: str | None = None) -> InlineKeyboardMarkup:
-    """Keyboard shown after /start — opens Mini App to sync phone timezone."""
-    params: dict[str, str | int] = {"action": "start_continue"}
+def get_register_timezone_keyboard(start_param: str | None = None) -> InlineKeyboardMarkup:
+    """First-time registration: apply phone timezone via Mini App."""
+    params: dict[str, str | int] = {"action": "register"}
     if start_param:
         params["start_param"] = start_param
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=get_message("START_CONTINUE_BUTTON"),
+                    text=get_message("START_APPLY_TIMEZONE_BUTTON"),
                     web_app=WebAppInfo(url=build_tz_sync_url(**params)),
+                ),
+            ],
+        ]
+    )
+
+
+def get_update_timezone_keyboard() -> InlineKeyboardMarkup:
+    """Existing user with pairs: update timezone (Continue + Back)."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=get_message("START_CONTINUE_BUTTON"),
+                    web_app=WebAppInfo(
+                        url=build_tz_sync_url(action="start_update"),
+                    ),
+                ),
+                InlineKeyboardButton(
+                    text=get_message("START_FLOW_BACK_BUTTON"),
+                    callback_data="start_flow:back",
+                ),
+            ],
+        ]
+    )
+
+
+def get_start_cleanup_keyboard() -> InlineKeyboardMarkup:
+    """Dismiss /start flow messages."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=get_message("START_FLOW_BACK_BUTTON"),
+                    callback_data="start_flow:cleanup",
                 ),
             ],
         ]
@@ -122,7 +155,10 @@ def get_invite_link_keyboard(invite_link: str) -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text=get_message("START_SHARE_BUTTON"),
-                    url=f"https://t.me/share/url?url={invite_link}&text={quote(get_message('START_SHARE_TEXT'))}",
+                    url=(
+                        f"https://t.me/share/url?url={invite_link}"
+                        f"&text={quote(get_message('START_SHARE_TEXT'))}"
+                    ),
                 ),
             ],
         ]
@@ -158,11 +194,7 @@ def get_welcome_accept_keyboard() -> InlineKeyboardMarkup:
 
 
 def get_notif_time_morning_keyboard(pair_id: int | None = None) -> InlineKeyboardMarkup:
-    """Get keyboard for selecting preferred morning notification time window.
-
-    Args:
-        pair_id: Optional pair id (recommended for multi-pair and shared-window logic).
-    """
+    """Get keyboard for selecting preferred morning notification time window."""
     suffix = f":{pair_id}" if pair_id is not None else ""
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -190,11 +222,7 @@ def get_notif_time_morning_keyboard(pair_id: int | None = None) -> InlineKeyboar
 
 
 def get_notif_time_evening_keyboard(pair_id: int | None = None) -> InlineKeyboardMarkup:
-    """Get keyboard for selecting preferred evening notification time window.
-
-    Args:
-        pair_id: Optional pair id (recommended for multi-pair and shared-window logic).
-    """
+    """Get keyboard for selecting preferred evening notification time window."""
     suffix = f":{pair_id}" if pair_id is not None else ""
     return InlineKeyboardMarkup(
         inline_keyboard=[

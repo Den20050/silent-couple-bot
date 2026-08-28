@@ -11,7 +11,6 @@ from src.services.telegram.messenger import TelegramMessenger
 
 from src.bot.handlers.start.commands import (
     PairCreationStates,
-    cmd_start,
     handle_consent,
     handle_mode_chat,
     handle_mode_silent,
@@ -19,6 +18,11 @@ from src.bot.handlers.start.commands import (
     handle_welcome_next,
     handle_welcome_accept,
     handle_notif_time_selection,
+)
+from src.bot.handlers.start.start_flow import (
+    cmd_start,
+    handle_start_flow_back,
+    handle_start_flow_cleanup,
 )
 
 router = Router(name="start")
@@ -34,6 +38,24 @@ async def start_handler(
 ) -> None:
     """Handle /start command."""
     await cmd_start(message, session, state, bot_provider, telegram_messenger)
+
+
+@router.callback_query(F.data == "start_flow:back")
+async def start_flow_back_handler(
+    callback: CallbackQuery,
+    telegram_messenger: TelegramMessenger,
+) -> None:
+    """Dismiss /start flow before timezone sync."""
+    await handle_start_flow_back(callback, telegram_messenger)
+
+
+@router.callback_query(F.data == "start_flow:cleanup")
+async def start_flow_cleanup_handler(
+    callback: CallbackQuery,
+    telegram_messenger: TelegramMessenger,
+) -> None:
+    """Dismiss /start flow after timezone sync."""
+    await handle_start_flow_cleanup(callback, telegram_messenger)
 
 
 @router.callback_query(F.data.startswith("consent_"))
