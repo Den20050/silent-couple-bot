@@ -42,7 +42,12 @@
                 return '/api/timezone/sync';
             }
 
+            function sleep(ms) {
+                return new Promise(function (resolve) { setTimeout(resolve, ms); });
+            }
+
             async function run() {
+                let shouldClose = false;
                 try {
                     const timezoneName = Intl.DateTimeFormat().resolvedOptions().timeZone;
                     const utcOffset = -new Date().getTimezoneOffset() / 60;
@@ -76,10 +81,15 @@
                             'Не удалось выполнить действие. Закройте окно и попробуйте снова.';
                         return;
                     }
+
+                    shouldClose = true;
                 } catch (err) {
                     statusEl.textContent =
                         'Ошибка соединения. Проверьте интернет и попробуйте снова.';
-                } finally {
+                }
+
+                if (shouldClose) {
+                    await sleep(2000);
                     try {
                         tg.close();
                     } catch (closeErr) {

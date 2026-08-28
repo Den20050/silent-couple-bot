@@ -219,7 +219,7 @@ async def finish_start_update_after_timezone_sync(
     session: AsyncSession,
     messenger: TelegramMessenger,
 ) -> None:
-    """After TZ update for paired user: delete prompt, confirm, show pairs + Back."""
+    """After TZ update: delete prompt, send confirmation with Back (pairs stay as sent on /start)."""
     redis = await create_redis_client()
     flow_session = await load_start_flow_session(redis, tg_id)
 
@@ -232,29 +232,21 @@ async def finish_start_update_after_timezone_sync(
         await messenger.delete_message(tg_id, flow_session.prompt_message_id)
 
     cleanup_kb = get_start_cleanup_keyboard()
-    new_ids: list[int] = []
-
     confirm_msg = await messenger.send_message(
         chat_id=tg_id,
         text=get_message(
             "START_TIMEZONE_UPDATED",
             timezone_label=format_timezone_label(user),
         ),
-    )
-    new_ids.append(confirm_msg.message_id)
-
-    pair_ids = await send_pairs_status_messages(
-        tg_id=tg_id,
-        user_id=user.id,
-        session=session,
-        messenger=messenger,
         reply_markup=cleanup_kb.model_dump(),
     )
-    new_ids.extend(pair_ids)
+
+    kept_ids = list(flow_session.bot_message_ids) if flow_session else []
+    kept_ids.append(confirm_msg.message_id)
 
     updated_session = StartFlowSession(
         user_start_message_id=flow_session.user_start_message_id if flow_session else None,
-        bot_message_ids=new_ids,
+        bot_message_ids=kept_ids,
         prompt_message_id=None,
     )
     await save_start_flow_session(redis, tg_id, updated_session)
@@ -265,7 +257,7 @@ async def handle_start_flow_back(
     callback: CallbackQuery,
     messenger: TelegramMessenger,
 ) -> None:
-    """Back before timezone sync — remove /start session messages."""
+    """Back before timezone sync — remove all /start session messages."""
     tg_id = callback.from_user.id
     redis = await create_redis_client()
     await cleanup_start_flow_messages(
@@ -282,7 +274,7 @@ async def handle_start_flow_cleanup(
     callback: CallbackQuery,
     messenger: TelegramMessenger,
 ) -> None:
-    """Back after timezone sync — remove confirmation and pair messages."""
+    """Back after timezone sync — remove pairs, confirmation and /start command."""
     tg_id = callback.from_user.id
     redis = await create_redis_client()
     await cleanup_start_flow_messages(
