@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, Message
 from sqlalchemy import func, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +22,7 @@ from src.db.repositories.users import UsersRepository
 from src.services.telegram.messenger import TelegramMessenger
 from src.services.messaging.ui.menu_ui import MenuUIService
 from src.services.messaging.ui.admin_ui import AdminUIService
+from src.services.messaging.user_command_session import track_user_command
 from src.bot.handlers.menu.states import AdminStates
 
 from src.bot.handlers.admin.use_cases.stats import (
@@ -203,20 +204,14 @@ async def handle_admin_reset_demo_callback(
         return
     
     try:
+        admin_ui = AdminUIService()
         text = get_message("ADMIN_RESET_DEMO_PROMPT")
-        
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text=get_message("MENU_BACK_BUTTON"),
-                        callback_data="menu_back",
-                    ),
-                ],
-            ]
+
+        await callback.message.edit_text(
+            text,
+            reply_markup=admin_ui.build_back_keyboard(),
+            parse_mode="HTML",
         )
-        
-        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
         await state.set_state(AdminStates.waiting_tg_id)
         await state.update_data(action="reset_demo")
         await callback.answer()
@@ -238,25 +233,19 @@ async def handle_admin_gift_callback(
         return
     
     try:
+        admin_ui = AdminUIService()
         text = (
             "🎁 <b>Подарить подписку</b>\n\n"
             "Отправьте Telegram ID пользователя для подарка подписки.\n\n"
             "Если пользователь состоит в паре, подписка будет подарена обоим пользователям пары.\n\n"
             "Для отмены отправьте /cancel"
         )
-        
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text=get_message("MENU_BACK_BUTTON"),
-                        callback_data="menu_back",
-                    ),
-                ],
-            ]
+
+        await callback.message.edit_text(
+            text,
+            reply_markup=admin_ui.build_back_keyboard(),
+            parse_mode="HTML",
         )
-        
-        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
         await state.set_state(AdminStates.waiting_tg_id)
         await state.update_data(action="gift_subscription")
         await callback.answer()
@@ -278,20 +267,14 @@ async def handle_admin_broadcast_callback(
         return
     
     try:
+        admin_ui = AdminUIService()
         text = get_message("ADMIN_BROADCAST_PROMPT")
-        
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text=get_message("MENU_BACK_BUTTON"),
-                        callback_data="menu_back",
-                    ),
-                ],
-            ]
+
+        await callback.message.edit_text(
+            text,
+            reply_markup=admin_ui.build_back_keyboard(),
+            parse_mode="HTML",
         )
-        
-        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
         await state.set_state(AdminStates.waiting_broadcast_message)
         await callback.answer()
     except Exception as e:
@@ -324,16 +307,23 @@ async def cmd_admin_reset_demo(
     state: FSMContext,
     settings: Settings,
     menu_ui: MenuUIService,
+    redis,
 ) -> None:
     """Handle /admin_reset_demo command - ask for tg_id."""
     if not menu_ui._is_admin(message.from_user.id):
         await message.answer(get_message("MENU_ADMIN_ONLY"))
         return
-    
+
     try:
+        admin_ui = AdminUIService()
         text = get_message("ADMIN_RESET_DEMO_PROMPT")
-        
-        await message.answer(text, parse_mode="HTML")
+
+        await message.answer(
+            text,
+            reply_markup=admin_ui.build_back_keyboard(),
+            parse_mode="HTML",
+        )
+        await track_user_command(message, redis)
         await state.set_state(AdminStates.waiting_tg_id)
         await state.update_data(action="reset_demo")
     except Exception as e:
@@ -347,21 +337,28 @@ async def cmd_admin_gift(
     state: FSMContext,
     settings: Settings,
     menu_ui: MenuUIService,
+    redis,
 ) -> None:
     """Handle /admin_gift command - ask for tg_id."""
     if not menu_ui._is_admin(message.from_user.id):
         await message.answer(get_message("MENU_ADMIN_ONLY"))
         return
-    
+
     try:
+        admin_ui = AdminUIService()
         text = (
             "🎁 <b>Подарить подписку</b>\n\n"
             "Отправьте Telegram ID пользователя для подарка подписки.\n\n"
             "Если пользователь состоит в паре, подписка будет подарена обоим пользователям пары.\n\n"
             "Для отмены отправьте /cancel"
         )
-        
-        await message.answer(text, parse_mode="HTML")
+
+        await message.answer(
+            text,
+            reply_markup=admin_ui.build_back_keyboard(),
+            parse_mode="HTML",
+        )
+        await track_user_command(message, redis)
         await state.set_state(AdminStates.waiting_tg_id)
         await state.update_data(action="gift_subscription")
     except Exception as e:
@@ -375,16 +372,23 @@ async def cmd_admin_broadcast(
     state: FSMContext,
     settings: Settings,
     menu_ui: MenuUIService,
+    redis,
 ) -> None:
     """Handle /admin_broadcast command - ask for message."""
     if not menu_ui._is_admin(message.from_user.id):
         await message.answer(get_message("MENU_ADMIN_ONLY"))
         return
-    
+
     try:
+        admin_ui = AdminUIService()
         text = get_message("ADMIN_BROADCAST_PROMPT")
-        
-        await message.answer(text, parse_mode="HTML")
+
+        await message.answer(
+            text,
+            reply_markup=admin_ui.build_back_keyboard(),
+            parse_mode="HTML",
+        )
+        await track_user_command(message, redis)
         await state.set_state(AdminStates.waiting_broadcast_message)
     except Exception as e:
         logger.error("Error in cmd_admin_broadcast", error=str(e), exc_info=True)

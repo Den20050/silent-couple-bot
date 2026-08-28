@@ -193,18 +193,6 @@ async def handle_admin_reset_demo_pair_selection(
         await callback.answer("❌ Произошла ошибка при выборе пары.", show_alert=True)
         await state.clear()
 
-
-@router.callback_query(F.data == "admin_reset_demo_cancel")
-async def handle_admin_reset_demo_cancel(
-    callback: CallbackQuery,
-    state: FSMContext,
-) -> None:
-    """Handle cancel for reset demo pair selection."""
-    await callback.answer("Операция отменена.")
-    await callback.message.edit_text("❌ Операция сброса демо режима отменена.")
-    await state.clear()
-
-
 @router.callback_query(F.data.startswith("admin_gift_tariff_"))
 async def handle_admin_gift_tariff(
     callback: CallbackQuery,

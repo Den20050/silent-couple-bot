@@ -70,11 +70,10 @@ async def show_pair_selection_for_reset(
                 ),
             ])
         
-        # Add cancel button
         keyboard_buttons.append([
             InlineKeyboardButton(
-                text="❌ Отмена",
-                callback_data="admin_reset_demo_cancel",
+                text=get_message("MENU_BACK_BUTTON"),
+                callback_data="menu_back",
             ),
         ])
         
@@ -207,9 +206,15 @@ async def show_tariff_selection_for_gift() -> tuple[bool, str, InlineKeyboardMar
                 callback_data=f"admin_gift_tariff_{plan_id}",
             ),
         ])
-    
+    keyboard.append([
+        InlineKeyboardButton(
+            text=get_message("MENU_BACK_BUTTON"),
+            callback_data="menu_back",
+        ),
+    ])
+
     text = get_message("ADMIN_GIFT_SELECT_TARIFF")
-    
+
     return True, text, InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
