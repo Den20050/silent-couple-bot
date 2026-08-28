@@ -115,24 +115,24 @@ async def cmd_start(
     await session.flush()
 
     redis = await create_redis_client()
-
-    if not is_timezone_configured(user):
-        flow_session = StartFlowSession(user_start_message_id=message.message_id)
-        prompt = await message.answer(
-            get_message("START_REGISTER_TIMEZONE_PROMPT"),
-            reply_markup=get_register_timezone_keyboard(start_param),
-        )
-        flow_session.prompt_message_id = prompt.message_id
-        await save_start_flow_session(redis, tg_id, flow_session)
-        return
-
-    if start_param:
-        await handle_start_logic(message, session, state, bot_provider, messenger)
-        return
-
     pairs_repo = PairsRepository(session)
     all_pairs = await pairs_repo.get_all_by_user_tg_id(tg_id)
 
+    # Invite link: TZ first if needed, then onboarding/invite logic
+    if start_param:
+        if not is_timezone_configured(user):
+            flow_session = StartFlowSession(user_start_message_id=message.message_id)
+            prompt = await message.answer(
+                get_message("START_REGISTER_TIMEZONE_PROMPT"),
+                reply_markup=get_register_timezone_keyboard(start_param),
+            )
+            flow_session.prompt_message_id = prompt.message_id
+            await save_start_flow_session(redis, tg_id, flow_session)
+            return
+        await handle_start_logic(message, session, state, bot_provider, messenger)
+        return
+
+    # Paired users always see pair status first, then TZ sync (Continue + Back)
     if all_pairs:
         flow_session = StartFlowSession(user_start_message_id=message.message_id)
         pair_msg_ids = await send_pairs_status_messages(
@@ -146,6 +146,17 @@ async def cmd_start(
         prompt = await message.answer(
             get_message("START_TIMEZONE_SYNC_PROMPT"),
             reply_markup=get_update_timezone_keyboard(),
+        )
+        flow_session.prompt_message_id = prompt.message_id
+        await save_start_flow_session(redis, tg_id, flow_session)
+        return
+
+    # New user without pairs — must set timezone before onboarding
+    if not is_timezone_configured(user):
+        flow_session = StartFlowSession(user_start_message_id=message.message_id)
+        prompt = await message.answer(
+            get_message("START_REGISTER_TIMEZONE_PROMPT"),
+            reply_markup=get_register_timezone_keyboard(start_param),
         )
         flow_session.prompt_message_id = prompt.message_id
         await save_start_flow_session(redis, tg_id, flow_session)
