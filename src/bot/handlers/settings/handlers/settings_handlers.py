@@ -64,7 +64,7 @@ async def handle_settings_back(
     state: FSMContext,
     settings_application_service: SettingsApplicationService,
     subscription_status_service,  # SubscriptionStatusService injected via middleware
-    messenger: TelegramMessenger,
+    telegram_messenger: TelegramMessenger,
 ) -> None:
     """Handle back button in settings.
     
@@ -117,7 +117,7 @@ async def handle_settings_back(
             await callback.answer()
         else:
             # Single pair or no pairs - delete message and return to chat
-            await cleanup_back_to_chat(callback, messenger)
+            await cleanup_back_to_chat(callback, telegram_messenger)
             await callback.answer()
         
     except Exception as e:
@@ -130,13 +130,13 @@ async def handle_settings_back_to_menu(
     callback: CallbackQuery,
     session: AsyncSession,  # noqa: ARG001
     state: FSMContext,
-    messenger: TelegramMessenger,
+    telegram_messenger: TelegramMessenger,
 ) -> None:
     """Handle back to menu button in settings (deletes message and returns to chat)."""
     try:
         # Clear any active FSM state (e.g., waiting_nickname)
         await state.clear()
-        await cleanup_back_to_chat(callback, messenger)
+        await cleanup_back_to_chat(callback, telegram_messenger)
         await callback.answer()
         
     except Exception as e:
