@@ -7,7 +7,6 @@ from typing import Any
 from aiogram.types import CallbackQuery, Message
 
 from src.core.logger import get_logger
-from src.core.redis_client import create_redis_client
 from src.services.telegram.messenger import TelegramMessenger
 
 logger = get_logger(__name__)
@@ -55,11 +54,10 @@ async def delete_user_command_message(
         )
 
 
-async def track_user_command(message: Message) -> None:
+async def track_user_command(message: Message, redis: Any | None = None) -> None:
     """Remember the user's command message id for later Back cleanup."""
-    if not message.from_user:
+    if not message.from_user or redis is None:
         return
-    redis = await create_redis_client()
     await save_user_command_message(redis, message.from_user.id, message.message_id)
 
 
@@ -67,6 +65,7 @@ async def cleanup_back_to_chat(
     callback: CallbackQuery,
     messenger: TelegramMessenger,
     *,
+    redis: Any | None = None,
     delete_bot_message: bool = True,
 ) -> None:
     """Delete bot UI message and the user's command that opened this flow."""
@@ -80,5 +79,5 @@ async def cleanup_back_to_chat(
                 tg_id=tg_id,
                 error=str(exc),
             )
-    redis = await create_redis_client()
-    await delete_user_command_message(messenger, redis, tg_id)
+    if redis is not None:
+        await delete_user_command_message(messenger, redis, tg_id)

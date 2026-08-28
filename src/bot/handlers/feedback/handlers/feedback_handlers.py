@@ -20,7 +20,7 @@ router = Router(name="feedback_handlers")
 
 
 @router.message(Command("feedback"))
-async def cmd_feedback(message: Message, session: AsyncSession, state: FSMContext) -> None:
+async def cmd_feedback(message: Message, session: AsyncSession, state: FSMContext, redis) -> None:
     """Handle /feedback command - request description."""
     try:
         tg_id = message.from_user.id
@@ -32,9 +32,6 @@ async def cmd_feedback(message: Message, session: AsyncSession, state: FSMContex
             await message.answer(get_message("FEEDBACK_START_REQUIRED"))
             return
 
-        await track_user_command(message)
-
-        # Set FSM state and request description
         await state.set_state(FeedbackStates.waiting_description)
         
         text = get_message("FEEDBACK_DESCRIPTION_PROMPT")
@@ -43,7 +40,8 @@ async def cmd_feedback(message: Message, session: AsyncSession, state: FSMContex
         keyboard = KeyboardTemplates.back_only()
         
         await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
-        
+        await track_user_command(message, redis)
+
         logger.info(
             "Feedback description requested",
             tg_id=tg_id,
