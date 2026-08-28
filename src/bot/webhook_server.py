@@ -27,20 +27,21 @@ logger = get_logger(__name__)
 # Global instances
 dp: Dispatcher | None = None
 bot: Bot | None = None
+container: Container | None = None
 redis_storage_client = None  # Store Redis client for RedisStorage globally
 _polling_task: asyncio.Task | None = None
 
 
 async def setup_bot() -> tuple[Bot, Dispatcher]:
     """Initialize bot and dispatcher."""
-    global bot, dp, redis_client, redis_storage_client
+    global bot, dp, redis_client, redis_storage_client, container
     
     # If bot and dispatcher already initialized, return them
     if bot is not None and dp is not None:
         return bot, dp
 
     # Bootstrap application to get container with all dependencies
-    container: Container = await bootstrap()
+    container = await bootstrap()
     
     # Initialize Redis storage
     # RedisStorage needs its own Redis client with its own connection pool
@@ -172,9 +173,16 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for FastAPI app."""
-    global bot, dp, _polling_task, redis_storage_client
+    global bot, dp, _polling_task, redis_storage_client, container
 
     bot, dp = await setup_bot()
+
+    from src.core.di.providers.storage import provide_session_factory
+    from src.mini_app.api import set_api_runtime
+
+    session_factory = provide_session_factory(settings)
+    if container is not None:
+        set_api_runtime(session_factory=session_factory, container=container)
 
     # Inbound Telegram webhook delivery to this host is unreliable (Connection timed out).
     # Pull updates via long polling through the outbound proxy instead.
@@ -206,6 +214,8 @@ async def lifespan(app: FastAPI):
             await redis_storage_client.aclose()
         except Exception as e:
             logger.warning(f"Error closing Redis storage connection: {e}")
+    if container is not None:
+        await container.close()
     logger.info("Webhook server stopped")
 
 
@@ -218,7 +228,10 @@ app = FastAPI(
 # Include Robokassa webhook router
 # This adds /webhook/robokassa endpoint for payment notifications
 from src.bot.handlers.webhook import webhook_router
+from src.mini_app.routes import router as mini_app_router
+
 app.include_router(webhook_router)
+app.include_router(mini_app_router)
 
 
 @app.post(settings.webhook_path)

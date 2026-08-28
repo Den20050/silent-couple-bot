@@ -1,15 +1,30 @@
 """Mini App API routes."""
 
+import os
+
 from fastapi import APIRouter, Request, HTTPException, Form
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from src.core.logger import get_logger
 from src.mini_app.security import verify_init_data
+from src.mini_app.api import router as api_router
 from src.services.telegram import send_photo_with_retry
 
 logger = get_logger(__name__)
 
 router = APIRouter()
+router.include_router(api_router)
+
+
+@router.get("/tz-sync", response_class=HTMLResponse)
+async def tz_sync_page() -> str:
+    """Serve timezone sync Mini App page."""
+    html_path = os.path.join(os.path.dirname(__file__), "static", "tz-sync.html")
+    try:
+        with open(html_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="tz-sync.html not found")
 
 
 @router.get("/", response_class=HTMLResponse)

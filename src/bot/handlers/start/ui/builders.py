@@ -2,17 +2,35 @@
 
 from urllib.parse import quote
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from aiogram.enums import ParseMode
 
 from src.core.messages import get_message
 from src.services.messaging.templates import ButtonTemplates
+from src.services.mini_app_urls import build_tz_sync_url
 
 
 def _notif_time_back_callback(pair_id: int | None) -> str:
     if pair_id is not None:
         return f"settings_time_window_back:{pair_id}"
     return "settings_time_window_back"
+
+
+def get_start_sync_keyboard(start_param: str | None = None) -> InlineKeyboardMarkup:
+    """Keyboard shown after /start — opens Mini App to sync phone timezone."""
+    params: dict[str, str | int] = {"action": "start_continue"}
+    if start_param:
+        params["start_param"] = start_param
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=get_message("START_CONTINUE_BUTTON"),
+                    web_app=WebAppInfo(url=build_tz_sync_url(**params)),
+                ),
+            ],
+        ]
+    )
 
 
 def get_mode_keyboard() -> InlineKeyboardMarkup:
