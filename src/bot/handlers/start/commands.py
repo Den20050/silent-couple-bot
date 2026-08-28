@@ -40,9 +40,11 @@ from src.bot.handlers.start.ui.builders import (
     get_policy_keyboard,
     get_welcome_next_keyboard,
     get_welcome_accept_keyboard,
+    get_start_sync_keyboard,
     get_notif_time_morning_keyboard,
     get_notif_time_evening_keyboard,
 )
+from src.bot.handlers.start.start_flow_message import StartFlowMessage
 from src.bot.handlers.start.flows import (
     InviteFlow,
     DemoRestoreFlow,
@@ -434,29 +436,67 @@ async def cmd_start(
     bot_provider: BotProvider,
     messenger: TelegramMessenger,
 ) -> None:
-    """Handle /start command - also works as restart."""
+    """Handle /start command — show timezone sync, then continue via Mini App."""
+    tg_id = message.from_user.id
+    username = message.from_user.username
+    message_text = message.text or ""
+    start_param = message_text.split()[1] if len(message_text.split()) > 1 else None
+
     logger.info(
         "/start command handler called",
-        tg_id=message.from_user.id,
-        username=message.from_user.username,
+        tg_id=tg_id,
+        username=username,
+        start_param=start_param,
     )
-    
-    # Get user to check if they have consent
-    users_repo = UsersRepository(session)
-    user = await users_repo.get_by_tg_id(message.from_user.id)
-    
-    # Always clear state on /start
-    # If user has no consent, they will see welcome messages again (new user flow)
-    # If user has consent, they will see regular start flow
+
     await state.clear()
-    logger.debug(
-        "FSM state cleared on /start",
-        tg_id=message.from_user.id,
-        has_consent=user.consent if user else False,
+    logger.debug("FSM state cleared on /start", tg_id=tg_id)
+
+    if bot_provider is None or messenger is None:
+        await send_error_to_user(message)
+        return
+
+    try:
+        bot = bot_provider.get_bot()
+        menu_button = MenuButtonCommands()
+        await bot.set_chat_menu_button(
+            chat_id=message.chat.id, menu_button=menu_button
+        )
+    except Exception as e:
+        logger.warning("Failed to set menu button for user", error=str(e))
+
+    await get_or_create_user(message, session)
+
+    await message.answer(
+        get_message("START_TIMEZONE_SYNC_PROMPT"),
+        reply_markup=get_start_sync_keyboard(start_param),
     )
-    
-    # Call start logic
-    await handle_start_logic(message, session, state, bot_provider, messenger)
+
+
+async def continue_start_after_timezone_sync(
+    tg_id: int,
+    username: str | None,
+    start_param: str | None,
+    session: AsyncSession,
+    state: FSMContext | None,
+    bot_provider: BotProvider,
+    messenger: TelegramMessenger,
+) -> None:
+    """Run the main /start flow after Mini App timezone sync."""
+    text = f"/start {start_param}" if start_param else "/start"
+    flow_message = StartFlowMessage(
+        tg_id=tg_id,
+        username=username,
+        messenger=messenger,
+        text=text,
+    )
+    await handle_start_logic(
+        flow_message,
+        session,
+        state,
+        bot_provider,
+        messenger,
+    )
 
 
 # ============================================================================

@@ -1,28 +1,25 @@
-"""Timezone detection service."""
+"""Timezone detection and sync service."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any, Optional
 
 import httpx
-from typing import Optional
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.logger import get_logger
+from src.db.repositories.users import UsersRepository
 
 logger = get_logger(__name__)
 
 
 async def detect_timezone_from_ip(ip: Optional[str]) -> Optional[int]:
-    """Detect timezone (UTC offset) from IP address.
-
-    Args:
-        ip: IP address string (e.g., "192.168.1.1")
-
-    Returns:
-        UTC offset in hours (e.g., 3 for UTC+3) or None if detection failed
-    """
+    """Detect timezone (UTC offset) from IP address."""
     if not ip or ip == "0.0.0.0" or ip.startswith("127."):
         return None
 
     try:
-        # Use free ip-api.com service
-        # (no API key required, rate limit: 45 requests/minute)
         async with httpx.AsyncClient(timeout=5.0) as client:
             url = f"http://ip-api.com/json/{ip}?fields=timezone"
             response = await client.get(url)
@@ -31,7 +28,6 @@ async def detect_timezone_from_ip(ip: Optional[str]) -> Optional[int]:
                 timezone_str = data.get("timezone")
 
                 if timezone_str:
-                    # Convert timezone string to UTC offset
                     utc_offset = _timezone_to_offset(timezone_str)
                     if utc_offset is not None:
                         logger.info(
@@ -52,34 +48,17 @@ async def detect_timezone_from_ip(ip: Optional[str]) -> Optional[int]:
     return None
 
 
-def _timezone_to_offset(timezone_str: str) -> Optional[int]:
-    """Convert timezone string to UTC offset using pytz.
-
-    Args:
-        timezone_str: Timezone string
-            (e.g., "Europe/Moscow", "America/New_York")
-
-    Returns:
-        UTC offset in hours (e.g., 3 for UTC+3)
-        or None if conversion failed
-    """
+def _timezone_to_offset(timezone_str: str, at_time: datetime | None = None) -> Optional[int]:
+    """Convert IANA timezone string to UTC offset in hours."""
     try:
         import pytz
-        from datetime import datetime
 
-        # Get timezone object
         tz = pytz.timezone(timezone_str)
-
-        # Get current UTC offset (accounts for DST)
-        now = datetime.now(tz)
-        offset = now.utcoffset()
-
-        # Convert timedelta to hours
-        if offset:
-            total_seconds = offset.total_seconds()
-            hours = int(total_seconds / 3600)
-            return hours
-
+        now = at_time or datetime.utcnow()
+        localized = pytz.utc.localize(now).astimezone(tz)
+        offset = localized.utcoffset()
+        if offset is not None:
+            return int(offset.total_seconds() / 3600)
     except Exception as e:
         logger.warning(
             "Failed to convert timezone to offset",
@@ -88,3 +67,71 @@ def _timezone_to_offset(timezone_str: str) -> Optional[int]:
         )
 
     return None
+
+
+def normalize_timezone_name(timezone_name: str | None) -> str | None:
+    """Validate and normalize an IANA timezone name."""
+    if not timezone_name:
+        return None
+    try:
+        import pytz
+
+        pytz.timezone(timezone_name)
+        return timezone_name
+    except Exception:
+        logger.warning("Invalid timezone name rejected", timezone_name=timezone_name)
+        return None
+
+
+def get_effective_utc_offset(user_obj: Any, now_utc: datetime | None = None) -> int:
+    """Return the user's UTC offset, preferring stored IANA timezone when available."""
+    timezone_name = getattr(user_obj, "timezone_name", None)
+    if timezone_name:
+        offset = _timezone_to_offset(timezone_name, now_utc)
+        if offset is not None:
+            return offset
+    return int(getattr(user_obj, "utc_offset", 3) or 3)
+
+
+async def sync_user_timezone(
+    session: AsyncSession,
+    tg_id: int,
+    *,
+    timezone_name: str | None,
+    utc_offset: int,
+) -> bool:
+    """Persist timezone from Mini App (phone system settings).
+
+    Returns True when the timezone was updated or unchanged, False on validation failure.
+    """
+    normalized_name = normalize_timezone_name(timezone_name)
+    if normalized_name:
+        computed_offset = _timezone_to_offset(normalized_name)
+        if computed_offset is not None:
+            utc_offset = computed_offset
+    elif utc_offset < -12 or utc_offset > 14:
+        logger.warning("Invalid utc_offset rejected", tg_id=tg_id, utc_offset=utc_offset)
+        return False
+
+    users_repo = UsersRepository(session)
+    user = await users_repo.get_by_tg_id(tg_id)
+    if not user:
+        logger.warning("Timezone sync: user not found", tg_id=tg_id)
+        return False
+
+    if user.timezone_name == normalized_name and user.utc_offset == utc_offset:
+        return True
+
+    await users_repo.update_timezone(
+        tg_id,
+        utc_offset=utc_offset,
+        timezone_name=normalized_name,
+    )
+    await session.commit()
+    logger.info(
+        "User timezone synced from Mini App",
+        tg_id=tg_id,
+        timezone_name=normalized_name,
+        utc_offset=utc_offset,
+    )
+    return True

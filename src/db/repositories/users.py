@@ -77,6 +77,24 @@ class UsersRepository:
         await self.session.flush()
         return result.scalar_one_or_none()
 
+    async def update_timezone(
+        self,
+        tg_id: int,
+        *,
+        utc_offset: int,
+        timezone_name: str | None = None,
+    ) -> Optional[User]:
+        """Update user timezone (IANA name + UTC offset)."""
+        stmt = (
+            update(User)
+            .where(User.tg_id == tg_id)
+            .values(utc_offset=utc_offset, timezone_name=timezone_name)
+            .returning(User)
+        )
+        result = await self.session.execute(stmt)
+        await self.session.flush()
+        return result.scalar_one_or_none()
+
     async def update_payer_id(self, tg_id: int, payer_id: int) -> Optional[User]:
         """Update payer ID (who paid for any pair)."""
         stmt = update(User).where(User.tg_id == tg_id).values(payer_id=payer_id).returning(User)

@@ -15,16 +15,17 @@ from datetime import date, datetime, time, timedelta
 from typing import Any, Literal
 
 from src.core.config import settings
+from src.services.timezone import get_effective_utc_offset
 
 PicType = Literal["morning", "evening"]
 
 
-def _get_user_local_datetime(utc_now: datetime, utc_offset: int) -> datetime:
-    return utc_now + timedelta(hours=utc_offset)
+def _get_user_local_datetime(utc_now: datetime, user_obj: Any) -> datetime:
+    return utc_now + timedelta(hours=get_effective_utc_offset(user_obj, utc_now))
 
 
-def _get_user_local_time(utc_now: datetime, utc_offset: int) -> time:
-    return _get_user_local_datetime(utc_now, utc_offset).time()
+def _get_user_local_time(utc_now: datetime, user_obj: Any) -> time:
+    return _get_user_local_datetime(utc_now, user_obj).time()
 
 
 def _is_in_time_window(
@@ -71,7 +72,7 @@ def is_user_in_prompt_window(
     now_utc: datetime,
 ) -> bool:
     """True during the 1-hour window when the bot may send a send-request prompt."""
-    user_local = _get_user_local_time(now_utc, user_obj.utc_offset)
+    user_local = _get_user_local_time(now_utc, user_obj)
     start, end = get_user_window_bounds(user_obj, pic_type)
     return _is_in_time_window(user_local, start, end)
 
@@ -91,7 +92,7 @@ def is_user_in_delivery_period(
     now_utc: datetime,
 ) -> bool:
     """True while morning/evening wishes may be delivered or answered for this user."""
-    user_local = _get_user_local_time(now_utc, user_obj.utc_offset)
+    user_local = _get_user_local_time(now_utc, user_obj)
     morning_start = _window_start_time(user_obj, "morning")
     evening_start = _window_start_time(user_obj, "evening")
 
@@ -112,7 +113,7 @@ def is_wish_period_annulled(
     Unlike :func:`is_delivery_period_expired`, this is False while waiting for
     the delivery period to begin (deferred wishes must be kept until then).
     """
-    user_local = _get_user_local_time(now_utc, user_obj.utc_offset)
+    user_local = _get_user_local_time(now_utc, user_obj)
     morning_start = _window_start_time(user_obj, "morning")
     evening_start = _window_start_time(user_obj, "evening")
 
@@ -131,7 +132,7 @@ def is_deferred_wish_annulled(
     now_utc: datetime,
 ) -> bool:
     """True when a specific deferred wish should be dropped without delivery."""
-    local_dt = _get_user_local_datetime(now_utc, user_obj.utc_offset)
+    local_dt = _get_user_local_datetime(now_utc, user_obj)
     local_date = local_dt.date()
     evening_start = _window_start_time(user_obj, "evening")
     morning_start = _window_start_time(user_obj, "morning")
@@ -178,7 +179,7 @@ def should_defer_wish_delivery(
     now_utc: datetime,
 ) -> bool:
     """True when the recipient's delivery period for pic_type has not started yet."""
-    user_local = _get_user_local_time(now_utc, user_obj.utc_offset)
+    user_local = _get_user_local_time(now_utc, user_obj)
     morning_start = _window_start_time(user_obj, "morning")
     period_start = _window_start_time(user_obj, pic_type)
 
@@ -196,7 +197,7 @@ def is_wish_response_still_valid(
     now_utc: datetime,
 ) -> bool:
     """True while the recipient may still tap «Отправить в ответ» for a given day."""
-    local_dt = _get_user_local_datetime(now_utc, user_obj.utc_offset)
+    local_dt = _get_user_local_datetime(now_utc, user_obj)
     morning_start = _window_start_time(user_obj, "morning")
     evening_start = _window_start_time(user_obj, "evening")
 
