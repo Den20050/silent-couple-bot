@@ -66,24 +66,25 @@ def get_start_cleanup_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def get_mode_keyboard() -> InlineKeyboardMarkup:
+def get_mode_keyboard(*, with_back: bool = False) -> InlineKeyboardMarkup:
     """Get mode selection keyboard."""
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="💬 Часто общаемся",
-                    callback_data="mode_chat",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="💔 Редко",
-                    callback_data="mode_silent",
-                ),
-            ],
-        ]
-    )
+    rows: list[list[InlineKeyboardButton]] = [
+        [
+            InlineKeyboardButton(
+                text="💬 Часто общаемся",
+                callback_data="mode_chat",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="💔 Редко",
+                callback_data="mode_silent",
+            ),
+        ],
+    ]
+    if with_back:
+        rows.append([ButtonTemplates.back_button("menu_back")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def get_policy_keyboard() -> InlineKeyboardMarkup:

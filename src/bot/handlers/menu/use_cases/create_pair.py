@@ -48,7 +48,7 @@ async def handle_create_pair_command(
         # Always show mode selection (same as first time)
         from src.bot.handlers.start.ui.builders import get_mode_keyboard
         
-        return True, get_message("START_MODE_SELECTION_PROMPT"), get_mode_keyboard().model_dump()
+        return True, get_message("START_MODE_SELECTION_PROMPT"), get_mode_keyboard(with_back=True).model_dump()
     except Exception as e:
         logger.error("Error in handle_create_pair_command", error=str(e), exc_info=True)
         return False, get_message("MENU_ERROR"), None

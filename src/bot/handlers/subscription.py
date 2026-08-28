@@ -99,7 +99,12 @@ async def cmd_subscription(
             # Multiple pairs - show info for each
             text = menu_ui.build_multiple_subscriptions_info_message(subscriptions_info)
 
-        await message.answer(text, parse_mode="HTML")
+        keyboard = menu_ui.build_subscription_keyboard()
+        await message.answer(
+            text,
+            reply_markup=keyboard,
+            parse_mode="HTML",
+        )
     except Exception as e:
         logger.error(
             "Error in cmd_subscription", error=str(e), exc_info=True
