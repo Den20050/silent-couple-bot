@@ -617,4 +617,4 @@ test: add unit tests for payment service
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md) — подробное описание архитектуры
 - [README.md](README.md) — общая информация о проекте
-- [BOT_ALGORITHM.md](docs/BOT_ALGORITHM.md) — описание алгоритма работы бота
+- [BOT_FULL_DESCRIPTION.md](docs/BOT_FULL_DESCRIPTION.md) — актуальное полное описание продукта (алгоритм, режимы, цены)
