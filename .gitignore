@@ -61,3 +61,21 @@ alembic/versions/*.pyc
 .DS_Store
 Thumbs.db
 
+# Legacy / WIP folders (kept locally, not tracked)
+/old_code/
+/wip old/
+/wip_new/
+/WIP/
+/server_upgrade_prep/
+
+# Image pool (uploaded to Telegram once via scripts/load_images.py)
+/image/
+
+# Local dumps and stray artifacts
+*.dump
+/_test.pdf
+
+# Office lock/temp files
+~$*
+~WRL*.tmp
+
