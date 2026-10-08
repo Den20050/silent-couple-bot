@@ -321,7 +321,8 @@ async def test_create_payment_for_tariff_success(
         mock_validate_user.return_value = mock_user
         mock_validate_pair.return_value = mock_pair
         mock_validate_sub.return_value = mock_subscription
-        
+        payment_service._is_first_payment_bonus_eligible = AsyncMock(return_value=True)
+
         # Execute
         success, message_text, keyboard = await payment_service.create_payment_for_tariff(
             tg_id=tg_id,

@@ -15,6 +15,7 @@ def _user(**kwargs: object) -> SimpleNamespace:
         "tg_id": 100,
         "username": None,
         "utc_offset": 3,
+        "timezone_name": "Europe/Moscow",
         "morning_window_start_hour": 7,
         "evening_window_start_hour": 21,
     }

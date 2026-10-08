@@ -58,6 +58,7 @@ async def test_should_prompt_user_inside_personal_window() -> None:
     user = SimpleNamespace(
         id=1,
         utc_offset=3,
+        timezone_name="Europe/Moscow",
         morning_window_start_hour=7,
         evening_window_start_hour=21,
     )
@@ -85,6 +86,7 @@ async def test_should_prompt_user_outside_personal_window() -> None:
     user = SimpleNamespace(
         id=1,
         utc_offset=3,
+        timezone_name="Europe/Moscow",
         morning_window_start_hour=8,
         evening_window_start_hour=22,
     )

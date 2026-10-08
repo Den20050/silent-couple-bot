@@ -42,7 +42,7 @@ async def test_sync_user_timezone_updates_user() -> None:
         timezone_name=None,
         utc_offset=3,
     )
-    session = MagicMock()
+    session = AsyncMock()
     repo = SimpleNamespace(
         get_by_tg_id=AsyncMock(return_value=user),
         update_timezone=AsyncMock(return_value=user),

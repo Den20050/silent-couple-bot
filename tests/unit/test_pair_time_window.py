@@ -19,6 +19,7 @@ from src.services.pair_time_window import (
 def _user(*, utc_offset: int = 3, evening_hour: int = 21, morning_hour: int = 7):
     return SimpleNamespace(
         utc_offset=utc_offset,
+        timezone_name="Europe/Moscow",
         morning_window_start_hour=morning_hour,
         evening_window_start_hour=evening_hour,
     )
