@@ -14,9 +14,6 @@ redis==5.2.0
 # Configuration
 pydantic-settings==2.6.1
 
-# Object storage
-minio==7.2.11
-
 # Monitoring
 prometheus-client==0.21.0
 

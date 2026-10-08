@@ -166,12 +166,6 @@ class Settings(BaseSettings):
         description="TTL for currency rates cache in minutes (default: 30)",
     )
 
-    # MinIO
-    minio_endpoint: str
-    minio_access_key: str
-    minio_secret_key: str
-    minio_bucket_pics: str = "pics"
-
     # Environment
     environment: str = "dev"
     log_level: str = "INFO"
