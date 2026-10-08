@@ -1,0 +1,39 @@
+# Normalize line endings: text files stored with LF in the repository
+* text=auto
+
+# Explicit text types
+*.py text
+*.md text
+*.txt text
+*.yml text
+*.yaml text
+*.json text
+*.ini text
+*.toml text
+*.cfg text
+*.conf text
+*.sql text
+*.html text
+*.js text
+*.css text
+*.service text
+*.mako text
+
+# Shell scripts must keep LF (run on Linux servers)
+*.sh text eol=lf
+
+# Windows scripts keep CRLF
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binaries — never touch
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.docx binary
+*.dump binary
+*.tar.gz binary
