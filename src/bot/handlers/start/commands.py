@@ -21,11 +21,9 @@ from src.bot.handlers.start.services.pair_service import (
 )
 from src.bot.handlers.start.start_flow_message import StartFlowMessage
 from src.bot.handlers.start.ui.builders import (
-    get_consent_keyboard,
     get_mode_keyboard,
     get_notif_time_evening_keyboard,
     get_notif_time_morning_keyboard,
-    get_policy_keyboard,
     get_welcome_accept_keyboard,
     get_welcome_next_keyboard,
 )
@@ -448,14 +446,14 @@ async def _continue_onboarding(
     # Users without consent are treated as new users and see welcome messages
     if not user.consent and not all_pairs:
         logger.info(
-            "User has no consent - showing welcome messages (new user)",
+            "User has no consent - showing welcome message (new user)",
             tg_id=tg_id,
         )
-        # Show welcome messages (state was already cleared in cmd_start)
+        # Show welcome message (state was already cleared in cmd_start)
         if state:
             await state.set_state(WelcomeStates.step_1)
         welcome_text = get_message("WELCOME_STEP_1")
-        welcome_keyboard = get_welcome_next_keyboard()
+        welcome_keyboard = get_welcome_accept_keyboard()
         logger.info(
             "Sending welcome step 1",
             tg_id=tg_id,
@@ -706,10 +704,10 @@ async def handle_welcome_accept(
     callback: CallbackQuery,
     session: AsyncSession,
     state: FSMContext,
-    bot_provider: BotProvider,
-    messenger: TelegramMessenger,
+    bot_provider: BotProvider,  # noqa: ARG001
+    messenger: TelegramMessenger,  # noqa: ARG001
 ) -> None:
-    """Handle welcome accept button - proceed to policy and consent."""
+    """Handle welcome accept button - record consent and show mode selection."""
     logger.info(
         "Welcome accept callback received",
         tg_id=callback.from_user.id,
@@ -718,28 +716,24 @@ async def handle_welcome_accept(
     # Clear welcome state
     await state.clear()
 
-    # Get user
-    users_repo = UsersRepository(session)
-    user = await users_repo.get_by_tg_id(callback.from_user.id)
+    # The button label promises accepting the agreement - record consent here
+    consent_ip = getattr(callback.message, "ip", None)
+    user = await update_user_consent(
+        tg_id=callback.from_user.id,
+        session=session,
+        consent_ip=consent_ip,
+    )
 
     if not user:
-        await callback.answer("Ошибка: пользователь не найден", show_alert=True)
+        logger.error("Failed to save consent", tg_id=callback.from_user.id)
+        await callback.answer(get_message("START_CONSENT_SAVE_ERROR"), show_alert=True)
         return
 
-    # Show policy and consent (current flow)
-    await callback.message.edit_text(
-        get_message("START_WELCOME"),
-        reply_markup=get_policy_keyboard(),
-    )
+    logger.info("Consent saved from welcome screen", tg_id=callback.from_user.id)
 
-    # Check if this is invite link flow
-    callback_data = f"consent_{user.id}"
-
-    await callback.message.answer(
-        get_message("START_CONSENT_PROMPT"),
-        reply_markup=get_consent_keyboard(callback_data),
-    )
-    await callback.answer()
+    await callback.answer(get_message("START_CONSENT_ACCEPTED"))
+    await callback.message.edit_text(get_message("START_MODE_SELECTION_PROMPT"))
+    await callback.message.edit_reply_markup(reply_markup=get_mode_keyboard())
 
 
 @handle_errors(error_key="START_ERROR", show_alert=True)
