@@ -227,143 +227,14 @@ class RobokassaService(PaymentProvider):
             return None
 
         try:
-            # Generate unique InvId (invoice number)
-            # Robokassa requires InvId to be:
-            # - Numeric only (digits only, no letters or special characters)
-            # - Unique for each payment
-            # - Maximum 10 digits recommended
-            # - Must not start with zero
-            # Format: last 7 digits of timestamp + pair_id (max 3 digits) + random (1 digit)
-            # This ensures max 10 digits and uniqueness
-            # We also check Redis to guarantee uniqueness
-            max_attempts = 10
-            inv_id = None
+            inv_id = await self._generate_inv_id(pair_id)
 
-            for attempt in range(max_attempts):
-                timestamp_part = (
-                    int(time.time()) % 10000000
-                )  # Last 7 digits of timestamp (ensures uniqueness for ~115 days)
-                pair_part = pair_id % 1000  # Limit pair_id to 3 digits (max 999 pairs)
-                random_part = random.randint(
-                    1, 9
-                )  # 1 random digit (1-9, not 0 to avoid leading zero)
-                candidate_id = str(timestamp_part * 1000 + pair_part * 10 + random_part)
+            out_sum = self._format_out_sum(amount, currency)
 
-                # Ensure InvId is exactly what we expect (should be 10 digits max)
-                if len(candidate_id) > 10:
-                    # Fallback: use simpler format if somehow too long
-                    candidate_id = str(
-                        int(time.time()) % 1000000000
-                    )  # Last 9 digits of timestamp
-                    if len(candidate_id) < 10:
-                        candidate_id = candidate_id + str(
-                            random.randint(1, 9)
-                        )  # Add random digit to make it 10 digits
-
-                # Validate InvId format
-                if not candidate_id.isdigit():
-                    continue  # Try again
-
-                if candidate_id.startswith("0"):
-                    continue  # Try again
-
-                # Check uniqueness via Redis (if available)
-                if self.redis:
-                    redis_key = f"robokassa:inv_id:{candidate_id}"
-                    # Try to set with NX (only if not exists) and EX (expire in 24 hours)
-                    # This ensures InvId is unique within 24 hours
-                    is_unique = await self.redis.set(redis_key, "1", nx=True, ex=86400)
-                    if not is_unique:
-                        logger.warning(
-                            "InvId collision detected, regenerating",
-                            inv_id=candidate_id,
-                            attempt=attempt + 1,
-                            pair_id=pair_id,
-                        )
-                        continue  # Try again with different random part
-
-                inv_id = candidate_id
-                break
-
-            # Fallback if all attempts failed (should never happen, but safety check)
-            if not inv_id:
-                logger.error(
-                    "Failed to generate unique InvId after max attempts",
-                    max_attempts=max_attempts,
-                    pair_id=pair_id,
-                )
-                # Last resort: use timestamp + microseconds + random
-                inv_id = str(int(time.time() * 1000000) % 1000000000)
-                if len(inv_id) < 10:
-                    inv_id = inv_id + str(random.randint(1, 9))
-                if inv_id.startswith("0"):
-                    inv_id = "1" + inv_id[1:]
-
-            # Log InvId for debugging
-            logger.info(
-                "InvId generated for payment",
-                inv_id=inv_id,
-                inv_id_type=type(inv_id).__name__,
-                inv_id_length=len(inv_id),
-                pair_id=pair_id,
-                is_numeric=inv_id.isdigit(),
-            )
-
-            # Convert amount from smallest unit to main currency
-            from src.core.constants import SUPPORTED_CURRENCIES
-
-            currency_info = SUPPORTED_CURRENCIES.get(
-                currency, SUPPORTED_CURRENCIES["RUB"]
-            )
-            decimals = currency_info["decimals"]
-            divisor = 10**decimals
-            # Format amount for Robokassa
-            # Robokassa requires OutSum to be a number with dot as decimal separator
-            # CRITICAL: Format must always be "299.00" (with dot, exactly 2 decimal places)
-            # - Must use dot (.) as decimal separator, not comma
-            # - Always use 2 decimal places for RUB (e.g., "299.00", not "299")
-            amount_decimal = amount / divisor
-
-            if decimals > 0:
-                # Format with fixed decimals (e.g., "299.00" for RUB with 2 decimals)
-                # Always use full format with trailing zeros (e.g., "299.00" not "299")
-                out_sum = f"{amount_decimal:.{decimals}f}"
-            else:
-                # For currencies without decimals, format as integer with .00
-                out_sum = f"{int(amount_decimal)}.00"
-
-            # Robokassa test mode nuance:
-            # Documentation notes that for test payments OutSum is passed as an integer
-            # without a fractional part. If we send "299.00" in test mode, Robokassa may
-            # normalize it to "299" when validating SignatureValue, causing error 29.
-            if not self.settings.robokassa_is_production:
-                out_sum = str(int(round(amount_decimal)))
-
-            # Ensure out_sum is not empty and is valid
-            if not out_sum or not out_sum.replace(".", "").isdigit():
-                logger.error(
-                    "Invalid OutSum after formatting",
-                    out_sum=out_sum,
-                    amount=amount,
-                    amount_decimal=amount_decimal,
-                )
-                # Fallback to simple format
-                out_sum = str(amount_decimal)
-
-            # Log formatted values for debugging
-            logger.debug(
-                "Payment amount formatted",
-                amount_original=amount,
-                amount_decimal=amount_decimal,
-                out_sum=out_sum,
-                currency=currency,
-                decimals=decimals,
-            )
-
-            # Prepare Shp_ parameters
-            # These will be returned back to us in ResultURL (webhook).
-            # IMPORTANT: If Shp_ parameters are sent, Robokassa expects them to be included
-            # in SignatureValue (sorted by key) when robokassa_include_shp_in_signature=true.
+            # Shp_ parameters are returned back to us in the ResultURL webhook.
+            # IMPORTANT: If Shp_ parameters are sent, Robokassa expects them to
+            # be included in SignatureValue (sorted by key) when
+            # robokassa_include_shp_in_signature=true.
             shp_params = {
                 "Shp_currency": currency,
                 "Shp_is_lifetime": "true" if is_lifetime else "false",
@@ -371,239 +242,27 @@ class RobokassaService(PaymentProvider):
                 "Shp_period_days": str(period_days) if not is_lifetime else "0",
             }
 
-            # Generate payment signature
-            # According to Robokassa docs example: MerchantLogin:OutSum:InvId:Password#1
-            # For non-RUB: MerchantLogin:OutSum:InvId:Currency:Password#1
-            # Shp_ parameters should be added AFTER password if used
-            # Log values before signature generation for debugging
-            logger.info(
-                "Generating payment signature",
-                merchant_login=self.settings.robokassa_merchant_login,
+            signature = self._payment_signature(out_sum, inv_id, currency, shp_params)
+
+            payment_url = self._build_payment_url(
                 out_sum=out_sum,
-                out_sum_type=type(out_sum).__name__,
                 inv_id=inv_id,
-                inv_id_type=type(inv_id).__name__,
-                currency=currency,
-                is_production=self.settings.robokassa_is_production,
+                signature=signature,
                 shp_params=shp_params,
-                include_shp_in_signature=self.settings.robokassa_include_shp_in_signature,
-                shp_kv_separator=self.settings.robokassa_shp_kv_separator,
-                signature_format="MD5 (Robokassa standard)",
-            )
-
-            # Warning if using production password in test mode or vice versa
-            if not self.settings.robokassa_is_production:
-                logger.warning(
-                    "Using TEST mode - ensure you're using TEST passwords from Robokassa dashboard",
-                    merchant_login=self.settings.robokassa_merchant_login,
-                )
-
-            # Generate signature following Robokassa docs format
-            # Base format: MerchantLogin:OutSum:InvId:Password#1
-            # With currency: MerchantLogin:OutSum:InvId:Currency:Password#1
-            # With Shp_: MerchantLogin:OutSum:InvId:Password#1:Shp_currency=RUB:Shp_is_lifetime=false:Shp_pair_id=2:Shp_period_days=30
-            # CRITICAL: Shp_ parameters MUST be sorted alphabetically
-            # Format: :Shp_key=value (colon separator, NO colon at the end)
-            # IMPORTANT: Strip password to remove any leading/trailing whitespace
-            password_1 = self.settings.robokassa_password_1.strip()
-            if password_1 != self.settings.robokassa_password_1:
-                logger.warning(
-                    "Password #1 had leading/trailing whitespace - stripped",
-                    original_length=len(self.settings.robokassa_password_1),
-                    stripped_length=len(password_1),
-                )
-
-            signature = self._generate_payment_signature(
-                merchant_login=self.settings.robokassa_merchant_login,
-                out_sum=out_sum,
-                inv_id=inv_id,
-                password=password_1,  # Password #1 for payment (stripped)
-                currency=currency,
-                shp_params=(
-                    shp_params
-                    if self.settings.robokassa_include_shp_in_signature
-                    else None
-                ),
-                shp_kv_separator=self.settings.robokassa_shp_kv_separator,
-            )
-
-            logger.info(
-                "Payment signature generated",
-                signature=signature,
-                signature_length=len(signature),
-            )
-
-            # Build payment URL
-            # Test and production URLs are the same for Robokassa
-            # Domain can be robokassa.ru, robokassa.kz, or robokassa.com
-            base_url = (
-                f"https://auth.{self.settings.robokassa_domain}/Merchant/Index.aspx"
-            )
-
-            # Build URL parameters
-            # CRITICAL: SuccessURL, Culture, Encoding, IsTest are added to URL
-            # but MUST NOT be included in signature calculation!
-            # IMPORTANT: Desc is URL-encoded automatically by urlencode()
-            # Robokassa expects UTF-8 encoding for Desc parameter
-            params = {
-                # Robokassa classic parameter names:
-                # - MrchLogin (merchant login)
-                # - Desc (payment description)
-                "MrchLogin": self.settings.robokassa_merchant_login,
-                "OutSum": out_sum,
-                "InvId": inv_id,
-                "Desc": f"Подписка Silent Couple Bot (пара {pair_id})",
-                "SignatureValue": signature,
-                "Culture": "ru",  # NOT in signature!
-                "Encoding": "utf-8",  # NOT in signature!
-            }
-
-            # ResultURL: prefer explicit setting, otherwise derive from webhook_url.
-            result_url = self.settings.robokassa_result_url
-            if not result_url and self.settings.webhook_url:
-                base = self.settings.webhook_url.rsplit("/", 1)[0]
-                result_url = f"{base}/robokassa"
-            if result_url:
-                params["ResultURL"] = result_url
-
-            # Success/Fail URLs for returning user back to bot (not in signature).
-            if return_url:
-                params["SuccessURL"] = return_url
-                params["FailURL"] = return_url
-
-            # Validate critical parameters before building URL
-            if not self.settings.robokassa_merchant_login:
-                logger.error("MrchLogin is empty")
-                raise ValueError("MrchLogin cannot be empty")
-            if not out_sum or not out_sum.replace(".", "").isdigit():
-                logger.error("Invalid OutSum format", out_sum=out_sum)
-                raise ValueError(f"Invalid OutSum format: {out_sum}")
-            if not inv_id or not inv_id.isdigit():
-                logger.error("Invalid InvId format", inv_id=inv_id)
-                raise ValueError(f"Invalid InvId format: {inv_id}")
-            if not signature:
-                logger.error("Signature is empty")
-                raise ValueError("Signature cannot be empty")
-
-            # Add IsTest parameter for test mode
-            # This is required for test payments in Robokassa
-            # CRITICAL: IsTest is NOT included in signature!
-            # IMPORTANT: IsTest must be "1" (string) for test mode, omitted for production
-            if not self.settings.robokassa_is_production:
-                params["IsTest"] = "1"
-                logger.info(
-                    "Added IsTest=1 parameter for test mode",
-                    is_production=self.settings.robokassa_is_production,
-                )
-            else:
-                logger.info(
-                    "Production mode - IsTest parameter NOT added",
-                    is_production=self.settings.robokassa_is_production,
-                )
-
-            # OutSumCurrency only for non-RUB currencies
-            # For RUB, this parameter should not be sent (causes 500 error)
-            if currency != "RUB":
-                params["OutSumCurrency"] = currency
-
-            # Add Shp_ parameters to URL
-            # These will be returned in ResultURL webhook
-            # NOTE: Shp_ are included in SignatureValue depending on settings.
-            params.update(shp_params)
-
-            # IMPORTANT: Do NOT sort parameters alphabetically for URL
-            # Robokassa may expect parameters in a specific order
-            # Sorting is only needed for Shp_ parameters in signature (already done)
-            # Keep original order for URL parameters
-            # urlencode() handles URL encoding automatically (including UTF-8 for Description)
-            # Note: Shp_ parameters ARE included in signature (already done above)
-            # But they are also added to URL parameters
-
-            # Use urlencode with doseq=False to ensure proper encoding
-            # doseq=False means each value is treated as a single string
-            # Keep parameters in the order they were added (not sorted)
-            payment_url = f"{base_url}?{urlencode(params, doseq=False)}"
-
-            # Log final URL for debugging (truncated for security)
-            logger.debug(
-                "Final payment URL (truncated)",
-                url_length=len(payment_url),
-                url_preview=(
-                    payment_url[:200] + "..." if len(payment_url) > 200 else payment_url
-                ),
-            )
-
-            # Log payment URL for debugging (without sensitive data)
-            logger.info(
-                "Robokassa payment URL generated",
                 pair_id=pair_id,
-                inv_id=inv_id,
-                inv_id_type=type(inv_id).__name__,
-                out_sum=out_sum,
-                out_sum_type=type(out_sum).__name__,
+                return_url=return_url,
                 currency=currency,
-                has_out_sum_currency=currency != "RUB",
-                merchant_login=self.settings.robokassa_merchant_login,
-                signature=signature,
-                signature_length=len(signature),
-                params_count=len(params),
-                params_keys=list(params.keys()),  # Keep original order, not sorted
-                shp_params=[k for k in params.keys() if k.startswith("Shp_")],
-                payment_url_preview=(
-                    payment_url[:300] + "..." if len(payment_url) > 300 else payment_url
-                ),
             )
 
-            # Log actual parameter values for debugging (except password)
-            logger.debug(
-                "Payment URL parameters",
-                MrchLogin=params.get("MrchLogin"),
-                OutSum=params.get("OutSum"),
-                InvId=params.get("InvId"),
-                SignatureValue=(
-                    signature[:20] + "..." if len(signature) > 20 else signature
-                ),
-                Culture=params.get("Culture"),
-                Encoding=params.get("Encoding"),
-                IsTest=params.get("IsTest"),
-                OutSumCurrency=params.get("OutSumCurrency"),
-                SuccessURL=params.get("SuccessURL"),
-                Shp_params=shp_params,
-            )
-            logger.info(
-                "Robokassa payment link created",
+            self._log_payment_created(
+                payment_url=payment_url,
+                signature=signature,
+                shp_params=shp_params,
                 pair_id=pair_id,
                 inv_id=inv_id,
                 amount=amount,
-                payment_url_length=len(payment_url),
-                payment_url_full=payment_url,  # Full URL for manual testing - copy this and test in browser
-                # Log key parameters for manual verification
-                manual_verification_hint={
-                    "expected_signature_base": (
-                        f"{self.settings.robokassa_merchant_login}:{out_sum}:{inv_id}"
-                        + (f":{currency}" if currency != "RUB" else "")
-                        + ":***PASSWORD***"
-                    ),
-                    "expected_signature_shp_sorted": [
-                        f"{k}={v}" for k, v in sorted(shp_params.items())
-                    ],
-                    "actual_signature": signature,
-                    "merchant_login": self.settings.robokassa_merchant_login,
-                    "out_sum": out_sum,
-                    "inv_id": inv_id,
-                    "shp_params_sorted": sorted(shp_params.items()),
-                    "troubleshooting_checklist": [
-                        "✅ Signature calculated correctly (verified with test script)",
-                        f"✅ IsTest={'1' if not self.settings.robokassa_is_production else 'NOT SET'} (test mode)",
-                        "✅ OutSum format: 299.00 (with dot, 2 decimals)",
-                        "✅ Shp_ parameters sorted alphabetically in signature",
-                        "⚠️  Check Robokassa dashboard: MD5 algorithm selected?",
-                        "⚠️  Check Robokassa dashboard: Test Password #1 matches .env?",
-                        "⚠️  Check Robokassa dashboard: Merchant Login matches?",
-                        "⚠️  Try copying full URL from logs and testing manually in browser",
-                        "⚠️  Contact Robokassa support with full URL if error persists",
-                    ],
-                },
+                out_sum=out_sum,
+                currency=currency,
             )
 
             await self.circuit_breaker.record_success()
@@ -627,6 +286,397 @@ class RobokassaService(PaymentProvider):
                 error=str(e),
             )
             return None
+
+    async def _generate_inv_id(self, pair_id: int) -> str:
+        """Generate a unique numeric InvId (invoice number).
+
+        Robokassa requires InvId to be:
+        - Numeric only (digits only, no letters or special characters)
+        - Unique for each payment
+        - Maximum 10 digits recommended
+        - Must not start with zero
+
+        Format: last 7 digits of timestamp + pair_id (max 3 digits) + random (1 digit)
+        This ensures max 10 digits and uniqueness.
+        Redis (when available) is used to guarantee uniqueness within 24 hours.
+        """
+        max_attempts = 10
+        inv_id = None
+
+        for attempt in range(max_attempts):
+            timestamp_part = (
+                int(time.time()) % 10000000
+            )  # Last 7 digits of timestamp (ensures uniqueness for ~115 days)
+            pair_part = pair_id % 1000  # Limit pair_id to 3 digits (max 999 pairs)
+            random_part = random.randint(
+                1, 9
+            )  # 1 random digit (1-9, not 0 to avoid leading zero)
+            candidate_id = str(timestamp_part * 1000 + pair_part * 10 + random_part)
+
+            # Ensure InvId is exactly what we expect (should be 10 digits max)
+            if len(candidate_id) > 10:
+                # Fallback: use simpler format if somehow too long
+                candidate_id = str(
+                    int(time.time()) % 1000000000
+                )  # Last 9 digits of timestamp
+                if len(candidate_id) < 10:
+                    candidate_id = candidate_id + str(
+                        random.randint(1, 9)
+                    )  # Add random digit to make it 10 digits
+
+            # Validate InvId format
+            if not candidate_id.isdigit():
+                continue  # Try again
+
+            if candidate_id.startswith("0"):
+                continue  # Try again
+
+            # Check uniqueness via Redis (if available)
+            if self.redis:
+                redis_key = f"robokassa:inv_id:{candidate_id}"
+                # Try to set with NX (only if not exists) and EX (expire in 24 hours)
+                # This ensures InvId is unique within 24 hours
+                is_unique = await self.redis.set(redis_key, "1", nx=True, ex=86400)
+                if not is_unique:
+                    logger.warning(
+                        "InvId collision detected, regenerating",
+                        inv_id=candidate_id,
+                        attempt=attempt + 1,
+                        pair_id=pair_id,
+                    )
+                    continue  # Try again with different random part
+
+            inv_id = candidate_id
+            break
+
+        # Fallback if all attempts failed (should never happen, but safety check)
+        if not inv_id:
+            logger.error(
+                "Failed to generate unique InvId after max attempts",
+                max_attempts=max_attempts,
+                pair_id=pair_id,
+            )
+            # Last resort: use timestamp + microseconds + random
+            inv_id = str(int(time.time() * 1000000) % 1000000000)
+            if len(inv_id) < 10:
+                inv_id = inv_id + str(random.randint(1, 9))
+            if inv_id.startswith("0"):
+                inv_id = "1" + inv_id[1:]
+
+        # Log InvId for debugging
+        logger.info(
+            "InvId generated for payment",
+            inv_id=inv_id,
+            inv_id_type=type(inv_id).__name__,
+            inv_id_length=len(inv_id),
+            pair_id=pair_id,
+            is_numeric=inv_id.isdigit(),
+        )
+
+        return inv_id
+
+    def _format_out_sum(self, amount: int, currency: str) -> str:
+        """Format amount (smallest currency unit) for Robokassa.
+
+        Robokassa requires OutSum to be a number with dot as decimal separator.
+        CRITICAL: Format must always be "299.00" (with dot, exactly 2 decimal places)
+        for production. In test mode Robokassa expects an integer without a
+        fractional part, otherwise it may normalize "299.00" to "299" when
+        validating SignatureValue, causing error 29.
+        """
+        from src.core.constants import SUPPORTED_CURRENCIES
+
+        currency_info = SUPPORTED_CURRENCIES.get(currency, SUPPORTED_CURRENCIES["RUB"])
+        decimals = currency_info["decimals"]
+        divisor = 10**decimals
+        amount_decimal = amount / divisor
+
+        if decimals > 0:
+            # Format with fixed decimals (e.g., "299.00" for RUB with 2 decimals)
+            # Always use full format with trailing zeros (e.g., "299.00" not "299")
+            out_sum = f"{amount_decimal:.{decimals}f}"
+        else:
+            # For currencies without decimals, format as integer with .00
+            out_sum = f"{int(amount_decimal)}.00"
+
+        if not self.settings.robokassa_is_production:
+            out_sum = str(int(round(amount_decimal)))
+
+        # Ensure out_sum is not empty and is valid
+        if not out_sum or not out_sum.replace(".", "").isdigit():
+            logger.error(
+                "Invalid OutSum after formatting",
+                out_sum=out_sum,
+                amount=amount,
+                amount_decimal=amount_decimal,
+            )
+            # Fallback to simple format
+            out_sum = str(amount_decimal)
+
+        logger.debug(
+            "Payment amount formatted",
+            amount_original=amount,
+            amount_decimal=amount_decimal,
+            out_sum=out_sum,
+            currency=currency,
+            decimals=decimals,
+        )
+
+        return out_sum
+
+    def _payment_signature(
+        self, out_sum: str, inv_id: str, currency: str, shp_params: dict
+    ) -> str:
+        """Generate the payment (URL) signature following Robokassa docs format.
+
+        Base format: MerchantLogin:OutSum:InvId:Password#1
+        With currency: MerchantLogin:OutSum:InvId:Currency:Password#1
+        With Shp_: MerchantLogin:OutSum:InvId:Password#1:Shp_currency=RUB:...
+
+        CRITICAL: Shp_ parameters MUST be sorted alphabetically.
+        """
+        # Log values before signature generation for debugging
+        logger.info(
+            "Generating payment signature",
+            merchant_login=self.settings.robokassa_merchant_login,
+            out_sum=out_sum,
+            out_sum_type=type(out_sum).__name__,
+            inv_id=inv_id,
+            inv_id_type=type(inv_id).__name__,
+            currency=currency,
+            is_production=self.settings.robokassa_is_production,
+            shp_params=shp_params,
+            include_shp_in_signature=self.settings.robokassa_include_shp_in_signature,
+            shp_kv_separator=self.settings.robokassa_shp_kv_separator,
+            signature_format="MD5 (Robokassa standard)",
+        )
+
+        # Warning if using production password in test mode or vice versa
+        if not self.settings.robokassa_is_production:
+            logger.warning(
+                "Using TEST mode - ensure you're using TEST passwords from Robokassa dashboard",
+                merchant_login=self.settings.robokassa_merchant_login,
+            )
+
+        # IMPORTANT: Strip password to remove any leading/trailing whitespace
+        password_1 = self.settings.robokassa_password_1.strip()
+        if password_1 != self.settings.robokassa_password_1:
+            logger.warning(
+                "Password #1 had leading/trailing whitespace - stripped",
+                original_length=len(self.settings.robokassa_password_1),
+                stripped_length=len(password_1),
+            )
+
+        signature = self._generate_payment_signature(
+            merchant_login=self.settings.robokassa_merchant_login,
+            out_sum=out_sum,
+            inv_id=inv_id,
+            password=password_1,  # Password #1 for payment (stripped)
+            currency=currency,
+            shp_params=(
+                shp_params if self.settings.robokassa_include_shp_in_signature else None
+            ),
+            shp_kv_separator=self.settings.robokassa_shp_kv_separator,
+        )
+
+        logger.info(
+            "Payment signature generated",
+            signature=signature,
+            signature_length=len(signature),
+        )
+
+        return signature
+
+    def _build_payment_url(
+        self,
+        out_sum: str,
+        inv_id: str,
+        signature: str,
+        shp_params: dict,
+        pair_id: int,
+        return_url: str,
+        currency: str,
+    ) -> str:
+        """Build the Robokassa payment URL.
+
+        CRITICAL: SuccessURL, Culture, Encoding, IsTest are added to the URL
+        but MUST NOT be included in the signature calculation!
+        """
+        # Test and production URLs are the same for Robokassa
+        # Domain can be robokassa.ru, robokassa.kz, or robokassa.com
+        base_url = f"https://auth.{self.settings.robokassa_domain}/Merchant/Index.aspx"
+
+        # Build URL parameters.
+        # Desc is URL-encoded automatically by urlencode(); Robokassa expects
+        # UTF-8 encoding for the Desc parameter.
+        params = {
+            # Robokassa classic parameter names:
+            # - MrchLogin (merchant login)
+            # - Desc (payment description)
+            "MrchLogin": self.settings.robokassa_merchant_login,
+            "OutSum": out_sum,
+            "InvId": inv_id,
+            "Desc": f"Подписка Silent Couple Bot (пара {pair_id})",
+            "SignatureValue": signature,
+            "Culture": "ru",  # NOT in signature!
+            "Encoding": "utf-8",  # NOT in signature!
+        }
+
+        # ResultURL: prefer explicit setting, otherwise derive from webhook_url.
+        result_url = self.settings.robokassa_result_url
+        if not result_url and self.settings.webhook_url:
+            base = self.settings.webhook_url.rsplit("/", 1)[0]
+            result_url = f"{base}/robokassa"
+        if result_url:
+            params["ResultURL"] = result_url
+
+        # Success/Fail URLs for returning user back to bot (not in signature).
+        if return_url:
+            params["SuccessURL"] = return_url
+            params["FailURL"] = return_url
+
+        # Validate critical parameters before building URL
+        if not self.settings.robokassa_merchant_login:
+            logger.error("MrchLogin is empty")
+            raise ValueError("MrchLogin cannot be empty")
+        if not out_sum or not out_sum.replace(".", "").isdigit():
+            logger.error("Invalid OutSum format", out_sum=out_sum)
+            raise ValueError(f"Invalid OutSum format: {out_sum}")
+        if not inv_id or not inv_id.isdigit():
+            logger.error("Invalid InvId format", inv_id=inv_id)
+            raise ValueError(f"Invalid InvId format: {inv_id}")
+        if not signature:
+            logger.error("Signature is empty")
+            raise ValueError("Signature cannot be empty")
+
+        # Add IsTest parameter for test mode.
+        # This is required for test payments in Robokassa.
+        # CRITICAL: IsTest is NOT included in signature!
+        # IsTest must be "1" (string) for test mode, omitted for production.
+        if not self.settings.robokassa_is_production:
+            params["IsTest"] = "1"
+            logger.info(
+                "Added IsTest=1 parameter for test mode",
+                is_production=self.settings.robokassa_is_production,
+            )
+        else:
+            logger.info(
+                "Production mode - IsTest parameter NOT added",
+                is_production=self.settings.robokassa_is_production,
+            )
+
+        # OutSumCurrency only for non-RUB currencies
+        # For RUB, this parameter should not be sent (causes 500 error)
+        if currency != "RUB":
+            params["OutSumCurrency"] = currency
+
+        # Add Shp_ parameters to URL.
+        # These will be returned in ResultURL webhook.
+        # NOTE: Shp_ are included in SignatureValue depending on settings,
+        # but they are also always added to the URL parameters.
+        params.update(shp_params)
+
+        # IMPORTANT: Do NOT sort parameters alphabetically for URL.
+        # Keep original order; urlencode() handles URL encoding automatically
+        # (including UTF-8 for Description).
+        payment_url = f"{base_url}?{urlencode(params, doseq=False)}"
+
+        # Log final URL for debugging (truncated for security)
+        logger.debug(
+            "Final payment URL (truncated)",
+            url_length=len(payment_url),
+            url_preview=(
+                payment_url[:200] + "..." if len(payment_url) > 200 else payment_url
+            ),
+        )
+
+        # Log payment URL for debugging (without sensitive data)
+        logger.info(
+            "Robokassa payment URL generated",
+            pair_id=pair_id,
+            inv_id=inv_id,
+            inv_id_type=type(inv_id).__name__,
+            out_sum=out_sum,
+            out_sum_type=type(out_sum).__name__,
+            currency=currency,
+            has_out_sum_currency=currency != "RUB",
+            merchant_login=self.settings.robokassa_merchant_login,
+            signature=signature,
+            signature_length=len(signature),
+            params_count=len(params),
+            params_keys=list(params.keys()),  # Keep original order, not sorted
+            shp_params=[k for k in params.keys() if k.startswith("Shp_")],
+            payment_url_preview=(
+                payment_url[:300] + "..." if len(payment_url) > 300 else payment_url
+            ),
+        )
+
+        # Log actual parameter values for debugging (except password)
+        logger.debug(
+            "Payment URL parameters",
+            MrchLogin=params.get("MrchLogin"),
+            OutSum=params.get("OutSum"),
+            InvId=params.get("InvId"),
+            SignatureValue=(
+                signature[:20] + "..." if len(signature) > 20 else signature
+            ),
+            Culture=params.get("Culture"),
+            Encoding=params.get("Encoding"),
+            IsTest=params.get("IsTest"),
+            OutSumCurrency=params.get("OutSumCurrency"),
+            SuccessURL=params.get("SuccessURL"),
+            Shp_params=shp_params,
+        )
+
+        return payment_url
+
+    def _log_payment_created(
+        self,
+        payment_url: str,
+        signature: str,
+        shp_params: dict,
+        pair_id: int,
+        inv_id: str,
+        amount: int,
+        out_sum: str,
+        currency: str,
+    ) -> None:
+        """Log the created payment link with manual verification hints."""
+        logger.info(
+            "Robokassa payment link created",
+            pair_id=pair_id,
+            inv_id=inv_id,
+            amount=amount,
+            payment_url_length=len(payment_url),
+            payment_url_full=payment_url,  # Full URL for manual testing - copy this and test in browser
+            # Log key parameters for manual verification
+            manual_verification_hint={
+                "expected_signature_base": (
+                    f"{self.settings.robokassa_merchant_login}:{out_sum}:{inv_id}"
+                    + (f":{currency}" if currency != "RUB" else "")
+                    + ":***PASSWORD***"
+                ),
+                "expected_signature_shp_sorted": [
+                    f"{k}={v}" for k, v in sorted(shp_params.items())
+                ],
+                "actual_signature": signature,
+                "merchant_login": self.settings.robokassa_merchant_login,
+                "out_sum": out_sum,
+                "inv_id": inv_id,
+                "shp_params_sorted": sorted(shp_params.items()),
+                "troubleshooting_checklist": [
+                    "✅ Signature calculated correctly (verified with test script)",
+                    f"✅ IsTest={'1' if not self.settings.robokassa_is_production else 'NOT SET'} (test mode)",
+                    "✅ OutSum format: 299.00 (with dot, 2 decimals)",
+                    "✅ Shp_ parameters sorted alphabetically in signature",
+                    "⚠️  Check Robokassa dashboard: MD5 algorithm selected?",
+                    "⚠️  Check Robokassa dashboard: Test Password #1 matches .env?",
+                    "⚠️  Check Robokassa dashboard: Merchant Login matches?",
+                    "⚠️  Try copying full URL from logs and testing manually in browser",
+                    "⚠️  Contact Robokassa support with full URL if error persists",
+                ],
+            },
+        )
 
     async def verify_webhook(
         self,
