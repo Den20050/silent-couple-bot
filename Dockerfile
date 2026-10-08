@@ -28,9 +28,9 @@ COPY . .
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-# Health check for bot
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import sys; sys.exit(0)" || exit 1
+# Health check for bot (Telegram API reachability)
+HEALTHCHECK --interval=30s --timeout=15s --start-period=40s --retries=3 \
+    CMD ["python", "deploy/healthcheck_bot.py"]
 
 # Run bot
 CMD ["python", "-m", "src.entrypoints.bot"]
@@ -45,9 +45,9 @@ COPY . .
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-# Health check for worker
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import sys; sys.exit(0)" || exit 1
+# Health check for worker (Redis PING)
+HEALTHCHECK --interval=30s --timeout=15s --start-period=40s --retries=3 \
+    CMD ["python", "deploy/healthcheck_worker.py"]
 
 # Run worker
 CMD ["python", "-m", "src.entrypoints.worker"]
@@ -62,9 +62,9 @@ COPY . .
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import sys; sys.exit(0)" || exit 1
+# Health check (bot and worker dependencies)
+HEALTHCHECK --interval=30s --timeout=15s --start-period=40s --retries=3 \
+    CMD python deploy/healthcheck_bot.py && python deploy/healthcheck_worker.py
 
 # Run combined (bot + worker)
 CMD ["python", "run.py"]

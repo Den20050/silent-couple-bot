@@ -18,11 +18,11 @@ services:
       PYTHONUNBUFFERED: 1
     env_file:
       - .env
-    # Health check
+    # Health check (Telegram API reachability)
     healthcheck:
-      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      test: ["CMD", "python", "deploy/healthcheck_bot.py"]
       interval: 30s
-      timeout: 10s
+      timeout: 15s
       start_period: 40s
       retries: 3
     # Logging
@@ -53,11 +53,11 @@ services:
       PYTHONUNBUFFERED: 1
     env_file:
       - .env
-    # Health check
+    # Health check (Redis PING)
     healthcheck:
-      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      test: ["CMD", "python", "deploy/healthcheck_worker.py"]
       interval: 30s
-      timeout: 10s
+      timeout: 15s
       start_period: 40s
       retries: 3
     # Logging
