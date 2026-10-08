@@ -183,10 +183,20 @@ def get_welcome_next_keyboard() -> InlineKeyboardMarkup:
 
 
 def get_welcome_accept_keyboard(start_param: str | None = None) -> InlineKeyboardMarkup:
-    """Get welcome accept button keyboard (keeps invite start_param for later)."""
+    """Get welcome accept keyboard: legal document links + accept button."""
     callback_data = f"welcome_accept_{start_param}" if start_param else "welcome_accept"
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=get_message("PAY_OFFER_BUTTON"),
+                    url="https://www.24policybot.ru/legal",
+                ),
+                InlineKeyboardButton(
+                    text=get_message("START_POLICY_BUTTON"),
+                    url="https://www.24policybot.ru/privacy",
+                ),
+            ],
             [
                 InlineKeyboardButton(
                     text=get_message("WELCOME_ACCEPT_BUTTON"),
