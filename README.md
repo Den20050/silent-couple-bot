@@ -251,7 +251,7 @@ handlers/{handler_name}/
 └── validators.py          # Валидация
 ```
 
-**Подробнее**: См. [ARCHITECTURE.md](docs/ARCHITECTURE.md) и [CONTRIBUTING.md](CONTRIBUTING.md)
+**Подробнее**: См. [BOT_FULL_DESCRIPTION.md](docs/BOT_FULL_DESCRIPTION.md) (актуальное полное описание продукта), [ARCHITECTURE.md](docs/ARCHITECTURE.md) и [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ### База данных
 
