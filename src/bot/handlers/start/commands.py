@@ -100,18 +100,7 @@ async def handle_start_logic(
         await send_error_to_user(message)
         return
 
-    # Set Menu Button for this user
-    try:
-        bot = bot_provider.get_bot()
-        menu_button = MenuButtonCommands()
-        await bot.set_chat_menu_button(chat_id=message.chat.id, menu_button=menu_button)
-        logger.info(
-            "Menu button set for user",
-            tg_id=tg_id,
-            chat_id=message.chat.id,
-        )
-    except Exception as e:
-        logger.warning("Failed to set menu button for user", error=str(e))
+    await _set_menu_button_for_chat(message, bot_provider)
 
     users_repo = UsersRepository(session)
 
@@ -122,12 +111,10 @@ async def handle_start_logic(
     # Flush any pending changes to ensure we see latest data
     await session.flush()
 
-    # CRITICAL: Check if user already has pairs FIRST
-    # BUT: If start_param exists (invite link), allow creating new pair even if user has existing pairs
     pairs_repo = PairsRepository(session)
-    all_pairs = await pairs_repo.get_all_by_user_tg_id(tg_id)
-    active_pairs = [p for p in all_pairs if p.status in ("trial", "active")]
-    past_due_pairs = [p for p in all_pairs if p.status == "past_due"]
+    all_pairs, active_pairs, past_due_pairs = await _load_pair_inventory(
+        pairs_repo, tg_id
+    )
 
     logger.info(
         "Pair check result (BEFORE ANY OTHER LOGIC)",
@@ -140,178 +127,294 @@ async def handle_start_logic(
         start_param=start_param,
     )
 
-    # Log entry after payment if user has active subscription
-    if active_pairs:
-        from src.db.repositories.subscriptions import SubscriptionsRepository
-
-        subs_repo = SubscriptionsRepository(session)
-
-        for pair in active_pairs:
-            sub = await subs_repo.get_by_pair_id(pair.id)
-            if sub and pair.status == "active":
-                logger.info(
-                    "User entry with active subscription",
-                    tg_id=tg_id,
-                    username=username,
-                    pair_id=pair.id,
-                    subscription_period_end=(
-                        sub.period_end.isoformat() if sub.period_end else None
-                    ),
-                    is_lifetime=sub.is_lifetime,
-                )
+    await _log_active_subscriptions(session, tg_id, username, active_pairs)
 
     # If user has pairs (active or past_due), show information about them
     # BUT: If start_param exists (invite link), allow creating new pair even if user has existing pairs
     if all_pairs and not start_param:
         # First, try to restore demo for all past_due pairs if demo was reset
         if past_due_pairs:
-            demo_restored_any = False
-            for pair in past_due_pairs:
-                partner_id = pair.uid_b if pair.uid_a == user_id else pair.uid_a
-                partner = await users_repo.get_by_id(partner_id)
-
-                if partner:
-                    demo_restore_flow = DemoRestoreFlow(messenger)
-                    demo_restored = await demo_restore_flow.check_and_restore(
-                        message, pair, user_id, partner_id, session
-                    )
-
-                    if demo_restored:
-                        demo_restored_any = True
+            demo_restored_any = await _restore_demos_if_reset(
+                message, past_due_pairs, user_id, users_repo, messenger, session
+            )
 
             # Refresh pairs after restoration attempts
             if demo_restored_any:
-                all_pairs = await pairs_repo.get_all_by_user_tg_id(tg_id)
-                active_pairs = [p for p in all_pairs if p.status in ("trial", "active")]
-                past_due_pairs = [p for p in all_pairs if p.status == "past_due"]
+                all_pairs, active_pairs, past_due_pairs = await _load_pair_inventory(
+                    pairs_repo, tg_id
+                )
 
         # Show all pairs information (active and past_due)
-        # Build list of all pairs with their statuses
-        all_pairs_info = []
-
-        # Add active pairs
-        for pair in active_pairs:
-            partner_id = pair.uid_b if pair.uid_a == user_id else pair.uid_a
-            partner = await users_repo.get_by_id(partner_id)
-
-            if partner:
-                partner_nickname = pairs_repo.get_my_nickname_for_partner(pair, user_id)
-                partner_text = format_partner_text(partner.username, partner_nickname)
-                all_pairs_info.append(("✅", partner_text, pair.status))
-
-        # Add past_due pairs
-        for pair in past_due_pairs:
-            partner_id = pair.uid_b if pair.uid_a == user_id else pair.uid_a
-            partner = await users_repo.get_by_id(partner_id)
-
-            if partner:
-                partner_nickname = pairs_repo.get_my_nickname_for_partner(pair, user_id)
-                partner_text = format_partner_text(partner.username, partner_nickname)
-                all_pairs_info.append(("🔴", partner_text, pair.status))
-
-        # Show information about all pairs
-        if all_pairs_info:
-            if len(all_pairs_info) == 1:
-                # Single pair - show simple message
-                status_icon, partner_text, pair_status = all_pairs_info[0]
-
-                if pair_status in ("trial", "active"):
-                    await message.answer(
-                        get_message(
-                            "START_PAIR_WITH_PARTNER", partner_text=partner_text
-                        )
-                    )
-                else:
-                    await message.answer(
-                        f"🔴 Ваша подписка истекла.\n\n"
-                        f"Пара с {partner_text}\n\n"
-                        f"Для продолжения использования бота необходимо оформить подписку."
-                    )
-            else:
-                # Multiple pairs - show list of all partners with statuses
-                active_count = len(active_pairs)
-                past_due_count = len(past_due_pairs)
-
-                partners_list = "\n".join(
-                    f"{icon} {pt}" for icon, pt, _ in all_pairs_info
-                )
-
-                # Russian pluralization
-                total_count = len(all_pairs_info)
-                if total_count == 1:
-                    pairs_word = "пара"
-                elif total_count in (2, 3, 4):
-                    pairs_word = "пары"
-                else:
-                    pairs_word = "пар"
-
-                message_parts = [f"У вас {total_count} {pairs_word}:\n"]
-
-                if active_count > 0:
-                    if active_count == 1:
-                        message_parts.append(f"✅ {active_count} активная")
-                    elif active_count in (2, 3, 4):
-                        message_parts.append(f"✅ {active_count} активные")
-                    else:
-                        message_parts.append(f"✅ {active_count} активных")
-
-                if past_due_count > 0:
-                    if past_due_count == 1:
-                        message_parts.append(f"🔴 {past_due_count} просрочена")
-                    elif past_due_count in (2, 3, 4):
-                        message_parts.append(f"🔴 {past_due_count} просрочены")
-                    else:
-                        message_parts.append(f"🔴 {past_due_count} просрочено")
-
-                message_parts.append(f"\n{partners_list}")
-
-                if past_due_count > 0:
-                    message_parts.append(
-                        "\n\nДля продолжения использования бота необходимо оформить подписку."
-                    )
-
-                message_text = "\n".join(message_parts)
-
-                logger.info(
-                    "Showing all pairs message",
-                    tg_id=tg_id,
-                    total_pairs=total_count,
-                    active_count=active_count,
-                    past_due_count=past_due_count,
-                )
-                await message.answer(message_text)
+        await _show_existing_pairs_info(
+            message,
+            pairs_repo,
+            users_repo,
+            all_pairs=all_pairs,
+            active_pairs=active_pairs,
+            past_due_pairs=past_due_pairs,
+            user_id=user_id,
+        )
 
         # Soft one-time prompt: ask user to configure preferred notification windows
-        if user.consent and not getattr(user, "notification_windows_prompted", False):
-            try:
-                await users_repo.update_notification_windows_prompted(tg_id, True)
-                await session.commit()
-                pair_id_for_prompt = None
-                partner_for_prompt = None
-                # If user has exactly one active pair, include pair_id to avoid ambiguity.
-                if len(active_pairs) == 1:
-                    pair = active_pairs[0]
-                    pair_id_for_prompt = pair.id
-                    partner_for_prompt = await users_repo.get_by_id(
-                        partner_id_for_pair(pair, user.id)
-                    )
-                await message.answer(
-                    notif_time_morning_prompt_text(user, partner_for_prompt),
-                    reply_markup=get_notif_time_morning_keyboard(
-                        pair_id=pair_id_for_prompt
-                    ),
-                    parse_mode="HTML",
-                )
-            except Exception as e:
-                logger.warning(
-                    "Failed to send notification windows prompt from /start",
-                    tg_id=tg_id,
-                    error=str(e),
-                )
+        await _prompt_notification_windows_if_needed(
+            message, session, users_repo, user, active_pairs
+        )
 
         return
 
-    # At this point, user has NO pair - continue with onboarding flow
+    await _continue_onboarding(
+        message,
+        session,
+        state,
+        bot_provider,
+        messenger,
+        users_repo,
+        user,
+        all_pairs,
+        start_param,
+    )
+
+
+async def _set_menu_button_for_chat(
+    message: Message, bot_provider: BotProvider
+) -> None:
+    """Set the commands menu button for the user's chat."""
+    try:
+        bot = bot_provider.get_bot()
+        menu_button = MenuButtonCommands()
+        await bot.set_chat_menu_button(chat_id=message.chat.id, menu_button=menu_button)
+        logger.info(
+            "Menu button set for user",
+            tg_id=message.from_user.id,
+            chat_id=message.chat.id,
+        )
+    except Exception as e:
+        logger.warning("Failed to set menu button for user", error=str(e))
+
+
+async def _load_pair_inventory(
+    pairs_repo: PairsRepository, tg_id: int
+) -> tuple[list[Pair], list[Pair], list[Pair]]:
+    """Return (all, active, past_due) pairs for the user."""
+    all_pairs = await pairs_repo.get_all_by_user_tg_id(tg_id)
+    active_pairs = [p for p in all_pairs if p.status in ("trial", "active")]
+    past_due_pairs = [p for p in all_pairs if p.status == "past_due"]
+    return all_pairs, active_pairs, past_due_pairs
+
+
+async def _log_active_subscriptions(
+    session: AsyncSession,
+    tg_id: int,
+    username: str | None,
+    active_pairs: list[Pair],
+) -> None:
+    """Log entry after payment if user has active subscription."""
+    if not active_pairs:
+        return
+
+    from src.db.repositories.subscriptions import SubscriptionsRepository
+
+    subs_repo = SubscriptionsRepository(session)
+
+    for pair in active_pairs:
+        sub = await subs_repo.get_by_pair_id(pair.id)
+        if sub and pair.status == "active":
+            logger.info(
+                "User entry with active subscription",
+                tg_id=tg_id,
+                username=username,
+                pair_id=pair.id,
+                subscription_period_end=(
+                    sub.period_end.isoformat() if sub.period_end else None
+                ),
+                is_lifetime=sub.is_lifetime,
+            )
+
+
+async def _restore_demos_if_reset(
+    message: Message,
+    past_due_pairs: list[Pair],
+    user_id: int,
+    users_repo: UsersRepository,
+    messenger: TelegramMessenger,
+    session: AsyncSession,
+) -> bool:
+    """Try to restore demo for past_due pairs if demo was reset.
+
+    Returns True when at least one demo was restored.
+    """
+    demo_restored_any = False
+    for pair in past_due_pairs:
+        partner_id = pair.uid_b if pair.uid_a == user_id else pair.uid_a
+        partner = await users_repo.get_by_id(partner_id)
+
+        if partner:
+            demo_restore_flow = DemoRestoreFlow(messenger)
+            demo_restored = await demo_restore_flow.check_and_restore(
+                message, pair, user_id, partner_id, session
+            )
+
+            if demo_restored:
+                demo_restored_any = True
+
+    return demo_restored_any
+
+
+async def _show_existing_pairs_info(
+    message: Message,
+    pairs_repo: PairsRepository,
+    users_repo: UsersRepository,
+    *,
+    all_pairs: list[Pair],
+    active_pairs: list[Pair],
+    past_due_pairs: list[Pair],
+    user_id: int,
+) -> None:
+    """Show information about all user's pairs (active and past_due)."""
+    # Build list of all pairs with their statuses
+    all_pairs_info = []
+
+    # Add active pairs
+    for pair in active_pairs:
+        partner_id = pair.uid_b if pair.uid_a == user_id else pair.uid_a
+        partner = await users_repo.get_by_id(partner_id)
+
+        if partner:
+            partner_nickname = pairs_repo.get_my_nickname_for_partner(pair, user_id)
+            partner_text = format_partner_text(partner.username, partner_nickname)
+            all_pairs_info.append(("✅", partner_text, pair.status))
+
+    # Add past_due pairs
+    for pair in past_due_pairs:
+        partner_id = pair.uid_b if pair.uid_a == user_id else pair.uid_a
+        partner = await users_repo.get_by_id(partner_id)
+
+        if partner:
+            partner_nickname = pairs_repo.get_my_nickname_for_partner(pair, user_id)
+            partner_text = format_partner_text(partner.username, partner_nickname)
+            all_pairs_info.append(("🔴", partner_text, pair.status))
+
+    if not all_pairs_info:
+        return
+
+    if len(all_pairs_info) == 1:
+        # Single pair - show simple message
+        status_icon, partner_text, pair_status = all_pairs_info[0]
+
+        if pair_status in ("trial", "active"):
+            await message.answer(
+                get_message("START_PAIR_WITH_PARTNER", partner_text=partner_text)
+            )
+        else:
+            await message.answer(
+                f"🔴 Ваша подписка истекла.\n\n"
+                f"Пара с {partner_text}\n\n"
+                f"Для продолжения использования бота необходимо оформить подписку."
+            )
+        return
+
+    # Multiple pairs - show list of all partners with statuses
+    active_count = len(active_pairs)
+    past_due_count = len(past_due_pairs)
+
+    partners_list = "\n".join(f"{icon} {pt}" for icon, pt, _ in all_pairs_info)
+
+    # Russian pluralization
+    total_count = len(all_pairs_info)
+    if total_count == 1:
+        pairs_word = "пара"
+    elif total_count in (2, 3, 4):
+        pairs_word = "пары"
+    else:
+        pairs_word = "пар"
+
+    message_parts = [f"У вас {total_count} {pairs_word}:\n"]
+
+    if active_count > 0:
+        if active_count == 1:
+            message_parts.append(f"✅ {active_count} активная")
+        elif active_count in (2, 3, 4):
+            message_parts.append(f"✅ {active_count} активные")
+        else:
+            message_parts.append(f"✅ {active_count} активных")
+
+    if past_due_count > 0:
+        if past_due_count == 1:
+            message_parts.append(f"🔴 {past_due_count} просрочена")
+        elif past_due_count in (2, 3, 4):
+            message_parts.append(f"🔴 {past_due_count} просрочены")
+        else:
+            message_parts.append(f"🔴 {past_due_count} просрочено")
+
+    message_parts.append(f"\n{partners_list}")
+
+    if past_due_count > 0:
+        message_parts.append(
+            "\n\nДля продолжения использования бота необходимо оформить подписку."
+        )
+
+    text = "\n".join(message_parts)
+
+    logger.info(
+        "Showing all pairs message",
+        tg_id=message.from_user.id,
+        total_pairs=total_count,
+        active_count=active_count,
+        past_due_count=past_due_count,
+    )
+    await message.answer(text)
+
+
+async def _prompt_notification_windows_if_needed(
+    message: Message,
+    session: AsyncSession,
+    users_repo: UsersRepository,
+    user: User,
+    active_pairs: list[Pair],
+) -> None:
+    """Soft one-time prompt: ask user to configure preferred notification windows."""
+    if not (user.consent and not getattr(user, "notification_windows_prompted", False)):
+        return
+
+    tg_id = user.tg_id
+    try:
+        await users_repo.update_notification_windows_prompted(tg_id, True)
+        await session.commit()
+        pair_id_for_prompt = None
+        partner_for_prompt = None
+        # If user has exactly one active pair, include pair_id to avoid ambiguity.
+        if len(active_pairs) == 1:
+            pair = active_pairs[0]
+            pair_id_for_prompt = pair.id
+            partner_for_prompt = await users_repo.get_by_id(
+                partner_id_for_pair(pair, user.id)
+            )
+        await message.answer(
+            notif_time_morning_prompt_text(user, partner_for_prompt),
+            reply_markup=get_notif_time_morning_keyboard(pair_id=pair_id_for_prompt),
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        logger.warning(
+            "Failed to send notification windows prompt from /start",
+            tg_id=tg_id,
+            error=str(e),
+        )
+
+
+async def _continue_onboarding(
+    message: Message,
+    session: AsyncSession,
+    state: FSMContext | None,
+    bot_provider: BotProvider,
+    messenger: TelegramMessenger,
+    users_repo: UsersRepository,
+    user: User,
+    all_pairs: list[Pair],
+    start_param: str | None,
+) -> None:
+    """Onboarding path: user has NO pair - welcome, invite link or mode selection."""
+    tg_id = user.tg_id
     logger.info(
         "User has NO pair - continuing with onboarding flow",
         tg_id=tg_id,
