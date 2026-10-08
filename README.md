@@ -90,7 +90,7 @@ docker-compose ps
 
 База данных и Redis должны быть установлены на сервере. Бот автоматически создаст SSH туннели при запуске.
 
-1. Установите PostgreSQL и Redis на сервере (см. [DATABASE_SERVER_SETUP.md](DATABASE_SERVER_SETUP.md))
+1. Установите PostgreSQL и Redis на сервере (см. [DATABASE_SERVER_SETUP.md](docs/DATABASE_SERVER_SETUP.md))
 2. Настройте `.env` на каждом ПК:
    ```env
    DATABASE_URL=postgresql+asyncpg://bot_user:password@localhost:5432/silent_couple_bot
@@ -251,7 +251,7 @@ handlers/{handler_name}/
 └── validators.py          # Валидация
 ```
 
-**Подробнее**: См. [ARCHITECTURE.md](ARCHITECTURE.md) и [CONTRIBUTING.md](CONTRIBUTING.md)
+**Подробнее**: См. [ARCHITECTURE.md](docs/ARCHITECTURE.md) и [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ### База данных
 
@@ -286,9 +286,9 @@ handlers/{handler_name}/
 
 ### 🚀 Быстрый старт
 
-**Для разработки и production:** См. [QUICK_DEPLOY.md](QUICK_DEPLOY.md) - минимальная инструкция по деплою.
+**Для разработки и production:** См. [QUICK_DEPLOY.md](docs/QUICK_DEPLOY.md) - минимальная инструкция по деплою.
 
-**Подробная документация:** См. [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) - полный гайд по деплою и разработке.
+**Подробная документация:** См. [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) - полный гайд по деплою и разработке.
 
 ### Локальная разработка
 
@@ -302,7 +302,7 @@ docker-compose up -d
 python run.py
 ```
 
-**Альтернатива**: Полное окружение в Docker (см. [DOCKER.md](DOCKER.md)):
+**Альтернатива**: Полное окружение в Docker (см. [DOCKER.md](docs/DOCKER.md)):
 ```bash
 docker-compose -f docker-compose.dev.yml up -d
 ```
@@ -337,10 +337,10 @@ bash deploy/deploy.sh  # Автоматический деплой через gi
 - Настройте мониторинг и логирование
 
 Подробнее:
-- [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) - полный гайд по деплою
-- [QUICK_DEPLOY.md](QUICK_DEPLOY.md) - быстрая инструкция
-- [WEBHOOK_DEPLOYMENT.md](WEBHOOK_DEPLOYMENT.md) - настройка webhook
-- [DOCKER.md](DOCKER.md) - Docker деплой
+- [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) - полный гайд по деплою
+- [QUICK_DEPLOY.md](docs/QUICK_DEPLOY.md) - быстрая инструкция
+- [WEBHOOK_DEPLOYMENT.md](docs/WEBHOOK_DEPLOYMENT.md) - настройка webhook
+- [DOCKER.md](docs/DOCKER.md) - Docker деплой
 
 ## Лицензия
 

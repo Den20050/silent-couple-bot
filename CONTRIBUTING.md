@@ -42,7 +42,7 @@ python run.py
 
 ## Архитектура проекта
 
-См. [ARCHITECTURE.md](ARCHITECTURE.md) для подробного описания архитектуры.
+См. [ARCHITECTURE.md](docs/ARCHITECTURE.md) для подробного описания архитектуры.
 
 ### Архитектурные слои
 
@@ -615,6 +615,6 @@ test: add unit tests for payment service
 
 ## Дополнительные ресурсы
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — подробное описание архитектуры
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md) — подробное описание архитектуры
 - [README.md](README.md) — общая информация о проекте
-- [BOT_ALGORITHM.md](BOT_ALGORITHM.md) — описание алгоритма работы бота
+- [BOT_ALGORITHM.md](docs/BOT_ALGORITHM.md) — описание алгоритма работы бота

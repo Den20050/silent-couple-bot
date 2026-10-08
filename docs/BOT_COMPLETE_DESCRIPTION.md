@@ -820,7 +820,7 @@ Callback handlers проверяют, что нажатие происходит
 - при отправке напоминания воркер делает `remove_reply_markup` по этому `message_id`
 
 Для получения дополнительной информации см.:
-- [README.md](README.md) — Быстрый старт и разработка
+- [README.md](../README.md) — Быстрый старт и разработка
 - [ARCHITECTURE.md](ARCHITECTURE.md) — Детальная архитектура
 - [BOT_ALGORITHM.md](BOT_ALGORITHM.md) — Алгоритмы работы
 - [USER_GUIDE.md](USER_GUIDE.md) — Руководство пользователя
