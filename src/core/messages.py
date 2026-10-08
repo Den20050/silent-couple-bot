@@ -35,7 +35,7 @@ class Messages:
         "Готовы принять правила и создать первую связь?"
     )
     WELCOME_NEXT_BUTTON = "Дальше ➡️"
-    WELCOME_ACCEPT_BUTTON = "✅ Принять и начать"
+    WELCOME_ACCEPT_BUTTON = "✅ Принять и продолжить"
     START_CONTINUE_BUTTON = "🚀 Продолжить"
     START_APPLY_TIMEZONE_BUTTON = "📍 Установить местное время"
     START_FLOW_BACK_BUTTON = "◀️ Назад"

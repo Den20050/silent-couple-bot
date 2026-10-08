@@ -24,6 +24,8 @@ from src.bot.handlers.start.ui.builders import (
     get_mode_keyboard,
     get_notif_time_evening_keyboard,
     get_notif_time_morning_keyboard,
+    get_register_timezone_keyboard,
+    get_update_timezone_keyboard,
     get_welcome_accept_keyboard,
     get_welcome_next_keyboard,
 )
@@ -42,6 +44,7 @@ from src.services.messaging.ui.notification_window_ui import (
 from src.services.pair_time_window import format_window_range
 from src.services.telegram.bot_provider import BotProvider
 from src.services.telegram.messenger import TelegramMessenger
+from src.services.timezone import is_timezone_configured
 
 logger = get_logger(__name__)
 
@@ -707,11 +710,15 @@ async def handle_welcome_accept(
     bot_provider: BotProvider,  # noqa: ARG001
     messenger: TelegramMessenger,  # noqa: ARG001
 ) -> None:
-    """Handle welcome accept button - record consent and show mode selection."""
+    """Handle welcome accept button - record consent, then timezone/onboarding."""
     logger.info(
         "Welcome accept callback received",
         tg_id=callback.from_user.id,
     )
+
+    # welcome_accept[_{start_param}] - keep invite link param for the TZ step
+    parts = (callback.data or "").split("_", 2)
+    start_param = parts[2] if len(parts) > 2 else None
 
     # Clear welcome state
     await state.clear()
@@ -729,9 +736,31 @@ async def handle_welcome_accept(
         await callback.answer(get_message("START_CONSENT_SAVE_ERROR"), show_alert=True)
         return
 
-    logger.info("Consent saved from welcome screen", tg_id=callback.from_user.id)
-
+    logger.info(
+        "Consent saved from welcome screen",
+        tg_id=callback.from_user.id,
+        start_param=start_param,
+    )
     await callback.answer(get_message("START_CONSENT_ACCEPTED"))
+
+    # ПДн flow: after consent - timezone setup, then the usual onboarding
+    if not is_timezone_configured(user):
+        await callback.message.edit_text(
+            get_message("START_REGISTER_TIMEZONE_PROMPT"),
+            reply_markup=get_register_timezone_keyboard(start_param),
+        )
+        return
+
+    # Timezone already set: continue with the usual /start routing
+    pairs_repo = PairsRepository(session)
+    all_pairs = await pairs_repo.get_all_by_user_tg_id(callback.from_user.id)
+    if all_pairs:
+        await callback.message.edit_text(
+            get_message("START_TIMEZONE_SYNC_PROMPT"),
+            reply_markup=get_update_timezone_keyboard(),
+        )
+        return
+
     await callback.message.edit_text(get_message("START_MODE_SELECTION_PROMPT"))
     await callback.message.edit_reply_markup(reply_markup=get_mode_keyboard())
 

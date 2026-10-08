@@ -110,7 +110,7 @@ async def welcome_next_handler(
     )
 
 
-@router.callback_query(F.data == "welcome_accept")
+@router.callback_query(F.data.startswith("welcome_accept"))
 async def welcome_accept_handler(
     callback: CallbackQuery,
     session: AsyncSession,

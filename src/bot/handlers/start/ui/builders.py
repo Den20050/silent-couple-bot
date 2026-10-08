@@ -182,14 +182,15 @@ def get_welcome_next_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def get_welcome_accept_keyboard() -> InlineKeyboardMarkup:
-    """Get welcome accept button keyboard."""
+def get_welcome_accept_keyboard(start_param: str | None = None) -> InlineKeyboardMarkup:
+    """Get welcome accept button keyboard (keeps invite start_param for later)."""
+    callback_data = f"welcome_accept_{start_param}" if start_param else "welcome_accept"
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text=get_message("WELCOME_ACCEPT_BUTTON"),
-                    callback_data="welcome_accept",
+                    callback_data=callback_data,
                 ),
             ],
         ]

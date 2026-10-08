@@ -19,6 +19,7 @@ from src.bot.handlers.start.ui.builders import (
     get_register_timezone_keyboard,
     get_start_cleanup_keyboard,
     get_update_timezone_keyboard,
+    get_welcome_accept_keyboard,
 )
 from src.core.error_handling import handle_errors
 from src.core.logger import get_logger
@@ -123,6 +124,19 @@ async def cmd_start(
 
     user, _is_new = await get_or_create_user(message, session)
     await session.flush()
+
+    # ПДн: согласие должно быть получено до любых других действий,
+    # включая синхронизацию таймзоны через Mini App
+    if not user.consent:
+        flow_session = StartFlowSession(user_start_message_id=message.message_id)
+        prompt = await message.answer(
+            get_message("WELCOME_STEP_1"),
+            reply_markup=get_welcome_accept_keyboard(start_param),
+        )
+        flow_session.prompt_message_id = prompt.message_id
+        await save_start_flow_session(redis, tg_id, flow_session)
+        await track_user_command(message, redis)
+        return
 
     pairs_repo = PairsRepository(session)
     all_pairs = await pairs_repo.get_all_by_user_tg_id(tg_id)
