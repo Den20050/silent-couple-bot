@@ -31,15 +31,21 @@ class _FakeMessenger:
         self.removed.append((chat_id, message_id))
         return SimpleNamespace(message_id=message_id)
 
-    async def send_message(self, *args: object, **kwargs: object) -> Any:  # pragma: no cover
+    async def send_message(
+        self, *args: object, **kwargs: object
+    ) -> Any:  # pragma: no cover
         return SimpleNamespace(message_id=1)
 
 
 class _FakeNotificationBuilder:
-    async def build_reminder_message(self, *args: object, **kwargs: object) -> tuple[str, dict]:
+    async def build_reminder_message(
+        self, *args: object, **kwargs: object
+    ) -> tuple[str, dict]:
         return "text", {"inline_keyboard": [[{"text": "OK", "callback_data": "x"}]]}
 
-    async def build_aggregated_reminder_message(self, *args: object, **kwargs: object) -> tuple[str, dict]:
+    async def build_aggregated_reminder_message(
+        self, *args: object, **kwargs: object
+    ) -> tuple[str, dict]:
         return "text", {"inline_keyboard": [[{"text": "OK", "callback_data": "x"}]]}
 
 
@@ -53,15 +59,21 @@ class _Candidate:
 
 
 @pytest.mark.asyncio
-async def test_send_reminder_disables_wish_photo_button(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_send_reminder_disables_wish_photo_button(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from src.services.messaging.wish_photo_message_id import wish_photo_message_id_key
 
     recipient = SimpleNamespace(tg_id=100, id=1)
     initiator = SimpleNamespace(tg_id=200, username="init")
-    pair = SimpleNamespace(id=10, uid_a=1, uid_b=2, nickname_a=None, nickname_b=None, mode="silent")
+    pair = SimpleNamespace(
+        id=10, uid_a=1, uid_b=2, nickname_a=None, nickname_b=None, mode="silent"
+    )
     target_day = date(2026, 1, 20)
 
-    key = wish_photo_message_id_key(tg_id=recipient.tg_id, pair_id=pair.id, pic_type="morning", day=target_day)
+    key = wish_photo_message_id_key(
+        tg_id=recipient.tg_id, pair_id=pair.id, pic_type="morning", day=target_day
+    )
 
     worker_context = SimpleNamespace(
         messenger=_FakeMessenger(),
@@ -84,7 +96,8 @@ async def test_send_reminder_disables_wish_photo_button(monkeypatch: pytest.Monk
         async def set_key_with_ttl(self, *args: object, **kwargs: object) -> None:
             return None
 
-    await sender.send_reminder(candidate=candidate, reminder_key="rk", lock_service=_Lock())
+    await sender.send_reminder(
+        candidate=candidate, reminder_key="rk", lock_service=_Lock()
+    )
 
     assert worker_context.messenger.removed == [(recipient.tg_id, 777)]
-

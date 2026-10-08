@@ -1,17 +1,17 @@
 """Feedback handlers."""
 
-from aiogram import Router, F
+from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.bot.handlers.feedback.states import FeedbackStates
+from src.bot.handlers.feedback.use_cases.send_feedback import send_feedback_to_admin
 from src.core.config import Settings
 from src.core.logger import get_logger
 from src.core.messages import get_message
 from src.db.repositories.users import UsersRepository
-from src.bot.handlers.feedback.use_cases.send_feedback import send_feedback_to_admin
-from src.bot.handlers.feedback.states import FeedbackStates
 from src.services.messaging.user_command_session import track_user_command
 
 logger = get_logger(__name__)
@@ -20,7 +20,9 @@ router = Router(name="feedback_handlers")
 
 
 @router.message(Command("feedback"))
-async def cmd_feedback(message: Message, session: AsyncSession, state: FSMContext, redis) -> None:
+async def cmd_feedback(
+    message: Message, session: AsyncSession, state: FSMContext, redis
+) -> None:
     """Handle /feedback command - request description."""
     try:
         tg_id = message.from_user.id
@@ -33,12 +35,13 @@ async def cmd_feedback(message: Message, session: AsyncSession, state: FSMContex
             return
 
         await state.set_state(FeedbackStates.waiting_description)
-        
+
         text = get_message("FEEDBACK_DESCRIPTION_PROMPT")
-        
+
         from src.services.messaging.templates import KeyboardTemplates
+
         keyboard = KeyboardTemplates.back_only()
-        
+
         await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
         await track_user_command(message, redis)
 
@@ -61,7 +64,7 @@ async def handle_feedback_description(
     """Handle feedback description input."""
     try:
         tg_id = message.from_user.id
-        
+
         # Verify we're in the correct state
         current_state = await state.get_state()
         if current_state != FeedbackStates.waiting_description:
@@ -72,13 +75,13 @@ async def handle_feedback_description(
                 expected_state="FeedbackStates:waiting_description",
             )
             return
-        
+
         logger.info(
             "Processing feedback description",
             tg_id=tg_id,
             message_length=len(message.text) if message.text else 0,
         )
-        
+
         # Check username
         username = message.from_user.username
         if not username:
@@ -89,20 +92,20 @@ async def handle_feedback_description(
             await state.clear()
             await message.answer(get_message("FEEDBACK_NO_USERNAME"))
             return
-        
+
         # Get message text
         text = message.text or message.caption or ""
         if not text.strip():
             await message.answer("Пожалуйста, отправьте описание проблемы.")
             return
-        
+
         logger.info(
             "Sending feedback to admin",
             tg_id=tg_id,
             username=username,
             text_preview=text[:50],
         )
-        
+
         # Send feedback to admin
         success, response_message = await send_feedback_to_admin(
             message_text=text,
@@ -112,21 +115,21 @@ async def handle_feedback_description(
             settings=settings,
             bot=message.bot,
         )
-        
+
         # Clear FSM state
         await state.clear()
-        
+
         logger.info(
             "Feedback sent",
             tg_id=tg_id,
             success=success,
         )
-        
+
         if success:
             await message.answer(response_message)
         else:
             await message.answer(response_message)
-            
+
     except Exception as e:
         logger.error(
             "Error in handle_feedback_description",

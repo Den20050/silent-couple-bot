@@ -21,31 +21,31 @@ async def should_send_reminder(
     daily_state_repo: DailyStateRepository,
 ) -> tuple[bool, Optional[date]]:
     """Check if reminder should be sent for unanswered picture.
-    
+
     Args:
         session: Database session
         pair_id: Pair ID
         pic_type: Picture type ("morning" or "evening")
         hours_after_send: Hours after picture was sent
         daily_state_repo: DailyStateRepository instance
-        
+
     Returns:
         Tuple of (should_send: bool, target_day: Optional[date])
     """
     # Get current state for the pair
     # We need to check all days that might have unanswered pictures
     today = date.today()
-    
+
     # Check today and yesterday (for reminders that might be for previous day)
     for check_day in [today, today - timedelta(days=1)]:
         current_state = await daily_state_repo.get_by_pair_and_day(
             pair_id,
             check_day,
         )
-        
+
         if not current_state:
             continue
-        
+
         # Check if picture was sent and not answered
         if pic_type == "morning":
             if current_state.morning_initiator is None:
@@ -59,17 +59,17 @@ async def should_send_reminder(
             if current_state.evening_responded_at is not None:
                 continue
             sent_at = current_state.evening_sent_at
-        
+
         if not sent_at:
             continue
-        
+
         # Check if enough hours have passed
         now_utc = datetime.utcnow()
         hours_passed = (now_utc - sent_at).total_seconds() / 3600
-        
+
         if hours_passed < hours_after_send - 0.5:  # Allow 30 min tolerance
             continue
-        
+
         sent_at = (
             current_state.morning_sent_at
             if pic_type == "morning"
@@ -108,14 +108,14 @@ async def should_send_reminder(
                     check_day=str(check_day),
                 )
                 return False, None
-        
+
         # Check if any picture was initiated on the next day (new cycle started)
         next_day = check_day + timedelta(days=1)
         next_day_state = await daily_state_repo.get_by_pair_and_day(
             pair_id,
             next_day,
         )
-        
+
         if next_day_state and (
             next_day_state.morning_initiator is not None
             or next_day_state.evening_initiator is not None
@@ -127,9 +127,9 @@ async def should_send_reminder(
                 next_day=str(next_day),
             )
             return False, None
-        
+
         return True, check_day
-    
+
     return False, None
 
 
@@ -142,14 +142,14 @@ async def check_past_due_notification_needed(
     pic_type: str = "morning",
 ) -> bool:
     """Check if past due notification should be sent.
-    
+
     Args:
         session: Database session
         pair_id: Pair ID
         today: Current date
         subscription: Subscription object
         lock_service: LockService instance
-        
+
     Returns:
         True if notification should be sent, False otherwise
     """
@@ -158,9 +158,9 @@ async def check_past_due_notification_needed(
 
     if pic_type == "evening":
         return False
-    
+
     days_since_expiry = (today - subscription.period_end).days
-    
+
     if days_since_expiry <= 3:
         # First 3 days: check if already sent today for this pic_type
         # We allow both morning and evening notifications in the same day
@@ -172,20 +172,18 @@ async def check_past_due_notification_needed(
         )
         if notification_already_sent:
             return False
-        
+
         # Fallback to database check if Redis is not available
         # Note: We don't check last_past_due_notification_date here because
         # we want to allow both morning and evening notifications in the same day
-        
+
         return True
     else:
         # After 3 days: check if 7 days passed since last notification for this pic_type
         # Use separate keys for morning and evening to allow both in the same day
         last_notification_key = f"past_due_last_notification_{pic_type}:{pair_id}"
-        last_notification_date_str = await lock_service.get_key(
-            last_notification_key
-        )
-        
+        last_notification_date_str = await lock_service.get_key(last_notification_key)
+
         if last_notification_date_str:
             try:
                 last_notification_date = date.fromisoformat(last_notification_date_str)
@@ -195,7 +193,7 @@ async def check_past_due_notification_needed(
             except (ValueError, TypeError):
                 # Invalid date format, fall through to allow sending
                 pass
-        
+
         # Fallback to database check if Redis is not available
         # Check if 7 days passed since last notification (any notification)
         # Note: This is a fallback - ideally Redis should be available
@@ -208,6 +206,5 @@ async def check_past_due_notification_needed(
             # so we prefer Redis check above
             if days_since_last < 7:
                 return False
-        
-        return True
 
+        return True

@@ -58,7 +58,9 @@ class WishRequestUIService:
         send_allowed = can_user_send_wish(user, pic_type, now_utc)  # type: ignore[arg-type]
 
         pairs = await self._pairs_repo.get_all_by_user_tg_id(user_tg_id)
-        visible_pairs = [p for p in pairs if p.status in ("trial", "active", "past_due")]
+        visible_pairs = [
+            p for p in pairs if p.status in ("trial", "active", "past_due")
+        ]
 
         if pic_type == "morning":
             text = get_message("WORKER_MORNING_REQUEST_SELECT_PARTNER")
@@ -76,7 +78,9 @@ class WishRequestUIService:
         for pair in visible_pairs:
             partner_id = pair.uid_b if pair.uid_a == user.id else pair.uid_a
             partner = await self._users_repo.get_by_id(partner_id)
-            partner_nickname = self._pairs_repo.get_my_nickname_for_partner(pair, user.id)
+            partner_nickname = self._pairs_repo.get_my_nickname_for_partner(
+                pair, user.id
+            )
             partner_text = format_partner_text(
                 partner.username if partner else None,
                 partner_nickname,

@@ -4,10 +4,8 @@ import asyncio
 from typing import Optional
 
 from redis.asyncio import Redis
-from redis.exceptions import (
-    ConnectionError as RedisConnectionError,
-    TimeoutError as RedisTimeoutError,  # noqa: F401
-)
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError  # noqa: F401
 
 from src.core.config import settings
 from src.core.logger import get_logger
@@ -26,7 +24,7 @@ async def create_redis_client(
 ) -> Optional[Redis]:
     """
     Create Redis client with proper configuration and connection testing.
-    
+
     Args:
         url: Redis URL (defaults to settings.redis_url)
         db: Redis database number (defaults to settings.redis_db)
@@ -35,13 +33,13 @@ async def create_redis_client(
         socket_timeout: Timeout for socket operations in seconds (default: 30)
         retry_on_timeout: Retry on timeout errors
         health_check_interval: Health check interval in seconds
-        
+
     Returns:
         Redis client instance or None if connection failed
     """
     redis_url = url or settings.redis_url
     redis_db = db if db is not None else settings.redis_db
-    
+
     try:
         # Parse URL to extract host and port for better error messages
         if redis_url.startswith("redis://"):
@@ -49,7 +47,7 @@ async def create_redis_client(
             parts = redis_url.replace("redis://", "").split("/")
             host_port = parts[0] if parts else "localhost:6379"
             logger.debug(f"Connecting to Redis at {host_port}, db={redis_db}")
-        
+
         client = Redis.from_url(
             redis_url,
             db=redis_db,
@@ -64,14 +62,12 @@ async def create_redis_client(
             # Auto-reconnect on connection loss
             auto_close_connection_pool=False,
         )
-        
+
         # Test connection immediately
         await client.ping()
-        logger.info(
-            f"Redis connected successfully at {redis_url}, db={redis_db}"
-        )
+        logger.info(f"Redis connected successfully at {redis_url}, db={redis_db}")
         return client
-        
+
     except (RedisConnectionError, RedisTimeoutError) as e:
         logger.warning(
             f"Redis connection failed: {e}",
@@ -94,16 +90,16 @@ async def create_redis_client(
 async def test_redis_connection(client: Optional[Redis]) -> bool:
     """
     Test Redis connection with retry logic.
-    
+
     Args:
         client: Redis client instance
-        
+
     Returns:
         True if connection is working, False otherwise
     """
     if not client:
         return False
-    
+
     try:
         await client.ping()
         return True
@@ -115,20 +111,22 @@ async def test_redis_connection(client: Optional[Redis]) -> bool:
         return False
 
 
-async def ensure_redis_connection(client: Optional[Redis], max_retries: int = 3) -> bool:
+async def ensure_redis_connection(
+    client: Optional[Redis], max_retries: int = 3
+) -> bool:
     """
     Ensure Redis connection is alive, reconnecting if needed.
-    
+
     Args:
         client: Redis client instance
         max_retries: Maximum number of reconnection attempts
-        
+
     Returns:
         True if connection is working, False otherwise
     """
     if not client:
         return False
-    
+
     for attempt in range(max_retries):
         try:
             await client.ping()
@@ -140,11 +138,12 @@ async def ensure_redis_connection(client: Optional[Redis], max_retries: int = 3)
                 )
                 await asyncio.sleep(1 * (attempt + 1))  # Exponential backoff
             else:
-                logger.error(f"Redis connection failed after {max_retries} attempts: {e}")
+                logger.error(
+                    f"Redis connection failed after {max_retries} attempts: {e}"
+                )
                 return False
         except Exception as e:
             logger.error(f"Unexpected error testing Redis connection: {e}")
             return False
-    
-    return False
 
+    return False

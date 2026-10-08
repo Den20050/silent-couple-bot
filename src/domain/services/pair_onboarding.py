@@ -9,10 +9,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.constants import (
+    TRIAL_PERIOD_DAYS,
     DeliveryChat,
     PairStatus,
     SubscriptionStatus,
-    TRIAL_PERIOD_DAYS,
 )
 from src.core.logger import get_logger
 from src.core.messages import get_message
@@ -44,10 +44,10 @@ class PairCreationValidation:
 
 class PairOnboardingService:
     """Service for managing pair creation and onboarding logic."""
-    
+
     def __init__(self, session: AsyncSession) -> None:
         """Initialize pair onboarding service.
-        
+
         Args:
             session: Database session
         """
@@ -58,18 +58,18 @@ class PairOnboardingService:
         from src.db.repositories.users import UsersRepository
 
         self._users_repo = UsersRepository(session)
-    
+
     async def validate_pair_creation(
         self,
         user_id: int,
         partner_id: int,
     ) -> PairCreationValidation:
         """Validate if pair can be created between two users.
-        
+
         Args:
             user_id: User ID
             partner_id: Partner user ID
-            
+
         Returns:
             PairCreationValidation with reason when blocked
         """
@@ -81,7 +81,7 @@ class PairOnboardingService:
                 reason=PairCreationBlockReason.ALREADY_EXISTS,
                 message=get_message("START_PAIR_ALREADY_CREATED"),
             )
-        
+
         # Check if this pair was previously broken with lifetime subscription
         uid_a, uid_b = (
             (user_id, partner_id) if user_id < partner_id else (partner_id, user_id)
@@ -98,7 +98,7 @@ class PairOnboardingService:
                 ok=True,
                 reason=PairCreationBlockReason.OK,
             )
-        
+
         user = await self._users_repo.get_by_id(user_id)
         partner = await self._users_repo.get_by_id(partner_id)
         if not user or not partner:
@@ -125,9 +125,9 @@ class PairOnboardingService:
                 reason=PairCreationBlockReason.DEMO_USED,
                 message=get_message("START_BOTH_DEMO_USED"),
             )
-        
+
         return PairCreationValidation(ok=True, reason=PairCreationBlockReason.OK)
-    
+
     async def create_pair_from_invite(
         self,
         inviter_id: int,
@@ -136,13 +136,13 @@ class PairOnboardingService:
         delivery_chat: str = DeliveryChat.BOT_DM.value,
     ) -> Pair:
         """Create pair from invite link.
-        
+
         Args:
             inviter_id: Inviter user ID (User A)
             invited_id: Invited user ID (User B)
             inviter_mode: Inviter's preferred mode
             delivery_chat: Delivery chat type
-            
+
         Returns:
             Created Pair object
         """
@@ -166,7 +166,7 @@ class PairOnboardingService:
             mode=inviter_mode,
             delivery_chat=delivery_chat,
         )
-        
+
         # Create subscription (trial) - 7 days
         trial_end = date.today() + timedelta(days=TRIAL_PERIOD_DAYS)
         subscription = await self._subs_repo.create(
@@ -193,17 +193,17 @@ class PairOnboardingService:
                     invited.tg_id,
                     inviter.tg_id,
                 )
-        
+
         # Explicitly commit to ensure pair is saved before sending messages
         await self._session.commit()
-        
+
         logger.info(
             "Pair created and committed",
             inviter_id=inviter_id,
             invited_id=invited_id,
             pair_id=pair.id,
         )
-        
+
         return pair
 
     async def create_pair_from_invite_requires_payment(
@@ -233,27 +233,26 @@ class PairOnboardingService:
             pair_id=pair.id,
         )
         return pair
-    
+
     async def find_existing_pair(
         self,
         user_id: int,
     ) -> Optional[Pair]:
         """Find existing pair for user.
-        
+
         Args:
             user_id: User ID
-            
+
         Returns:
             Pair object if found, None otherwise
         """
         try:
             from sqlalchemy import select
+
             from src.db.models import Pair
-            
+
             result = await self._session.execute(
-                select(Pair).where(
-                    (Pair.uid_a == user_id) | (Pair.uid_b == user_id)
-                )
+                select(Pair).where((Pair.uid_a == user_id) | (Pair.uid_b == user_id))
             )
             return result.scalar_one_or_none()
         except Exception as e:
@@ -264,7 +263,7 @@ class PairOnboardingService:
                 exc_info=True,
             )
             return None
-    
+
     async def check_and_restore_demo(
         self,
         pair: Pair,
@@ -272,12 +271,12 @@ class PairOnboardingService:
         partner_id: int,
     ) -> bool:
         """Check if demo was reset by admin and restore it if needed.
-        
+
         Args:
             pair: Pair object
             user_id: Current user ID
             partner_id: Partner user ID
-            
+
         Returns:
             True if demo was restored, False otherwise
         """
@@ -296,24 +295,25 @@ class PairOnboardingService:
             demo_used = True
 
         demo_was_reset = pair.status == PairStatus.PAST_DUE.value and not demo_used
-        
+
         if not demo_was_reset:
             return False
-        
+
         # Admin reset demo - restore trial period
         logger.info(
             "Demo was reset by admin - restoring trial period",
             pair_id=pair.id,
         )
-        
+
         # Get subscription
         subscription = await self._subs_repo.get_by_pair_id(pair.id)
-        
+
         if subscription:
             # Update subscription with new trial period
             trial_end = date.today() + timedelta(days=TRIAL_PERIOD_DAYS)
-            
+
             from sqlalchemy import update
+
             await self._session.execute(
                 update(Subscription)
                 .where(Subscription.id == subscription.id)
@@ -323,14 +323,13 @@ class PairOnboardingService:
                     is_lifetime=False,
                 )
             )
-        
+
         # Update pair status to trial
         await self._pairs_repo.update_status(pair.id, PairStatus.TRIAL)
-        
+
         # Create new demo record
         await self._pair_demo_repo.mark_pair(user.tg_id, partner.tg_id)
-        
-        await self._session.commit()
-        
-        return True
 
+        await self._session.commit()
+
+        return True

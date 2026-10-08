@@ -1,9 +1,10 @@
 """Service for building captions for wishes and responses."""
 
 import random
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.constants import CHAT_MORNING_CAPTIONS, CHAT_EVENING_CAPTIONS
+from src.core.constants import CHAT_EVENING_CAPTIONS, CHAT_MORNING_CAPTIONS
 from src.core.logger import get_logger
 from src.core.messages import get_message
 from src.db.repositories.pairs import PairsRepository
@@ -67,9 +68,7 @@ class CaptionService:
         Returns:
             Formatted caption with nickname prefix
         """
-        caption = self._get_standard_caption(
-            pair_mode=pair.mode, pic_type=pic_type
-        )
+        caption = self._get_standard_caption(pair_mode=pair.mode, pic_type=pic_type)
         return await self._format_caption_with_nickname(
             caption=caption,
             pair=pair,

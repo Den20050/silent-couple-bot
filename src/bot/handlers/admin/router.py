@@ -8,4 +8,3 @@ router = Router(name="admin")
 
 # Register sub-routers
 router.include_router(admin_commands.router)
-

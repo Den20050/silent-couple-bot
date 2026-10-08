@@ -1,14 +1,17 @@
 """Rate limiting middleware."""
 
 import time
-from typing import Callable, Dict, Any, Awaitable
+from typing import Any, Awaitable, Callable, Dict
 
 from aiogram import BaseMiddleware
 from aiogram.types import Message, TelegramObject
 from redis.asyncio import Redis
 
 from src.core.config import settings
-from src.core.constants import RATE_LIMIT_MESSAGES_PER_USER_PER_MINUTE, RATE_LIMIT_BAN_DURATION_SECONDS
+from src.core.constants import (
+    RATE_LIMIT_BAN_DURATION_SECONDS,
+    RATE_LIMIT_MESSAGES_PER_USER_PER_MINUTE,
+)
 from src.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -33,7 +36,7 @@ class RateLimitMiddleware(BaseMiddleware):
 
         user_id = event.from_user.id
         key = f"rate_limit:{user_id}"
-        
+
         # Check if user is banned
         banned = await self.redis.get(f"ban:{user_id}")
         if banned:
@@ -50,7 +53,9 @@ class RateLimitMiddleware(BaseMiddleware):
 
         if count > RATE_LIMIT_MESSAGES_PER_USER_PER_MINUTE:
             # Ban user
-            await self.redis.setex(f"ban:{user_id}", RATE_LIMIT_BAN_DURATION_SECONDS, "1")
+            await self.redis.setex(
+                f"ban:{user_id}", RATE_LIMIT_BAN_DURATION_SECONDS, "1"
+            )
             logger.warning(
                 "User rate limit exceeded, banned",
                 user_id=user_id,
@@ -69,4 +74,3 @@ class RateLimitMiddleware(BaseMiddleware):
 
         await self.redis.setex(last_message_key, 2, str(time.time()))
         return await handler(event, data)
-

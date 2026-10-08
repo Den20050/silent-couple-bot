@@ -17,10 +17,14 @@ class DailyStateRepository:
         """Initialize repository."""
         self.session = session
 
-    async def get_by_pair_and_day(self, pair_id: int, day: date) -> Optional[DailyState]:
+    async def get_by_pair_and_day(
+        self, pair_id: int, day: date
+    ) -> Optional[DailyState]:
         """Get daily state for pair and day."""
         result = await self.session.execute(
-            select(DailyState).where(DailyState.pair_id == pair_id, DailyState.day == day)
+            select(DailyState).where(
+                DailyState.pair_id == pair_id, DailyState.day == day
+            )
         )
         return result.scalar_one_or_none()
 
@@ -58,7 +62,7 @@ class DailyStateRepository:
         result = await self.session.execute(stmt)
         await self.session.flush()
         return result.scalar_one_or_none() is not None
-    
+
     async def set_morning_response(self, pair_id: int, day: date) -> bool:
         """Mark morning response as received (returns True if successful)."""
         stmt = (
@@ -101,7 +105,7 @@ class DailyStateRepository:
         result = await self.session.execute(stmt)
         await self.session.flush()
         return result.scalar_one_or_none() is not None
-    
+
     async def set_evening_response(self, pair_id: int, day: date) -> bool:
         """Mark evening response as received (returns True if successful)."""
         stmt = (
@@ -118,7 +122,7 @@ class DailyStateRepository:
         result = await self.session.execute(stmt)
         await self.session.flush()
         return result.scalar_one_or_none() is not None
-    
+
     async def update_last_surprise_at(self, pair_id: int, day: date) -> bool:
         """Update last_surprise_at timestamp (returns True if successful)."""
         stmt = (
@@ -133,14 +137,14 @@ class DailyStateRepository:
         result = await self.session.execute(stmt)
         await self.session.flush()
         return result.scalar_one_or_none() is not None
-    
+
     async def get_unanswered_pictures(
         self,
         hours: int,
         pic_type: str = "morning",
     ) -> list[DailyState]:
         """Get pictures sent pictures that haven't been answered within specified hours.
-        
+
         Note: Since the check runs every hour at minute 0, we use a slightly earlier
         cutoff time to account for pictures sent within the same hour.
         For example, if hours=3 and check runs at 16:00:00, we look for pictures
@@ -151,33 +155,27 @@ class DailyStateRepository:
         which means "sent at or before cutoff_time", which is what we have.
         But the issue is: if sent_at=13:00:13 and now=16:00:00, then hours_since=2:59:47,
         which is < 3 hours. So cutoff_time = 13:00:00, and 13:00:13 > 13:00:00, so no match.
-        
+
         Solution: Use a slightly earlier cutoff (subtract 1 minute) to account for
         pictures sent within the same hour as the cutoff.
         """
         # Subtract 1 minute to account for pictures sent within the same hour
         # This ensures we catch pictures sent at 13:00:13 when checking at 16:00:00
         cutoff_time = datetime.utcnow() - timedelta(hours=hours, minutes=1)
-        
+
         if pic_type == "morning":
-            stmt = (
-                select(DailyState)
-                .where(
-                    DailyState.morning_sent_at.isnot(None),
-                    DailyState.morning_responded_at.is_(None),
-                    DailyState.morning_sent_at <= cutoff_time,
-                )
+            stmt = select(DailyState).where(
+                DailyState.morning_sent_at.isnot(None),
+                DailyState.morning_responded_at.is_(None),
+                DailyState.morning_sent_at <= cutoff_time,
             )
         else:  # evening
-            stmt = (
-                select(DailyState)
-                .where(
-                    DailyState.evening_sent_at.isnot(None),
-                    DailyState.evening_responded_at.is_(None),
-                    DailyState.evening_sent_at <= cutoff_time,
-                )
+            stmt = select(DailyState).where(
+                DailyState.evening_sent_at.isnot(None),
+                DailyState.evening_responded_at.is_(None),
+                DailyState.evening_sent_at <= cutoff_time,
             )
-        
+
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -202,20 +200,19 @@ class DailyStateRepository:
 
     async def get_week_stats(self, pair_id: int) -> dict[str, int]:
         """Get statistics for last 7 days.
-        
+
         Returns:
             dict with keys: days_count (number of days with exchanges)
         """
         cutoff_date = date.today() - timedelta(days=7)
         result = await self.session.execute(
-            select(DailyState)
-            .where(
+            select(DailyState).where(
                 DailyState.pair_id == pair_id,
                 DailyState.day >= cutoff_date,
             )
         )
         states = list(result.scalars().all())
-        
+
         # Count days with completed exchanges (both morning and evening responded)
         days_count = 0
         for state in states:
@@ -229,9 +226,9 @@ class DailyStateRepository:
             )
             if morning_complete or evening_complete:
                 days_count += 1
-        
+
         return {"days_count": days_count}
-    
+
     async def cleanup_old(self) -> int:
         """Delete daily states older than retention period."""
         cutoff_date = datetime.utcnow() - timedelta(days=DAILY_STATE_RETENTION_DAYS)
@@ -239,4 +236,3 @@ class DailyStateRepository:
         result = await self.session.execute(stmt)
         await self.session.flush()
         return result.rowcount or 0
-

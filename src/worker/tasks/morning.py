@@ -26,24 +26,24 @@ def _mask_db_url(url: str) -> str:
 
 async def morning_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> None:
     """Send morning pictures within configured time window.
-    
+
     Args:
         ctx: Arq context
         worker_context: Worker context with dependencies
     """
     task_name = "morning_sender"
-    
+
     # Acquire lock using LockService from context
     lock_service = worker_context.lock_service
     lock_acquired = await lock_service.acquire_task_lock(task_name)
     if not lock_acquired:
         logger.debug("Task already running, skipping", task=task_name)
         return
-    
+
     try:
         # Ensure bot is initialized
         await worker_context.ensure_bot_initialized()
-        
+
         now_utc = datetime.utcnow()
         today = date.today()
         logger.info(
@@ -52,7 +52,7 @@ async def morning_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> 
             today=str(today),
             database_url=_mask_db_url(settings.database_url),
         )
-        
+
         async with worker_context.session_factory() as session:
             redis_client = await lock_service.get_redis_client()
             from src.services.messaging.period_transition import run_period_transitions
@@ -65,26 +65,28 @@ async def morning_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> 
             )
 
             scheduler = worker_context.create_pair_scheduler(session)
-            
+
             from src.db.repositories.pairs import PairsRepository
             from src.db.repositories.subscriptions import SubscriptionsRepository
+
             pairs_repo = PairsRepository(session)
             subs_repo = SubscriptionsRepository(session)
-            
+
             # Get active pairs
             pairs = await pairs_repo.get_active_pairs()
             logger.info("Active pairs found", count=len(pairs))
-            
+
             # Get past_due pairs for subscription notifications
             past_due_pairs = await pairs_repo.get_past_due_pairs()
             logger.info("Past due pairs found", count=len(past_due_pairs))
-            
+
             notified_users_count = 0
             reasons: Counter[str] = Counter()
             user_to_pair_ids: dict[int, set[int]] = {}
             from src.worker.services.pair_scheduler import WishRequestAttemptContext
+
             attempt_ctx_by_tg_id: dict[int, WishRequestAttemptContext] = {}
-            
+
             # Process active pairs - send wishes
             for pair in pairs:
                 try:
@@ -92,12 +94,12 @@ async def morning_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> 
                         select(User).where(User.id == pair.uid_a)
                     )
                     user_a = user_a_result.scalar_one()
-                    
+
                     user_b_result = await session.execute(
                         select(User).where(User.id == pair.uid_b)
                     )
                     user_b = user_b_result.scalar_one()
-                    
+
                     pair_ok, reason = await scheduler.check_pair_needs_wish_prompt(
                         pair=pair,
                         pic_type="morning",
@@ -129,12 +131,12 @@ async def morning_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> 
                     )
                     await session.rollback()
                     continue
-            
-            from src.services.messaging.pending_wish_delivery import (
-                flush_pending_deliveries,
-            )
+
             from src.bot.handlers.callbacks.use_cases.schedule_reminders import (
                 schedule_reminder_tasks,
+            )
+            from src.services.messaging.pending_wish_delivery import (
+                flush_pending_deliveries,
             )
 
             redis_client = await lock_service.get_redis_client()
@@ -151,25 +153,27 @@ async def morning_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> 
                 logger.info("Deferred morning wishes delivered", count=deferred_count)
 
             if user_to_pair_ids:
-                updated_count, _succeeded_users = await scheduler.send_aggregated_wish_requests(
-                    user_to_pair_ids=user_to_pair_ids,
-                    pic_type="morning",
-                    today=today,
-                    now_utc=now_utc,
-                    attempt_ctx_by_tg_id=attempt_ctx_by_tg_id,
+                updated_count, _succeeded_users = (
+                    await scheduler.send_aggregated_wish_requests(
+                        user_to_pair_ids=user_to_pair_ids,
+                        pic_type="morning",
+                        today=today,
+                        now_utc=now_utc,
+                        attempt_ctx_by_tg_id=attempt_ctx_by_tg_id,
+                    )
                 )
                 notified_users_count = updated_count
-            
+
             # Process past_due pairs - send subscription notifications
             from src.worker.tasks.past_due import send_past_due_notification
-            
+
             for pair in past_due_pairs:
                 try:
                     # Get subscription
                     subscription = await subs_repo.get_by_pair_id(pair.id)
                     if not subscription:
                         continue
-                    
+
                     # Send past due notification if needed
                     await send_past_due_notification(
                         worker_context=worker_context,
@@ -186,7 +190,7 @@ async def morning_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> 
                         exc_info=True,
                     )
                     continue
-            
+
             logger.info(
                 "Morning sender completed",
                 sent_count=notified_users_count,
@@ -194,4 +198,3 @@ async def morning_sender(ctx: dict[str, Any], worker_context: WorkerContext) -> 
             )
     finally:
         await lock_service.close()
-

@@ -22,7 +22,7 @@ async def check_and_update_expired_subscriptions(
     send_notifications: bool = False,
 ) -> None:
     """Check and update expired subscriptions to past_due status.
-    
+
     Args:
         worker_context: Worker context with dependencies
         send_notifications: If True, send dunning notifications to users
@@ -30,18 +30,18 @@ async def check_and_update_expired_subscriptions(
     async with worker_context.session_factory() as session:
         subs_repo = SubscriptionsRepository(session)
         pairs_repo = PairsRepository(session)
-        
+
         past_due_subs = await subs_repo.get_past_due()
-        
+
         if not past_due_subs:
             logger.info("No expired subscriptions found")
             return
-        
+
         logger.info(
             "Found expired subscriptions",
             count=len(past_due_subs),
         )
-        
+
         updated_count = 0
         today = date.today()
         for sub in past_due_subs:
@@ -49,7 +49,7 @@ async def check_and_update_expired_subscriptions(
                 pair = await pairs_repo.get_by_id(sub.pair_id)
                 if not pair:
                     continue
-                
+
                 # Only update if status is not already past_due
                 if pair.status == PairStatus.PAST_DUE.value:
                     logger.debug(
@@ -57,25 +57,27 @@ async def check_and_update_expired_subscriptions(
                         pair_id=pair.id,
                     )
                     continue
-                
+
                 # Update pair status and commit immediately
                 # This ensures status is updated even if notification fails
                 await pairs_repo.update_status(pair.id, PairStatus.PAST_DUE)
                 await session.commit()
                 updated_count += 1
-                
+
                 logger.info(
                     "Updated pair status to past_due",
                     pair_id=pair.id,
                     subscription_id=sub.id,
                     period_end=sub.period_end.isoformat(),
                 )
-                
+
                 # Send notifications if requested (in separate try-except)
                 if send_notifications:
                     try:
                         lock_service = worker_context.lock_service
-                        dunning_key = f"dunning_notification:{pair.id}:{today.isoformat()}"
+                        dunning_key = (
+                            f"dunning_notification:{pair.id}:{today.isoformat()}"
+                        )
                         can_send = await lock_service.set_key_if_not_exists(
                             dunning_key,
                             "1",
@@ -97,28 +99,36 @@ async def check_and_update_expired_subscriptions(
                             select(User).where(User.id == pair.uid_b)
                         )
                         user_b = user_b_result.scalar_one()
-                        
+
                         # Send notifications using NotificationBuilder
                         messenger = worker_context.messenger
                         notification_builder = worker_context.notification_builder
-                        
+
                         label_for_a = format_partner_label(
-                            partner_nickname=pairs_repo.get_my_nickname_for_partner(pair, user_a.id),
+                            partner_nickname=pairs_repo.get_my_nickname_for_partner(
+                                pair, user_a.id
+                            ),
                             partner_username=user_b.username,
                         )
                         label_for_b = format_partner_label(
-                            partner_nickname=pairs_repo.get_my_nickname_for_partner(pair, user_b.id),
+                            partner_nickname=pairs_repo.get_my_nickname_for_partner(
+                                pair, user_b.id
+                            ),
                             partner_username=user_a.username,
                         )
-                        dunning_text_a, keyboard = await notification_builder.build_dunning_notification_message(
-                            partner_label=label_for_a,
-                            pair_id=pair.id,
+                        dunning_text_a, keyboard = (
+                            await notification_builder.build_dunning_notification_message(
+                                partner_label=label_for_a,
+                                pair_id=pair.id,
+                            )
                         )
-                        dunning_text_b, _keyboard_b = await notification_builder.build_dunning_notification_message(
-                            partner_label=label_for_b,
-                            pair_id=pair.id,
+                        dunning_text_b, _keyboard_b = (
+                            await notification_builder.build_dunning_notification_message(
+                                partner_label=label_for_b,
+                                pair_id=pair.id,
+                            )
                         )
-                        
+
                         await messenger.send_message(
                             chat_id=user_a.tg_id,
                             text=dunning_text_a,
@@ -129,7 +139,7 @@ async def check_and_update_expired_subscriptions(
                             text=dunning_text_b,
                             reply_markup=keyboard,
                         )
-                        
+
                         logger.info("Dunning notification sent", pair_id=pair.id)
                     except Exception as notification_error:
                         # Log error but don't fail the task - status is already updated
@@ -139,7 +149,7 @@ async def check_and_update_expired_subscriptions(
                             error=str(notification_error),
                             exc_info=True,
                         )
-                
+
             except Exception as e:
                 logger.error(
                     "Error updating expired subscription",
@@ -149,7 +159,7 @@ async def check_and_update_expired_subscriptions(
                     exc_info=True,
                 )
                 await session.rollback()
-        
+
         logger.info(
             "Updated pairs to past_due status",
             total_expired=len(past_due_subs),
@@ -157,9 +167,11 @@ async def check_and_update_expired_subscriptions(
         )
 
 
-async def dunning_notifications(ctx: dict[str, Any], worker_context: WorkerContext) -> None:
+async def dunning_notifications(
+    ctx: dict[str, Any], worker_context: WorkerContext
+) -> None:
     """Send dunning notifications for past due subscriptions.
-    
+
     Args:
         ctx: Arq context
         worker_context: Worker context with dependencies
@@ -178,7 +190,7 @@ async def send_past_due_notification(
     pic_type: str = "morning",
 ) -> None:
     """Send past due notification for a pair.
-    
+
     Args:
         worker_context: Worker context with dependencies
         pair: Pair object
@@ -198,10 +210,10 @@ async def send_past_due_notification(
             lock_service=lock_service,
             pic_type=pic_type,
         )
-        
+
         if not should_send:
             return
-        
+
         # Reserve notification slot atomically to avoid duplicates
         days_since_expiry = (today - subscription.period_end).days
         if days_since_expiry <= 3:
@@ -226,19 +238,15 @@ async def send_past_due_notification(
                 return
 
         # Get users
-        user_a_result = await session.execute(
-            select(User).where(User.id == pair.uid_a)
-        )
+        user_a_result = await session.execute(select(User).where(User.id == pair.uid_a))
         user_a = user_a_result.scalar_one()
-        user_b_result = await session.execute(
-            select(User).where(User.id == pair.uid_b)
-        )
+        user_b_result = await session.execute(select(User).where(User.id == pair.uid_b))
         user_b = user_b_result.scalar_one()
-        
+
         # Send notification using NotificationBuilder
         messenger = worker_context.messenger
         notification_builder = worker_context.notification_builder
-        
+
         label_for_a = format_partner_label(
             partner_nickname=pairs_repo.get_my_nickname_for_partner(pair, user_a.id),
             partner_username=user_b.username,
@@ -247,17 +255,21 @@ async def send_past_due_notification(
             partner_nickname=pairs_repo.get_my_nickname_for_partner(pair, user_b.id),
             partner_username=user_a.username,
         )
-        notification_text_a, reply_markup = await notification_builder.build_past_due_notification_message(
-            include_button=True,
-            partner_label=label_for_a,
-            pair_id=pair.id,
+        notification_text_a, reply_markup = (
+            await notification_builder.build_past_due_notification_message(
+                include_button=True,
+                partner_label=label_for_a,
+                pair_id=pair.id,
+            )
         )
-        notification_text_b, _reply_markup_b = await notification_builder.build_past_due_notification_message(
-            include_button=True,
-            partner_label=label_for_b,
-            pair_id=pair.id,
+        notification_text_b, _reply_markup_b = (
+            await notification_builder.build_past_due_notification_message(
+                include_button=True,
+                partner_label=label_for_b,
+                pair_id=pair.id,
+            )
         )
-        
+
         await messenger.send_message(
             chat_id=user_a.tg_id,
             text=notification_text_a,
@@ -268,20 +280,20 @@ async def send_past_due_notification(
             text=notification_text_b,
             reply_markup=reply_markup,
         )
-        
+
         # Update subscription
         from src.db.repositories.subscriptions import SubscriptionsRepository
+
         subs_repo = SubscriptionsRepository(session)
         await subs_repo.update_last_past_due_notification_date(
             subscription.id,
             today,
         )
-        
+
         await session.commit()
-        
+
         logger.info(
             "Past due notification sent",
             pair_id=pair.id,
             days_since_expiry=days_since_expiry,
         )
-

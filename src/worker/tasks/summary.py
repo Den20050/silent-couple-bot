@@ -18,7 +18,7 @@ async def send_week_summary(
     worker_context: WorkerContext,
 ) -> None:
     """Send weekly summary to active pairs.
-    
+
     Args:
         ctx: Arq context
         worker_context: Worker context with dependencies
@@ -27,37 +27,43 @@ async def send_week_summary(
     try:
         # Ensure bot is initialized
         await worker_context.ensure_bot_initialized()
-        
+
         async with worker_context.session_factory() as session:
             pairs_repo = PairsRepository(session)
             daily_state_repo = DailyStateRepository(session)
-            
+
             # Get active pairs
             pairs = await pairs_repo.get_active_pairs()
             logger.info("Active pairs found for week summary", count=len(pairs))
-            
+
             sent_count = 0
             skipped_count = 0
-            
+
             for pair in pairs:
                 try:
                     # Check if summary already sent this week
                     today = date.today()
                     week_start = today - timedelta(days=today.weekday())
-                    summary_key = f"week_summary_sent:{pair.id}:{week_start.isoformat()}"
-                    
-                    already_sent = await worker_context.lock_service.check_key_exists(summary_key)
+                    summary_key = (
+                        f"week_summary_sent:{pair.id}:{week_start.isoformat()}"
+                    )
+
+                    already_sent = await worker_context.lock_service.check_key_exists(
+                        summary_key
+                    )
                     if already_sent:
                         skipped_count += 1
                         continue
-                    
+
                     # Get week stats
                     stats = await daily_state_repo.get_week_stats(pair.id)
                     days_count = stats.get("days_count", 0)
-                    
+
                     # Get users
                     from sqlalchemy import select
+
                     from src.db.models import User
+
                     user_a_result = await session.execute(
                         select(User).where(User.id == pair.uid_a)
                     )
@@ -66,7 +72,7 @@ async def send_week_summary(
                         select(User).where(User.id == pair.uid_b)
                     )
                     user_b = user_b_result.scalar_one()
-                    
+
                     # Send summary using NotificationBuilder
                     messenger = worker_context.messenger
                     notification_builder = worker_context.notification_builder
@@ -83,27 +89,35 @@ async def send_week_summary(
                         else None
                     )
 
-                    summary_text_a = await notification_builder.build_week_summary_message(
-                        pair_mode=pair.mode,
-                        days_count=days_count,
-                        partner_nickname=nickname_for_a,
+                    summary_text_a = (
+                        await notification_builder.build_week_summary_message(
+                            pair_mode=pair.mode,
+                            days_count=days_count,
+                            partner_nickname=nickname_for_a,
+                        )
                     )
-                    summary_text_b = await notification_builder.build_week_summary_message(
-                        pair_mode=pair.mode,
-                        days_count=days_count,
-                        partner_nickname=nickname_for_b,
+                    summary_text_b = (
+                        await notification_builder.build_week_summary_message(
+                            pair_mode=pair.mode,
+                            days_count=days_count,
+                            partner_nickname=nickname_for_b,
+                        )
                     )
-                    
-                    await messenger.send_message(chat_id=user_a.tg_id, text=summary_text_a)
-                    await messenger.send_message(chat_id=user_b.tg_id, text=summary_text_b)
-                    
+
+                    await messenger.send_message(
+                        chat_id=user_a.tg_id, text=summary_text_a
+                    )
+                    await messenger.send_message(
+                        chat_id=user_b.tg_id, text=summary_text_b
+                    )
+
                     # Mark summary as sent
                     await worker_context.lock_service.set_key_with_ttl(
                         summary_key,
                         "1",
                         settings.summary_ttl_days * 24 * 3600,
                     )
-                    
+
                     sent_count += 1
                 except Exception as e:
                     logger.error(
@@ -113,7 +127,7 @@ async def send_week_summary(
                         exc_info=True,
                     )
                     continue
-            
+
             logger.info(
                 "Week summary completed",
                 sent_count=sent_count,
@@ -123,4 +137,3 @@ async def send_week_summary(
     finally:
         await worker_context.close_bot()
         await lock_service.close()
-

@@ -47,7 +47,9 @@ async def refresh_aggregated_wish_prompt(
     try:
         from src.core.redis_client import create_redis_client
 
-        redis_client = await create_redis_client(socket_connect_timeout=2, socket_timeout=2)
+        redis_client = await create_redis_client(
+            socket_connect_timeout=2, socket_timeout=2
+        )
         if redis_client is None:
             return
 
@@ -64,7 +66,9 @@ async def refresh_aggregated_wish_prompt(
             return
 
         ui_builder = WishRequestUIService(session)
-        ui = await ui_builder.build_for_user(user_tg_id=tg_id, pic_type=pic_type, day=day)
+        ui = await ui_builder.build_for_user(
+            user_tg_id=tg_id, pic_type=pic_type, day=day
+        )
 
         await telegram_messenger.edit_message(
             chat_id=tg_id,
@@ -80,4 +84,3 @@ async def refresh_aggregated_wish_prompt(
             day=str(day),
             error=str(e),
         )
-

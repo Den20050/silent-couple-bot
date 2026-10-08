@@ -5,10 +5,10 @@ Revises: add_consent_audit
 Create Date: 2026-01-31 14:40:00.000000
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
-
 
 # revision identifiers, used by Alembic.
 revision: str = "add_pair_demo_hash"

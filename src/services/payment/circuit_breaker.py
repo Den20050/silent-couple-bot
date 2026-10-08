@@ -13,14 +13,14 @@ logger = get_logger(__name__)
 
 class CircuitBreaker:
     """Circuit breaker for external services.
-    
+
     Implements the circuit breaker pattern to prevent cascading failures
     when external services are unavailable. Uses Redis for distributed state.
     """
 
     def __init__(self, redis: Redis | None, service_name: str) -> None:
         """Initialize circuit breaker.
-        
+
         Args:
             redis: Redis client for distributed state (optional)
             service_name: Name of the service (e.g., "robokassa", "yookassa")
@@ -32,14 +32,14 @@ class CircuitBreaker:
 
     async def is_open(self) -> bool:
         """Check if circuit is open (blocking requests).
-        
+
         Returns:
             True if circuit is open (blocking requests), False otherwise.
             If Redis is unavailable, returns False (allows requests).
         """
         if not self._redis_available or not self.redis:
             return False  # If Redis unavailable, circuit breaker is always closed (allows requests)
-        
+
         try:
             key = f"{self.key_prefix}:open"
             # Use get with timeout to avoid hanging
@@ -61,12 +61,12 @@ class CircuitBreaker:
         """Record a failure and open circuit if threshold reached."""
         if not self._redis_available or not self.redis:
             return  # Skip if Redis unavailable
-        
+
         try:
             key = f"{self.key_prefix}:failures"
             count = await self.redis.incr(key)
             await self.redis.expire(key, CIRCUIT_BREAKER_TIMEOUT_SECONDS)
-            
+
             if count >= CIRCUIT_BREAKER_FAILURE_THRESHOLD:
                 await self._open_circuit()
         except Exception as e:
@@ -81,7 +81,7 @@ class CircuitBreaker:
         """Open circuit breaker (block requests)."""
         if not self._redis_available or not self.redis:
             return
-        
+
         try:
             key = f"{self.key_prefix}:open"
             await self.redis.setex(key, CIRCUIT_BREAKER_TIMEOUT_SECONDS, "1")
@@ -102,7 +102,7 @@ class CircuitBreaker:
         """Record a success (reset failure counter)."""
         if not self._redis_available or not self.redis:
             return
-        
+
         try:
             key = f"{self.key_prefix}:failures"
             await self.redis.delete(key)

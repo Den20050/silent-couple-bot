@@ -4,22 +4,22 @@ import asyncio
 from contextlib import asynccontextmanager
 
 from aiogram import Bot, Dispatcher
-from aiogram.types import BotCommand, BotCommandScopeChat, MenuButtonCommands
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.storage.redis import RedisStorage
-from fastapi import FastAPI, Request, Header
+from aiogram.types import BotCommand, BotCommandScopeChat, MenuButtonCommands
+from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 
-from src.core.config import settings
-from src.core.logger import get_logger
-from src.core.redis_client import create_redis_client, test_redis_connection
-from src.core.bootstrap import bootstrap
-from src.core.di.container import Container
 from src.bot.middlewares.container import ContainerMiddleware
 from src.bot.middlewares.database import DatabaseMiddleware
+from src.bot.middlewares.ip_injector import IPInjectorMiddleware
 from src.bot.middlewares.rate_limit import RateLimitMiddleware
 from src.bot.middlewares.timezone import TimezoneMiddleware
-from src.bot.middlewares.ip_injector import IPInjectorMiddleware
+from src.core.bootstrap import bootstrap
+from src.core.config import settings
+from src.core.di.container import Container
+from src.core.logger import get_logger
+from src.core.redis_client import create_redis_client, test_redis_connection
 from src.services.telegram import set_bot
 
 logger = get_logger(__name__)
@@ -35,14 +35,14 @@ _polling_task: asyncio.Task | None = None
 async def setup_bot() -> tuple[Bot, Dispatcher]:
     """Initialize bot and dispatcher."""
     global bot, dp, redis_client, redis_storage_client, container
-    
+
     # If bot and dispatcher already initialized, return them
     if bot is not None and dp is not None:
         return bot, dp
 
     # Bootstrap application to get container with all dependencies
     container = await bootstrap()
-    
+
     # Initialize Redis storage
     # RedisStorage needs its own Redis client with its own connection pool
     # Create separate client for RedisStorage to avoid connection closure issues
@@ -70,9 +70,10 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
 
     # Initialize bot (with proxy if configured)
     from src.services.telegram.bot_factory import create_bot as _create_bot
+
     bot = _create_bot(settings.tg_bot_token, proxy_url=settings.telegram_proxy_url)
     set_bot(bot)  # Set global bot instance for services
-    
+
     # IMPORTANT: Also set bot in container's BotProvider
     # This ensures that handlers injected via ContainerMiddleware can access bot
     container.bot_provider.set_bot(bot)
@@ -107,6 +108,7 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
 
     # Register routers using the same order as router_registry
     from src.bot.bootstrap.router_registry import register_routers
+
     register_routers(dp)
 
     logger.info("Bot initialized", environment=settings.environment)
@@ -124,7 +126,9 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
         # Set commands for all users (without admin commands)
         user_commands = [
             BotCommand(command="start", description="🚀 Начать/Перезапустить бота"),
-            BotCommand(command="create_pair", description="➕ Создать дополнительную пару"),
+            BotCommand(
+                command="create_pair", description="➕ Создать дополнительную пару"
+            ),
             BotCommand(command="subscription", description="📊 Подписка"),
             BotCommand(command="pay", description="💳 Оплатить"),
             BotCommand(command="settings", description="⚙️ Настройки"),
@@ -136,8 +140,10 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
             BotCommand(command="delete", description="🗑️ Удалить аккаунт"),
         ]
         await bot.set_my_commands(user_commands)
-        logger.info("Bot commands menu set for users", commands_count=len(user_commands))
-        
+        logger.info(
+            "Bot commands menu set for users", commands_count=len(user_commands)
+        )
+
         # Set commands for admin (with admin commands) if admin_tg_id is set
         if settings.admin_tg_id:
             admin_commands = user_commands + [
@@ -149,7 +155,11 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
             # Set commands only for admin user (in private chat, chat_id = user_id)
             scope = BotCommandScopeChat(chat_id=settings.admin_tg_id)
             await bot.set_my_commands(admin_commands, scope=scope)
-            logger.info("Bot commands menu set for admin", admin_tg_id=settings.admin_tg_id, commands_count=len(admin_commands))
+            logger.info(
+                "Bot commands menu set for admin",
+                admin_tg_id=settings.admin_tg_id,
+                commands_count=len(admin_commands),
+            )
 
         # Set Menu Button (left of input field)
         menu_button = MenuButtonCommands()

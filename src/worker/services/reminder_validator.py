@@ -11,33 +11,33 @@ logger = get_logger(__name__)
 
 class ReminderValidator:
     """Service for validating reminder conditions."""
-    
+
     def __init__(
         self,
         daily_state_repo: DailyStateRepository,
     ):
         """Initialize reminder validator.
-        
+
         Args:
             daily_state_repo: DailyStateRepository instance
         """
         self._daily_state_repo = daily_state_repo
-    
+
     async def should_send_reminder(
         self,
         candidate: ReminderCandidate,
     ) -> bool:
         """Check if reminder should be sent for candidate.
-        
+
         Args:
             candidate: ReminderCandidate to validate
-            
+
         Returns:
             True if reminder should be sent, False otherwise
         """
         pic_type = candidate.pic_type
         current_state = candidate.daily_state
-        
+
         sent_at = (
             current_state.morning_sent_at
             if pic_type == "morning"
@@ -76,14 +76,14 @@ class ReminderValidator:
                     target_day=str(candidate.target_day),
                 )
                 return False
-        
+
         # Check if any picture was initiated on the next day (new cycle started)
         next_day = candidate.target_day + timedelta(days=1)
         next_day_state = await self._daily_state_repo.get_by_pair_and_day(
             candidate.pair.id,
             next_day,
         )
-        
+
         if next_day_state and (
             next_day_state.morning_initiator is not None
             or next_day_state.evening_initiator is not None
@@ -95,21 +95,20 @@ class ReminderValidator:
                 next_day=str(next_day),
             )
             return False
-        
+
         return True
-    
+
     async def should_send_warning(
         self,
         candidate: ReminderCandidate,
     ) -> bool:
         """Check if warning should be sent for candidate.
-        
+
         Args:
             candidate: ReminderCandidate to validate
-            
+
         Returns:
             True if warning should be sent, False otherwise
         """
         # Same validation logic as reminders
         return await self.should_send_reminder(candidate)
-

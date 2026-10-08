@@ -121,7 +121,9 @@ async def timezone_register(body: TimezoneSyncRequest) -> dict[str, str]:
         if not ok:
             raise HTTPException(status_code=400, detail="Timezone sync failed")
 
-        from src.bot.handlers.start.start_flow import finish_register_after_timezone_sync
+        from src.bot.handlers.start.start_flow import (
+            finish_register_after_timezone_sync,
+        )
 
         state = await _build_fsm_context(tg_id)
         if state is not None:
@@ -160,7 +162,9 @@ async def start_update_timezone(body: TimezoneSyncRequest) -> dict[str, str]:
         if not ok:
             raise HTTPException(status_code=400, detail="Timezone sync failed")
 
-        from src.bot.handlers.start.start_flow import finish_start_update_after_timezone_sync
+        from src.bot.handlers.start.start_flow import (
+            finish_start_update_after_timezone_sync,
+        )
 
         await finish_start_update_after_timezone_sync(
             tg_id=tg_id,

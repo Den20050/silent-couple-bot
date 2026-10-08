@@ -2,19 +2,19 @@
 
 from datetime import date
 
-from aiogram import Router, F
+from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.messages import get_message
+from src.bot.handlers.callbacks.use_cases.respond_to_wish import respond_to_wish
+from src.bot.handlers.callbacks.validators import parse_callback_data_with_day
+from src.bot.handlers.start.services.pair_service import format_partner_text
 from src.core.logger import get_logger
+from src.core.messages import get_message
 from src.db.repositories.pairs import PairsRepository
 from src.db.repositories.users import UsersRepository
 from src.services.telegram.messenger import TelegramMessenger
-from src.bot.handlers.callbacks.validators import parse_callback_data_with_day
-from src.bot.handlers.callbacks.use_cases.respond_to_wish import respond_to_wish
-from src.bot.handlers.start.services.pair_service import format_partner_text
 
 logger = get_logger(__name__)
 
@@ -64,6 +64,7 @@ async def _build_partner_text_for_response(
         partner_nickname,
     )
 
+
 @router.callback_query(F.data.startswith("tap_morning_"))
 async def handle_tap_morning(
     callback: CallbackQuery,
@@ -72,7 +73,7 @@ async def handle_tap_morning(
 ) -> None:
     """Handle morning tap (response)."""
     tg_id = callback.from_user.id
-    
+
     # NOTE: We don't check is_message_active here because "Отправить в ответ" button
     # should work all day regardless of other messages (e.g., subscription reminders).
     # The respond_to_wish function already has proper checks for already_responded, etc.
@@ -80,14 +81,16 @@ async def handle_tap_morning(
     # Parse callback data: tap_morning_{pair_id}_{initiator_tg_id}|{day_iso}
     parsed = parse_callback_data_with_day(callback.data, prefix="tap_morning_")
     if not parsed:
-        await _safe_callback_answer(callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+        await _safe_callback_answer(
+            callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True
+        )
         return
-    
+
     pair_id, initiator_tg_id, day_iso = parsed
-    
+
     # Determine which day to check
     check_day = date.fromisoformat(day_iso) if day_iso else date.today()
-    
+
     logger.info(
         "Processing tap_morning callback",
         pair_id=pair_id,
@@ -96,7 +99,7 @@ async def handle_tap_morning(
         check_day=str(check_day),
         callback_data=callback.data,
     )
-    
+
     # Respond to wish
     success, error_key = await respond_to_wish(
         session=session,
@@ -107,19 +110,21 @@ async def handle_tap_morning(
         pic_type="morning",
         telegram_messenger=telegram_messenger,
     )
-    
+
     if not success:
         await _safe_callback_answer(
-            callback, get_message(error_key or "CALLBACK_ERROR_GENERIC"), show_alert=True
+            callback,
+            get_message(error_key or "CALLBACK_ERROR_GENERIC"),
+            show_alert=True,
         )
         return
-    
+
     # Remove button from the message
     await telegram_messenger.remove_reply_markup(
         chat_id=tg_id,
         message_id=callback.message.message_id,
     )
-    
+
     partner_text = await _build_partner_text_for_response(
         session=session,
         pair_id=pair_id,
@@ -148,7 +153,7 @@ async def handle_tap_evening(
 ) -> None:
     """Handle evening tap (response)."""
     tg_id = callback.from_user.id
-    
+
     # NOTE: We don't check is_message_active here because "Отправить в ответ" button
     # should work all day regardless of other messages (e.g., subscription reminders).
     # The respond_to_wish function already has proper checks for already_responded, etc.
@@ -156,14 +161,16 @@ async def handle_tap_evening(
     # Parse callback data: tap_evening_{pair_id}_{initiator_tg_id}|{day_iso}
     parsed = parse_callback_data_with_day(callback.data, prefix="tap_evening_")
     if not parsed:
-        await _safe_callback_answer(callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+        await _safe_callback_answer(
+            callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True
+        )
         return
-    
+
     pair_id, initiator_tg_id, day_iso = parsed
-    
+
     # Determine which day to check
     check_day = date.fromisoformat(day_iso) if day_iso else date.today()
-    
+
     logger.info(
         "Processing tap_evening callback",
         pair_id=pair_id,
@@ -172,7 +179,7 @@ async def handle_tap_evening(
         check_day=str(check_day),
         callback_data=callback.data,
     )
-    
+
     # Respond to wish
     success, error_key = await respond_to_wish(
         session=session,
@@ -183,19 +190,21 @@ async def handle_tap_evening(
         pic_type="evening",
         telegram_messenger=telegram_messenger,
     )
-    
+
     if not success:
         await _safe_callback_answer(
-            callback, get_message(error_key or "CALLBACK_ERROR_GENERIC"), show_alert=True
+            callback,
+            get_message(error_key or "CALLBACK_ERROR_GENERIC"),
+            show_alert=True,
         )
         return
-    
+
     # Remove button from the message
     await telegram_messenger.remove_reply_markup(
         chat_id=tg_id,
         message_id=callback.message.message_id,
     )
-    
+
     partner_text = await _build_partner_text_for_response(
         session=session,
         pair_id=pair_id,
@@ -214,4 +223,3 @@ async def handle_tap_evening(
     )
 
     await _safe_callback_answer(callback, get_message("CALLBACK_RESPONSE_SENT"))
-

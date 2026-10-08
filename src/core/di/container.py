@@ -1,35 +1,39 @@
 """Dependency Injection container."""
 
-from typing import Optional
 from dataclasses import dataclass, field
+from typing import Optional
 
 from redis.asyncio import Redis
 
 from src.core.config import Settings
+from src.core.di.providers.payment import (
+    provide_payment_service,
+    provide_webhook_handler,
+)
 from src.core.di.providers.storage import (
     SessionFactory,
-    provide_session_factory,
     provide_redis,
+    provide_session_factory,
 )
 from src.core.di.providers.telegram import (
     provide_bot_provider,
     provide_telegram_messenger,
-)
-from src.core.di.providers.payment import (
-    provide_payment_service,
-    provide_webhook_handler,
 )
 
 # Import protocols for type hints (DIP compliance)
 from src.core.protocols.bot_provider import BotProviderProtocol
 from src.core.protocols.messenger import MessengerProtocol
 from src.core.protocols.payment import PaymentServiceProtocol
+from src.services.payment.robokassa_service import (
+    RobokassaService as RobokassaServiceImpl,
+)
+from src.services.payment.webhook_handler import (
+    RobokassaWebhookHandler as RobokassaWebhookHandlerImpl,
+)
 
 # Import concrete types for runtime (actual implementations)
 from src.services.telegram.bot_provider import BotProvider as BotProviderImpl
 from src.services.telegram.messenger import TelegramMessenger as TelegramMessengerImpl
-from src.services.payment.robokassa_service import RobokassaService as RobokassaServiceImpl
-from src.services.payment.webhook_handler import RobokassaWebhookHandler as RobokassaWebhookHandlerImpl
 
 
 @dataclass
@@ -38,7 +42,7 @@ class Container:
 
     Stores all application dependencies and provides them via properties.
     All dependencies are lazily initialized on first access.
-    
+
     Uses protocols for type hints (DIP compliance) while storing concrete implementations.
     """
 
@@ -68,7 +72,7 @@ class Container:
     @property
     def bot_provider(self) -> BotProviderProtocol:
         """Get bot provider (lazy initialization).
-        
+
         Returns:
             BotProviderProtocol implementation
         """
@@ -79,7 +83,7 @@ class Container:
     @property
     def telegram_messenger(self) -> MessengerProtocol:
         """Get Telegram messenger (lazy initialization).
-        
+
         Returns:
             MessengerProtocol implementation
         """
@@ -93,7 +97,7 @@ class Container:
     @property
     def payment_service(self) -> PaymentServiceProtocol:
         """Get payment service (lazy initialization).
-        
+
         Returns:
             PaymentServiceProtocol implementation
         """
@@ -129,6 +133,7 @@ class Container:
                 await self._redis.aclose()
             except Exception as e:
                 from src.core.logger import get_logger
+
                 logger = get_logger(__name__)
                 logger.warning(f"Error closing Redis connection: {e}")
 
@@ -184,4 +189,3 @@ async def initialize_container(container: Container) -> None:
     # Initialize Redis
     redis = await provide_redis(container.settings)
     container.set_redis(redis)
-

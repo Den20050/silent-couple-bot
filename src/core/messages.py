@@ -1,7 +1,6 @@
 """Bot messages and text strings for localization support."""
 
 
-
 class Messages:
     """Bot messages in Russian (default language)."""
 
@@ -64,7 +63,9 @@ class Messages:
     START_PAIR_ALREADY_CREATED = "✅ Пара уже создана!"
     START_CANNOT_INVITE_SELF = "❌ Нельзя пригласить самого себя!"
     START_INVALID_INVITE_LINK = "❌ Неверная ссылка приглашения."
-    START_PAIR_CREATED = "✅ Пара создана! Режим: {mode_text}.\nДемо период: {days} {days_text}."
+    START_PAIR_CREATED = (
+        "✅ Пара создана! Режим: {mode_text}.\nДемо период: {days} {days_text}."
+    )
     START_PAIR_CREATED_PARTNER = (
         "✅ Пара создана с пользователем @{username}! Демо период: {days} {days_text}."
     )
@@ -79,8 +80,7 @@ class Messages:
         "что мы рядом, даже если заняты. Нажми на ссылку, чтобы принять приглашение 🤗"
     )
     DELIVERY_CHOICE_TITLE = (
-        "Где удобнее получать пожелания? 💌\n"
-        "Выбор можно изменить позже в /settings"
+        "Где удобнее получать пожелания? 💌\n" "Выбор можно изменить позже в /settings"
     )
     DELIVERY_BOT_DM = "В чате с ботом"
     DELIVERY_PAIR_DM = "В нашем личном чате"
@@ -152,7 +152,9 @@ class Messages:
     SETTINGS_NICKNAME_SET = "✅ Имя партнёра установлено: {nickname}\n\nТеперь в сообщениях от вашего партнёра будет отображаться это имя."
     SETTINGS_NICKNAME_CLEARED = "✅ Имя партнёра удалено"
     SETTINGS_NICKNAME_TOO_LONG = "❌ Имя слишком длинное. Максимум 50 символов."
-    SETTINGS_NICKNAME_INVALID = "❌ Некорректное имя. Используйте только буквы, цифры и пробелы."
+    SETTINGS_NICKNAME_INVALID = (
+        "❌ Некорректное имя. Используйте только буквы, цифры и пробелы."
+    )
     START_NICKNAME_PROMPT = (
         "👋 Отлично! Пара создана!\n\n"
         "Теперь давайте настроим имя для вашего партнёра.\n\n"
@@ -165,7 +167,9 @@ class Messages:
         "близких родственников. Пусть и они знают, что с вами всё в порядке ❤️"
     )
     START_NICKNAME_SET = "✅ Имя партнёра установлено: {nickname}"
-    START_NICKNAME_SKIPPED = "⏭️ Имя партнёра не установлено. Вы сможете установить его позже в настройках."
+    START_NICKNAME_SKIPPED = (
+        "⏭️ Имя партнёра не установлено. Вы сможете установить его позже в настройках."
+    )
     SETTINGS_TRIAL_EXPIRED = (
         "⏳ <b>Демо режим закончился</b>\n\n"
         "Для продолжения использования бота необходимо оплатить подписку.\n\n"
@@ -186,12 +190,8 @@ class Messages:
     SUBSCRIPTION_ACTIVE_DAYS_LEFT = (
         "📊 <b>Подписка</b>\n\nПодписка активна, остаток {days_left} дней"
     )
-    SUBSCRIPTION_PAST_DUE = (
-        "📊 <b>Подписка</b>\n\n⏳ Подписка просрочена. Оплатите для продолжения использования."
-    )
-    SUBSCRIPTION_PAST_DUE_WITH_PARTNER = (
-        "📊 <b>Подписка</b>\n\n⏳ Подписка просрочена (пара с {partner}). Оплатите для продолжения использования."
-    )
+    SUBSCRIPTION_PAST_DUE = "📊 <b>Подписка</b>\n\n⏳ Подписка просрочена. Оплатите для продолжения использования."
+    SUBSCRIPTION_PAST_DUE_WITH_PARTNER = "📊 <b>Подписка</b>\n\n⏳ Подписка просрочена (пара с {partner}). Оплатите для продолжения использования."
     SUBSCRIPTION_TRIAL_DAYS_LEFT = (
         "📊 <b>Подписка</b>\n\nДемо режим активен, остаток {days_left} дней"
     )
@@ -213,9 +213,7 @@ class Messages:
         "<i>Один раз на пару. Не действует на «Навсегда».</i>\n\n"
     )
     PAY_FIRST_PAYMENT_BONUS_PERIOD = "{effective_name} (+1 мес. 🎁)"
-    PAY_FIRST_PAYMENT_BONUS_APPLIED = (
-        "🎁 <b>+1 месяц в подарок</b> добавлен к подписке — это ваш первый платёж за эту пару!"
-    )
+    PAY_FIRST_PAYMENT_BONUS_APPLIED = "🎁 <b>+1 месяц в подарок</b> добавлен к подписке — это ваш первый платёж за эту пару!"
     PAY_TARIFF_LINE = "• {name} - {price} {symbol}"
     PAY_TARIFF_LINE_WITH_SAVING = (
         "• {name} - {price} {symbol} (экономия {saving} {symbol})"
@@ -256,9 +254,7 @@ class Messages:
     CALLBACK_RESPONSE_DELIVERED = "✅ Ответ доставлен пользователю {partner_text}"
     RESPOND_BUTTON_TEXT = "Нажмите кнопку ниже, чтобы ответить:"
     CALLBACK_RESPONSE_SENT = "Ответ отправлен!"
-    CALLBACK_STALE_MESSAGE = (
-        "⏳ Это сообщение уже не актуально. Пожалуйста, используйте последнее сообщение от бота."
-    )
+    CALLBACK_STALE_MESSAGE = "⏳ Это сообщение уже не актуально. Пожалуйста, используйте последнее сообщение от бота."
     CALLBACK_WISH_NOT_SENT_YET = "Пожелание ещё не отправлено"
     CALLBACK_ALREADY_RESPONDED = "Вы уже ответили на пожелание"
     CALLBACK_USER_NOT_FOUND = "Пользователь не найден"
@@ -268,9 +264,7 @@ class Messages:
     CALLBACK_SEND_PICTURE_ERROR = (
         "❌ Произошла ошибка при отправке картинки партнёру. Попробуйте позже."
     )
-    CALLBACK_REMINDERS_CANCELLED = (
-        "✅ Напоминания отменены. Вы больше не будете получать уведомления об этом пожелании."
-    )
+    CALLBACK_REMINDERS_CANCELLED = "✅ Напоминания отменены. Вы больше не будете получать уведомления об этом пожелании."
     CALLBACK_REMINDERS_CANCELLED_SHORT = "Напоминания отменены"
     CALLBACK_INVALID_TARIFF = "❌ Неверный тариф"
     CALLBACK_PAIR_NOT_FOUND_ERROR = "❌ Ошибка: пара не найдена"
@@ -281,12 +275,8 @@ class Messages:
     # =============================================================================
     # Worker / Scheduled Messages
     # =============================================================================
-    WORKER_PAST_DUE_NOTIFICATION = (
-        "Демо режим закончился. Для продолжения работы бота выберите тариф и оплатите подписку."
-    )
-    WORKER_PAST_DUE_NOTIFICATION_WITH_PARTNER = (
-        "Демо режим закончился (пара с {partner}). Для продолжения работы бота выберите тариф и оплатите подписку."
-    )
+    WORKER_PAST_DUE_NOTIFICATION = "Демо режим закончился. Для продолжения работы бота выберите тариф и оплатите подписку."
+    WORKER_PAST_DUE_NOTIFICATION_WITH_PARTNER = "Демо режим закончился (пара с {partner}). Для продолжения работы бота выберите тариф и оплатите подписку."
     WORKER_PAST_DUE_BUTTON = "Выбрать тариф"
     WORKER_MORNING_REQUEST_CHAT = "Утро! Отправьте доброе пожелание в ответ:"
     WORKER_MORNING_REQUEST_SILENT = 'Хотите отправить пожелание с "Добрым утром"?'
@@ -305,10 +295,10 @@ class Messages:
     WORKER_WISH_PAY_BUTTON = "💳 Оплатить подписку"
     WORKER_WISH_BACK_BUTTON = "◀️ Назад"
     WORKER_SEND_PICTURE_BUTTON = "Отправить картинку"
-    WORKER_PAST_DUE_DUNNING = "⏳ Подписка просрочена. Оплатите для продолжения использования."
-    WORKER_PAST_DUE_DUNNING_WITH_PARTNER = (
-        "⏳ Подписка просрочена (пара с {partner}). Оплатите для продолжения использования."
+    WORKER_PAST_DUE_DUNNING = (
+        "⏳ Подписка просрочена. Оплатите для продолжения использования."
     )
+    WORKER_PAST_DUE_DUNNING_WITH_PARTNER = "⏳ Подписка просрочена (пара с {partner}). Оплатите для продолжения использования."
     WORKER_PAY_NOW_BUTTON = "💳 Оплатить"
 
     # =============================================================================
@@ -318,11 +308,17 @@ class Messages:
     REMINDER_CHAT_MODE = "Тебя ждут ❤️"
     REMINDER_CHAT_MODE_WITH_NICKNAME = "от {nickname}. Тебя ждут ❤️"
     WARNING_CHAT_MODE = "⚠️ @{username} не отвечает, возможно, стоит написать вручную."
-    WARNING_CHAT_MODE_WITH_NICKNAME = "⚠️ {nickname} не отвечает, возможно, стоит написать вручную."
-    WARNING_CHAT_MODE_FALLBACK = "⚠️ Ваш близкий не отвечает, возможно, стоит написать вручную."
-    
+    WARNING_CHAT_MODE_WITH_NICKNAME = (
+        "⚠️ {nickname} не отвечает, возможно, стоит написать вручную."
+    )
+    WARNING_CHAT_MODE_FALLBACK = (
+        "⚠️ Ваш близкий не отвечает, возможно, стоит написать вручную."
+    )
+
     # Silent Mode reminders/warnings (lines 226-248 in MODES_DETAILED.md)
-    REMINDER_SILENT_MODE = "Если есть секунда — ответьте картинкой, чтобы он не беспокоился."
+    REMINDER_SILENT_MODE = (
+        "Если есть секунда — ответьте картинкой, чтобы он не беспокоился."
+    )
     REMINDER_SILENT_MODE_WITH_NICKNAME = "от {nickname}. Если есть секунда — ответьте картинкой, чтобы он не беспокоился."
     REMINDER_MULTI_TITLE = "Тебя ждут ❤️"
     REMINDER_MULTI_SILENT = (
@@ -333,7 +329,7 @@ class Messages:
     WARNING_SILENT_MODE = "⚠️ @{username} не отвечает, воспользуйтесь другим способом узнать, всё ли у него в порядке."
     WARNING_SILENT_MODE_WITH_NICKNAME = "⚠️ {nickname} не отвечает, воспользуйтесь другим способом узнать, всё ли у него в порядке."
     WARNING_SILENT_MODE_FALLBACK = "⚠️ Ваш близкий не отвечает, воспользуйтесь другим способом узнать, всё ли у него в порядке."
-    
+
     # Generic key for warnings (will be selected based on pair mode)
     WARNING_INITIATOR = "⚠️ @{username} не отвечает, возможно, стоит написать вручную."
     WARNING_24H_SILENT = (
@@ -350,9 +346,7 @@ class Messages:
     # =============================================================================
     # Weekly Summary
     # =============================================================================
-    WEEK_SUMMARY_SILENT = (
-        "Вы уже {days_count} дней тихо проверяете друг друга. Это забота о близком без слов."
-    )
+    WEEK_SUMMARY_SILENT = "Вы уже {days_count} дней тихо проверяете друг друга. Это забота о близком без слов."
     WEEK_SUMMARY_SILENT_WITH_NICKNAME = (
         "Вы с {nickname} уже {days_count} дней тихо проверяете друг друга. "
         "Это забота о близком без слов."
@@ -411,16 +405,12 @@ class Messages:
         "• Удалит всю историю обменов\n\n"
         "Это действие <b>необратимо</b>!"
     )
-    DELETE_CONFIRM_NO_PAIRS = (
-        "Вы действительно хотите удалить свой аккаунт из бота?"
-    )
+    DELETE_CONFIRM_NO_PAIRS = "Вы действительно хотите удалить свой аккаунт из бота?"
     DELETE_CONFIRM_SINGLE = (
         "У вас пара с {partner_text}. "
         "Вы действительно хотите разорвать связь и удалить свой аккаунт из бота?"
     )
-    DELETE_SELECT_PAIR_TITLE = (
-        "У вас несколько пар. Выберите, с кем разорвать связь:"
-    )
+    DELETE_SELECT_PAIR_TITLE = "У вас несколько пар. Выберите, с кем разорвать связь:"
     DELETE_CONFIRM_MULTI = "Вы хотите разорвать связь с {partner_text}?"
     DELETE_LINK_REMOVED = "Ваша связь с {partner_text} удалена."
     DELETE_ACCOUNT_REMOVED = "Ваш аккаунт удален."
@@ -459,9 +449,7 @@ class Messages:
         "❌ Обратная связь временно недоступна.\n\n"
         "Администратор не настроен. Попробуйте позже."
     )
-    FEEDBACK_NO_USERNAME = (
-        "❌ У вас не указан username, укажите username в настройках Telegram и повторите запрос"
-    )
+    FEEDBACK_NO_USERNAME = "❌ У вас не указан username, укажите username в настройках Telegram и повторите запрос"
     FEEDBACK_DESCRIPTION_PROMPT = (
         "📝 Опишите вашу проблему или вопрос:\n\n"
         "Отправьте текст сообщения или нажмите /cancel для отмены."
@@ -563,25 +551,18 @@ class Messages:
     MENU_NO_PAIR_ALERT = "У вас нет активной пары"
     MENU_SUBSCRIPTION_NOT_FOUND_ALERT = "Подписка не найдена"
     MENU_SUBSCRIPTION_ACTIVE_FORMAT = (
-        "📊 <b>Подписка</b>\n\n"
-        "Подписка активна, остаток {days_left} дней"
+        "📊 <b>Подписка</b>\n\n" "Подписка активна, остаток {days_left} дней"
     )
     MENU_SUBSCRIPTION_ACTIVE_WITH_TARIFF_FORMAT = (
-        "📊 <b>Подписка</b>\n\n"
-        "Тариф {tariff_name}, остаток {days_left} дней"
+        "📊 <b>Подписка</b>\n\n" "Тариф {tariff_name}, остаток {days_left} дней"
     )
     MENU_SUBSCRIPTION_TRIAL_FORMAT = (
-        "📊 <b>Подписка</b>\n\n"
-        "Демо режим активен, остаток {days_left} дней"
+        "📊 <b>Подписка</b>\n\n" "Демо режим активен, остаток {days_left} дней"
     )
     MENU_SUBSCRIPTION_TRIAL_EXPIRED = (
-        "📊 <b>Подписка</b>\n\n"
-        "❌ Демо режим закончился, оформите подписку"
+        "📊 <b>Подписка</b>\n\n" "❌ Демо режим закончился, оформите подписку"
     )
-    MENU_SUBSCRIPTION_LIFETIME = (
-        "📊 <b>Подписка</b>\n\n"
-        "✅ Подписка бессрочная"
-    )
+    MENU_SUBSCRIPTION_LIFETIME = "📊 <b>Подписка</b>\n\n" "✅ Подписка бессрочная"
     MENU_SHARE_TITLE = (
         "📤 <b>Поделиться ботом</b>\n\n"
         "Поделитесь ботом с друзьями и близкими!\n\n"
@@ -657,8 +638,7 @@ class Messages:
     # Settings
     SETTINGS_CHANGE_TIME_WINDOW = "🕒 Время сообщений"
     MENU_FEEDBACK_TITLE = (
-        "💬 <b>Обратная связь</b>\n\n"
-        "Выберите категорию обратной связи:"
+        "💬 <b>Обратная связь</b>\n\n" "Выберите категорию обратной связи:"
     )
     MENU_DELETE_TITLE = (
         "🗑️ <b>Удаление аккаунта</b>\n\n"
@@ -679,7 +659,7 @@ class Messages:
         "⚠️ <b>Важное условие:</b>\n"
         "Услуга не подлежит возврату после получения доступа.\n\n"
         "Нажимая кнопку «✅ Согласен и оплатить», вы подтверждаете, что:\n"
-        "• Ознакомились с <a href=\"https://www.24policybot.ru/legal\">условиями оферты</a>\n"
+        '• Ознакомились с <a href="https://www.24policybot.ru/legal">условиями оферты</a>\n'
         "• Понимаете, что услуга не подлежит возврату после получения доступа"
     )
     PAY_CREATE_PAYMENT_MESSAGE = (
@@ -710,8 +690,7 @@ class Messages:
         "Просто отправьте ваше сообщение в этот чат."
     )
     DELETE_SUCCESS = (
-        "✅ Все ваши данные удалены.\n\n"
-        "Вы можете удалить бота из контактов."
+        "✅ Все ваши данные удалены.\n\n" "Вы можете удалить бота из контактов."
     )
     LINK_DEPRECATED_INFO = (
         "ℹ️ Команда /link больше не требуется.\n\n"
@@ -722,8 +701,7 @@ class Messages:
     START_PARTNER_FALLBACK = "близким человеком"
     START_CONSENT_PROMPT_HARDCODED = "Ознакомились? Теперь можете принять условия:"
     START_PARTNER_NOT_FOUND = (
-        "❌ Пользователь не найден. "
-        "Убедитесь, что партнёр уже начал работу с ботом."
+        "❌ Пользователь не найден. " "Убедитесь, что партнёр уже начал работу с ботом."
     )
     START_PARTNER_NO_CONSENT = "❌ Партнёр ещё не принял условия использования."
     START_PARTNER_NO_MODE = "❌ Партнёр ещё не выбрал режим общения."
@@ -756,9 +734,7 @@ class Messages:
         "Пригласите партнёра по ссылке ниже:\n\n"
         "{invite_link}"
     )
-    START_INVITE_LINK_ERROR = (
-        "Произошла ошибка при генерации ссылки. Попробуйте позже."
-    )
+    START_INVITE_LINK_ERROR = "Произошла ошибка при генерации ссылки. Попробуйте позже."
     START_CONSENT_SAVE_ERROR = "Ошибка при сохранении согласия"
     START_PAIR_CREATED_ALERT = "✅ Пара создана!"
     START_BOTH_DEMO_USED_ALERT = "❌ Оба пользователя уже использовали демо период."
@@ -768,25 +744,18 @@ class Messages:
         "У вас нет активной пары. Создайте пару через /start"
     )
     SUBSCRIPTION_ACTIVE_FORMAT = (
-        "📊 <b>Подписка</b>\n\n"
-        "Подписка активна, остаток {days_left} дней"
+        "📊 <b>Подписка</b>\n\n" "Подписка активна, остаток {days_left} дней"
     )
     SUBSCRIPTION_ACTIVE_WITH_TARIFF_FORMAT = (
-        "📊 <b>Подписка</b>\n\n"
-        "Тариф {tariff_name}, остаток {days_left} дней"
+        "📊 <b>Подписка</b>\n\n" "Тариф {tariff_name}, остаток {days_left} дней"
     )
     SUBSCRIPTION_TRIAL_FORMAT = (
-        "📊 <b>Подписка</b>\n\n"
-        "Демо режим активен, остаток {days_left} дней"
+        "📊 <b>Подписка</b>\n\n" "Демо режим активен, остаток {days_left} дней"
     )
     SUBSCRIPTION_TRIAL_EXPIRED = (
-        "📊 <b>Подписка</b>\n\n"
-        "❌ Демо режим закончился, оформите подписку"
+        "📊 <b>Подписка</b>\n\n" "❌ Демо режим закончился, оформите подписку"
     )
-    SUBSCRIPTION_LIFETIME = (
-        "📊 <b>Подписка</b>\n\n"
-        "✅ Подписка бессрочная"
-    )
+    SUBSCRIPTION_LIFETIME = "📊 <b>Подписка</b>\n\n" "✅ Подписка бессрочная"
     SUBSCRIPTION_RENEWAL_REMINDER = (
         "⏰ <b>Напоминание о продлении подписки</b>\n\n"
         "Ваша подписка заканчивается через {days_left} {days_word}.\n\n"

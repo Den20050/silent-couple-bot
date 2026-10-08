@@ -33,4 +33,3 @@ async def test_reminder_chat_without_label_uses_base_template() -> None:
         initiator_label=None,
     )
     assert text == get_message("REMINDER_CHAT_MODE")
-

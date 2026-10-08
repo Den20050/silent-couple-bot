@@ -55,7 +55,10 @@ async def main() -> None:
                         continue
                     for pic in ("morning", "evening"):
                         key = wish_photo_message_id_key(
-                            tg_id=u.tg_id, pair_id=pid, pic_type=pic, day=date(2026, 8, 25)
+                            tg_id=u.tg_id,
+                            pair_id=pid,
+                            pic_type=pic,
+                            day=date(2026, 8, 25),
                         )
                         tracked = await redis.get(key) if redis else None
                         print(
@@ -65,7 +68,9 @@ async def main() -> None:
                 pending_key = f"pending_wish_delivery:{pid}:evening:2026-08-25"
                 pending = await redis.get(pending_key) if redis else None
                 print(f"  pending evening: {bool(pending)}")
-            idx = await redis.smembers("pending_wish_delivery:index") if redis else set()
+            idx = (
+                await redis.smembers("pending_wish_delivery:index") if redis else set()
+            )
             print(f"\nPending index ({len(idx)}):")
             for item in sorted(idx):
                 print(f"  {item}")

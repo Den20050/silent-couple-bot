@@ -2,11 +2,7 @@
 
 from typing import Optional
 
-from src.core.di.container import (
-    Container,
-    create_container,
-    initialize_container,
-)
+from src.core.di.container import Container, create_container, initialize_container
 from src.core.logger import get_logger
 
 logger = get_logger(__name__)

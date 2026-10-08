@@ -68,4 +68,6 @@ async def clear_start_flow_session(redis: Any, tg_id: int) -> None:
     try:
         await redis.delete(_session_key(tg_id))
     except Exception as exc:
-        logger.warning("Failed to clear start flow session", tg_id=tg_id, error=str(exc))
+        logger.warning(
+            "Failed to clear start flow session", tg_id=tg_id, error=str(exc)
+        )

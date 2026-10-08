@@ -18,11 +18,11 @@ async def reset_demo_for_user(
     session: AsyncSession,
 ) -> tuple[bool, str]:
     """Reset demo for user.
-    
+
     Args:
         tg_id: Telegram user ID
         session: Database session
-        
+
     Returns:
         Tuple of (success: bool, message_text: str)
     """
@@ -38,7 +38,7 @@ async def reset_demo_for_user(
 
         # Get all pairs for this user
         pairs = await pairs_repo.get_all_by_user_tg_id(tg_id)
-        
+
         if not pairs:
             return False, (
                 f"ℹ️ Пользователь {tg_id} не состоит ни в одной паре. "
@@ -59,7 +59,7 @@ async def reset_demo_for_user(
             user_b = user_b_result.scalar_one()
 
             removed = await pair_demo_repo.remove_pair(user_a.tg_id, user_b.tg_id)
-            
+
             await session.commit()
 
             if removed:
@@ -69,7 +69,7 @@ async def reset_demo_for_user(
                     f"  • {user_b.tg_id}\n\n"
                     f"Пара может создать новую пару с демо периодом."
                 )
-                
+
                 logger.info(
                     "Demo reset by admin for pair",
                     pair_id=pair.id,
@@ -92,4 +92,3 @@ async def reset_demo_for_user(
         logger.error("Error resetting demo", error=str(e), exc_info=True)
         await session.rollback()
         return False, get_message("ADMIN_RESET_DEMO_ERROR")
-

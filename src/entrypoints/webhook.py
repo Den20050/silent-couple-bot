@@ -20,10 +20,11 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 import uvicorn
+
+from src.bot.webhook_server import app, set_webhook
 from src.core.bootstrap import bootstrap
 from src.core.config import settings
 from src.core.logger import get_logger
-from src.bot.webhook_server import app, set_webhook
 
 logger = get_logger(__name__)
 
@@ -44,7 +45,9 @@ async def setup_webhook_on_startup():
         else:
             logger.error("❌ Failed to set webhook")
     else:
-        logger.warning("WEBHOOK_URL not configured, webhook will not be set automatically")
+        logger.warning(
+            "WEBHOOK_URL not configured, webhook will not be set automatically"
+        )
 
 
 def main():
@@ -52,14 +55,14 @@ def main():
     # Register signal handlers for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    
+
     # NOTE: Bootstrap and webhook setup are now done in FastAPI lifespan events
     # This ensures they run in the same event loop as uvicorn
-    
+
     # Get webhook port from settings
     port = settings.webhook_port
     host = "127.0.0.1"  # Listen only on localhost (nginx will proxy)
-    
+
     logger.info(
         "Starting webhook server",
         host=host,
@@ -67,7 +70,7 @@ def main():
         webhook_path=settings.webhook_path,
         webhook_url=settings.webhook_url,
     )
-    
+
     # Run uvicorn server
     # Uvicorn will create its own event loop and run lifespan events
     uvicorn.run(
@@ -80,4 +83,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

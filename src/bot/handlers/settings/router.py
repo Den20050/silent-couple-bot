@@ -8,4 +8,3 @@ router = Router(name="settings")
 
 # Register sub-routers
 router.include_router(settings_handlers.router)
-

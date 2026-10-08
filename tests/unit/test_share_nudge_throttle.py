@@ -11,4 +11,3 @@ def test_build_share_nudge_key_is_stable_and_has_no_date() -> None:
 
 def test_get_share_nudge_ttl_seconds_5_days() -> None:
     assert get_share_nudge_ttl_seconds(120) == 120 * 3600
-

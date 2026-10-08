@@ -5,10 +5,10 @@ Revises: add_pair_payments
 Create Date: 2026-08-18 22:00:00.000000
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
-
 
 revision: str = "add_pair_first_payment_bonus"
 down_revision: Union[str, None] = "add_pair_payments"

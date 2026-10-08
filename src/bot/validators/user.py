@@ -17,21 +17,21 @@ async def validate_user_exists(
     error_message_key: str = "MENU_USER_NOT_FOUND",
 ) -> User:
     """Validate user exists.
-    
+
     Args:
         session: Database session
         tg_id: Telegram user ID
         error_message_key: Message key for error (default: "MENU_USER_NOT_FOUND")
-        
+
     Returns:
         User object if found
-        
+
     Raises:
         UserNotFoundError: If user is not found
     """
     users_repo = UsersRepository(session)
     user = await users_repo.get_by_tg_id(tg_id)
-    
+
     if not user:
         logger.warning(
             "User not found",
@@ -42,6 +42,5 @@ async def validate_user_exists(
             message_key=error_message_key,
             message=get_message(error_message_key),
         )
-    
-    return user
 
+    return user

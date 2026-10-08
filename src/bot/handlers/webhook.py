@@ -2,27 +2,26 @@
 
 from datetime import date
 from decimal import Decimal, InvalidOperation
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from urllib.parse import quote
 
-from src.core.constants import PairStatus
-from src.core.messages import get_message
-from src.core.constants import SUBSCRIPTION_PERIOD_DAYS
+from src.core.constants import SUBSCRIPTION_PERIOD_DAYS, PairStatus
 from src.core.logger import get_logger
+from src.core.messages import get_message
 from src.core.redis_client import create_redis_client
+from src.db.base import async_session_maker
 from src.db.models import User
-from src.db.repositories.pairs import PairsRepository
-from src.db.repositories.pair_payments import PairPaymentsRepository
-from src.db.repositories.subscriptions import SubscriptionsRepository
 from src.db.repositories.daily_state import DailyStateRepository
+from src.db.repositories.pair_payments import PairPaymentsRepository
+from src.db.repositories.pairs import PairsRepository
+from src.db.repositories.subscriptions import SubscriptionsRepository
 from src.services.payment import PaymentService
 from src.services.payment.plan_utils import plan_id_from_period_days
 from src.services.telegram import send_message_with_retry
-from src.db.base import async_session_maker
 
 logger = get_logger(__name__)
 
@@ -91,46 +90,46 @@ async def _notify_payment_not_confirmed(
 #     """Handle YooKassa webhook."""
 #     body = await request.body()
 #     signature = request.headers.get("X-YooMoney-Signature", "")
-#     
+#
 #     # Create Redis client for payment service
 #     redis_client = await create_redis_client()
 #     payment_service = PaymentService(redis_client)
-#     
+#
 #     # Verify signature
 #     if not await payment_service.verify_webhook(body.decode(), signature):
 #         logger.warning("Invalid webhook signature", ip=request.client.host)
 #         raise HTTPException(status_code=403, detail="Invalid signature")
-#     
+#
 #     # Parse webhook data
 #     import json
 #     webhook_data = json.loads(body)
-#     
+#
 #     # Process webhook
 #     result = await payment_service.process_webhook(webhook_data)
-#     
+#
 #     if not result or result["status"] != "succeeded":
 #         return {"status": "ok"}
-#     
+#
 #     # Update subscription and pair
 #     pair_id = result["pair_id"]
 #     payment_id = result["payment_id"]
 #     is_lifetime = result.get("is_lifetime", False)
 #     period_days = result.get("period_days")  # Can be None for lifetime
-#     
+#
 #     pairs_repo = PairsRepository(session)
 #     subs_repo = SubscriptionsRepository(session)
 #     users_repo = UsersRepository(session)
-#     
+#
 #     pair = await pairs_repo.get_by_id(pair_id)
 #     if not pair:
 #         logger.error("Pair not found", pair_id=pair_id)
 #         return {"status": "ok"}
-#     
+#
 #     subscription = await subs_repo.get_by_pair_id(pair_id)
 #     if not subscription:
 #         logger.error("Subscription not found", pair_id=pair_id)
 #         return {"status": "ok"}
-#     
+#
 #     # Calculate period_end: for lifetime, use far future date (2099-12-31)
 #     if is_lifetime:
 #         period_end = date(2099, 12, 31)
@@ -139,14 +138,14 @@ async def _notify_payment_not_confirmed(
 #         current_period_end = subscription.period_end
 #         today = date.today()
 #         period_days = period_days or SUBSCRIPTION_PERIOD_DAYS
-#         
+#
 #         if current_period_end >= today:
 #             # Extend from current period_end
 #             period_end = current_period_end + timedelta(days=period_days)
 #         else:
 #             # Start from today if subscription expired
 #             period_end = today + timedelta(days=period_days)
-#     
+#
 #     # Update subscription
 #     await subs_repo.update_payment(
 #         subscription_id=subscription.id,
@@ -154,10 +153,10 @@ async def _notify_payment_not_confirmed(
 #         period_end=period_end,
 #         is_lifetime=is_lifetime,
 #     )
-#     
+#
 #     # Update pair status
 #     await pairs_repo.update_status(pair.id, PairStatus.ACTIVE)
-#     
+#
 #     # Update payer_id
 #     payer_tg_id = result.get("payer_tg_id")  # Should be extracted from metadata
 #     if payer_tg_id:
@@ -165,7 +164,7 @@ async def _notify_payment_not_confirmed(
 #         if payer_user:
 #             await pairs_repo.update_payer_id(pair.id, payer_user.id)
 #             await users_repo.update_payer_id(payer_tg_id, payer_user.id)
-#     
+#
 #     # Notify both users
 #     user_a_result = await session.execute(
 #         select(User).where(User.id == pair.uid_a)
@@ -175,7 +174,7 @@ async def _notify_payment_not_confirmed(
 #         select(User).where(User.id == pair.uid_b)
 #     )
 #     user_b = user_b_result.scalar_one()
-#     
+#
 #     period_text = (
 #         get_message("WEBHOOK_LIFETIME_TEXT")
 #         if is_lifetime
@@ -189,9 +188,9 @@ async def _notify_payment_not_confirmed(
 #         chat_id=user_b.tg_id,
 #         text=get_message("PAY_SUBSCRIPTION_ACTIVE_UNTIL", period_text=period_text),
 #     )
-#     
+#
 #     await session.commit()
-#     
+#
 #     logger.info(
 #         "Payment processed",
 #         pair_id=pair_id,
@@ -200,7 +199,7 @@ async def _notify_payment_not_confirmed(
 #         period_end=period_end,
 #         is_lifetime=is_lifetime,
 #     )
-#     
+#
 #     return {"status": "ok"}
 
 
@@ -414,7 +413,7 @@ async def robokassa_webhook(
             if is_lifetime
             else period_end.strftime("%d.%m.%Y")
         )
-        
+
         # Send access granted notification
         await send_message_with_retry(
             chat_id=user_a.tg_id,
@@ -429,7 +428,7 @@ async def robokassa_webhook(
             bonus_text = get_message("PAY_FIRST_PAYMENT_BONUS_APPLIED")
             await send_message_with_retry(chat_id=user_a.tg_id, text=bonus_text)
             await send_message_with_retry(chat_id=user_b.tg_id, text=bonus_text)
-        
+
         # Send subscription details
         await send_message_with_retry(
             chat_id=user_a.tg_id,
@@ -541,4 +540,3 @@ async def robokassa_return_page(
     ]
     html = "\n".join(html_lines) + "\n"
     return HTMLResponse(content=html, status_code=200)
-

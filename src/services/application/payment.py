@@ -3,7 +3,6 @@
 from urllib.parse import urlsplit
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import Settings
@@ -26,11 +25,11 @@ logger = get_logger(__name__)
 
 class PaymentApplicationService:
     """Application service for payment-related use cases.
-    
+
     Coordinates payment service, domain services, repositories, and UI services
     to implement payment management use cases.
     """
-    
+
     def __init__(
         self,
         session: AsyncSession,
@@ -42,7 +41,7 @@ class PaymentApplicationService:
         currency_rates_service: CurrencyRatesService,
     ) -> None:
         """Initialize payment application service.
-        
+
         Args:
             session: Database session
             payment_service: Payment service protocol implementation
@@ -59,7 +58,7 @@ class PaymentApplicationService:
         self._payment_ui = payment_ui
         self._settings = settings
         self._currency_rates_service = currency_rates_service
-    
+
     async def _is_first_payment_bonus_eligible(self, pair) -> bool:
         from src.db.repositories.pair_first_payment_bonus import (
             PairFirstPaymentBonusRepository,
@@ -78,56 +77,59 @@ class PaymentApplicationService:
             user_a.tg_id,
             user_b.tg_id,
         )
-    
+
     async def show_pair_selection(
         self,
         tg_id: int,
     ) -> tuple[bool, str, InlineKeyboardMarkup | None]:
         """Show pair selection for payment (if user has multiple pairs).
-        
+
         Args:
             tg_id: Telegram user ID
-            
+
         Returns:
             Tuple of (success: bool, message_text: str, keyboard: InlineKeyboardMarkup | None)
         """
         # Validate user exists
         from src.bot.validators.user import validate_user_exists
+
         user = await validate_user_exists(self._session, tg_id, "PAY_START_REQUIRED")
-        
+
         # Get all pairs for user
         from src.db.repositories.pairs import PairsRepository
+
         pairs_repo = PairsRepository(self._session)
         all_pairs = await pairs_repo.get_all_by_user_tg_id(tg_id)
-        
+
         if not all_pairs:
             from src.bot.exceptions import PairNotFoundError
+
             raise PairNotFoundError(
                 tg_id=tg_id,
                 message_key="PAY_NO_PAIR",
                 message=get_message("PAY_NO_PAIR"),
             )
-        
+
         if not all_pairs:
             from src.bot.exceptions import PairNotFoundError
+
             raise PairNotFoundError(
                 tg_id=tg_id,
                 message_key="PAY_NO_PAIR",
                 message=get_message("PAY_NO_PAIR"),
             )
-        
+
         # Get partner information for each pair
+        from src.bot.handlers.start.services.pair_service import format_partner_text
         from src.db.repositories.subscriptions import SubscriptionsRepository
         from src.db.repositories.users import UsersRepository
-        from src.bot.handlers.start.services.pair_service import format_partner_text
+
         users_repo = UsersRepository(self._session)
         subs_repo = SubscriptionsRepository(self._session)
-        
+
         pairs_with_info = []
         for pair in all_pairs:
-            partner_id = (
-                pair.uid_b if pair.uid_a == user.id else pair.uid_a
-            )
+            partner_id = pair.uid_b if pair.uid_a == user.id else pair.uid_a
             partner = await users_repo.get_by_id(partner_id)
             subscription = await subs_repo.get_by_pair_id(pair.id)
             if not partner:
@@ -157,56 +159,67 @@ class PaymentApplicationService:
                     status_label = "🔴 не активна"
 
             pairs_with_info.append((pair, f"{partner_text} ({status_label})"))
-        
+
         if not pairs_with_info:
             from src.bot.exceptions import PairNotFoundError
+
             raise PairNotFoundError(
                 tg_id=tg_id,
                 message_key="PAY_NO_PAIR",
                 message=get_message("PAY_NO_PAIR"),
             )
-        
+
         # Build keyboard with partner information
         keyboard = []
         for pair, partner_text in pairs_with_info:
-            keyboard.append([
-                InlineKeyboardButton(
-                    text=partner_text,
-                    callback_data=f"pay_select_pair_{pair.id}",
-                ),
-            ])
+            keyboard.append(
+                [
+                    InlineKeyboardButton(
+                        text=partner_text,
+                        callback_data=f"pay_select_pair_{pair.id}",
+                    ),
+                ]
+            )
         keyboard.append([ButtonTemplates.back_button("pay_back_to_menu")])
-        
+
         message_text = get_message("PAY_SELECT_PAIR")
         return True, message_text, InlineKeyboardMarkup(inline_keyboard=keyboard)
-    
+
     async def show_currencies(
         self,
         tg_id: int,
         pair_id: int | None = None,
     ) -> tuple[bool, str, InlineKeyboardMarkup | None]:
         """Show currency selection.
-        
+
         Args:
             tg_id: Telegram user ID
             pair_id: Optional pair ID (if None, uses first pair)
-            
+
         Returns:
             Tuple of (success: bool, message_text: str, keyboard: InlineKeyboardMarkup | None)
         """
         # Validate user exists (raises UserNotFoundError if not found)
         from src.bot.validators.user import validate_user_exists
+
         user = await validate_user_exists(self._session, tg_id, "PAY_START_REQUIRED")
-        
+
         # Get pair (either specified or inferred)
         from src.db.repositories.pairs import PairsRepository
+
         pairs_repo = PairsRepository(self._session)
-        
+
         if pair_id:
             # Validate pair exists and user has access
-            from src.bot.validators.pair import validate_pair_exists, validate_pair_access
+            from src.bot.validators.pair import (
+                validate_pair_access,
+                validate_pair_exists,
+            )
+
             pair = await validate_pair_exists(self._session, pair_id, "PAY_NO_PAIR")
-            await validate_pair_access(self._session, pair, user.id, tg_id, "PAY_NO_PAIR")
+            await validate_pair_access(
+                self._session, pair, user.id, tg_id, "PAY_NO_PAIR"
+            )
         else:
             # Backward compatibility: old buttons / flows may not include pair_id.
             # If user has multiple active pairs, ask which pair to pay for.
@@ -220,6 +233,7 @@ class PaymentApplicationService:
                 # Fallback to any pair (if exists) to preserve previous behavior
                 if not all_pairs:
                     from src.bot.exceptions import PairNotFoundError
+
                     raise PairNotFoundError(
                         tg_id=tg_id,
                         message_key="PAY_NO_PAIR",
@@ -230,15 +244,19 @@ class PaymentApplicationService:
                 pair = active_pairs[0]
 
             pair_id = pair.id
-        
+
         # Validate subscription exists (raises SubscriptionNotFoundError if not found)
         from src.bot.validators.subscription import validate_subscription_exists
+
         subscription = await validate_subscription_exists(self._session, pair)
-        
+
         # Check current status using domain service
-        can_pay, error_key = await self._subscription_status_service.check_subscription_for_payment(pair)
+        can_pay, error_key = (
+            await self._subscription_status_service.check_subscription_for_payment(pair)
+        )
         if not can_pay:
             from src.bot.exceptions import PaymentError
+
             if error_key == "PAY_SUBSCRIPTION_LIFETIME":
                 raise PaymentError(
                     message_key="PAY_SUBSCRIPTION_LIFETIME",
@@ -250,7 +268,9 @@ class PaymentApplicationService:
                 period_end_str = error_key.split(":")[1]
                 raise PaymentError(
                     message_key="PAY_SUBSCRIPTION_ACTIVE_UNTIL",
-                    message=get_message("PAY_SUBSCRIPTION_ACTIVE_UNTIL", period_text=period_end_str),
+                    message=get_message(
+                        "PAY_SUBSCRIPTION_ACTIVE_UNTIL", period_text=period_end_str
+                    ),
                     tg_id=tg_id,
                     pair_id=pair.id,
                 )
@@ -261,12 +281,12 @@ class PaymentApplicationService:
                     tg_id=tg_id,
                     pair_id=pair.id,
                 )
-        
+
         # Show currency selection using UI service
         message_text = get_message("PAY_SELECT_CURRENCY")
         keyboard = self._payment_ui.build_currencies_keyboard(pair_id=pair_id)
         return True, message_text, keyboard
-    
+
     async def show_tariffs(
         self,
         tg_id: int,
@@ -274,46 +294,60 @@ class PaymentApplicationService:
         pair_id: int | None = None,
     ) -> tuple[bool, str, InlineKeyboardMarkup | None]:
         """Show tariffs selection for specific currency.
-        
+
         Args:
             tg_id: Telegram user ID
             currency_code: Currency code (e.g., "RUB", "USD")
             pair_id: Optional pair ID (if None, uses first pair)
-            
+
         Returns:
             Tuple of (success: bool, message_text: str, keyboard: InlineKeyboardMarkup | None)
         """
         # Validate currency
         from src.bot.validators.currency import validate_currency
+
         validate_currency(currency_code, "PAY_ERROR")
-        
+
         # Validate user exists
         from src.bot.validators.user import validate_user_exists
+
         user = await validate_user_exists(self._session, tg_id, "PAY_START_REQUIRED")
 
         # Get pair (either specified or first one)
         from src.db.repositories.pairs import PairsRepository
+
         pairs_repo = PairsRepository(self._session)
-        
+
         if pair_id:
             # Validate pair exists and user has access
-            from src.bot.validators.pair import validate_pair_exists, validate_pair_access
+            from src.bot.validators.pair import (
+                validate_pair_access,
+                validate_pair_exists,
+            )
+
             pair = await validate_pair_exists(self._session, pair_id, "PAY_NO_PAIR")
-            await validate_pair_access(self._session, pair, user.id, tg_id, "PAY_NO_PAIR")
+            await validate_pair_access(
+                self._session, pair, user.id, tg_id, "PAY_NO_PAIR"
+            )
         else:
             # Use first pair (backward compatibility)
             from src.bot.validators.pair import validate_user_has_pair
+
             pair = await validate_user_has_pair(self._session, tg_id, "PAY_NO_PAIR")
             pair_id = pair.id
 
         # Validate subscription exists
         from src.bot.validators.subscription import validate_subscription_exists
+
         subscription = await validate_subscription_exists(self._session, pair)
 
         # Check current status using domain service
-        can_pay, error_key = await self._subscription_status_service.check_subscription_for_payment(pair)
+        can_pay, error_key = (
+            await self._subscription_status_service.check_subscription_for_payment(pair)
+        )
         if not can_pay:
             from src.bot.exceptions import PaymentError
+
             if error_key == "PAY_SUBSCRIPTION_LIFETIME":
                 raise PaymentError(
                     message_key="PAY_SUBSCRIPTION_LIFETIME",
@@ -325,7 +359,9 @@ class PaymentApplicationService:
                 period_end_str = error_key.split(":")[1]
                 raise PaymentError(
                     message_key="PAY_SUBSCRIPTION_ACTIVE_UNTIL",
-                    message=get_message("PAY_SUBSCRIPTION_ACTIVE_UNTIL", period_text=period_end_str),
+                    message=get_message(
+                        "PAY_SUBSCRIPTION_ACTIVE_UNTIL", period_text=period_end_str
+                    ),
                     tg_id=tg_id,
                     pair_id=pair.id,
                 )
@@ -351,7 +387,7 @@ class PaymentApplicationService:
             first_payment_bonus_eligible=bonus_eligible,
         )
         return True, message_text, keyboard
-    
+
     async def show_terms_confirmation(
         self,
         tg_id: int,
@@ -360,47 +396,61 @@ class PaymentApplicationService:
         pair_id: int | None = None,
     ) -> tuple[bool, str, InlineKeyboardMarkup | None]:
         """Show terms confirmation page before payment.
-        
+
         Args:
             tg_id: Telegram user ID
             plan_id: Plan ID (e.g., "1_month", "lifetime")
             currency_code: Currency code (e.g., "RUB", "USD")
             pair_id: Optional pair ID (if None, uses first pair)
-            
+
         Returns:
             Tuple of (success: bool, message_text: str, keyboard: InlineKeyboardMarkup | None)
         """
         # Validate currency
         from src.bot.validators.currency import validate_currency
+
         validate_currency(currency_code, "PAY_ERROR")
-        
+
         # Validate user exists
         from src.bot.validators.user import validate_user_exists
+
         user = await validate_user_exists(self._session, tg_id, "PAY_START_REQUIRED")
-        
+
         # Get pair (either specified or first one)
         from src.db.repositories.pairs import PairsRepository
+
         pairs_repo = PairsRepository(self._session)
-        
+
         if pair_id:
             # Validate pair exists and user has access
-            from src.bot.validators.pair import validate_pair_exists, validate_pair_access
+            from src.bot.validators.pair import (
+                validate_pair_access,
+                validate_pair_exists,
+            )
+
             pair = await validate_pair_exists(self._session, pair_id, "PAY_NO_PAIR")
-            await validate_pair_access(self._session, pair, user.id, tg_id, "PAY_NO_PAIR")
+            await validate_pair_access(
+                self._session, pair, user.id, tg_id, "PAY_NO_PAIR"
+            )
         else:
             # Use first pair (backward compatibility)
             from src.bot.validators.pair import validate_user_has_pair
+
             pair = await validate_user_has_pair(self._session, tg_id, "PAY_NO_PAIR")
             pair_id = pair.id
-        
+
         # Validate subscription exists
         from src.bot.validators.subscription import validate_subscription_exists
+
         subscription = await validate_subscription_exists(self._session, pair)
-        
+
         # Check current status using domain service
-        can_pay, error_key = await self._subscription_status_service.check_subscription_for_payment(pair)
+        can_pay, error_key = (
+            await self._subscription_status_service.check_subscription_for_payment(pair)
+        )
         if not can_pay:
             from src.bot.exceptions import PaymentError
+
             if error_key == "PAY_SUBSCRIPTION_LIFETIME":
                 raise PaymentError(
                     message_key="PAY_SUBSCRIPTION_LIFETIME",
@@ -415,47 +465,53 @@ class PaymentApplicationService:
                     tg_id=tg_id,
                     pair_id=pair.id,
                 )
-        
+
         # Validate plan exists
         if plan_id not in SUBSCRIPTION_PLANS:
             from src.bot.exceptions import PaymentError
+
             raise PaymentError(
                 message_key="PAY_INVALID_TARIFF",
                 message=get_message("PAY_INVALID_TARIFF"),
                 tg_id=tg_id,
                 pair_id=pair.id,
             )
-        
+
         plan = SUBSCRIPTION_PLANS[plan_id]
         period_days = plan.get("days")
         plan_name = plan["name"]
         is_lifetime = plan.get("is_lifetime", False)
-        
+
         # Get base RUB price
         prices = self._settings.get_subscription_prices()
         rub_prices = prices.get("RUB", {})
         rub_price = rub_prices.get(plan_id, 0)
-        
+
         if rub_price == 0:
             from src.bot.exceptions import PaymentError
+
             raise PaymentError(
                 message_key="PAY_INVALID_TARIFF",
                 message=get_message("PAY_INVALID_TARIFF"),
                 tg_id=tg_id,
                 pair_id=pair.id,
             )
-        
+
         # Calculate price in selected currency
-        currency_info = SUPPORTED_CURRENCIES.get(currency_code, SUPPORTED_CURRENCIES["RUB"])
-        decimals = currency_info["decimals"]
-        
-        price_in_currency = await self._currency_rates_service.calculate_price_in_currency(
-            rub_price=rub_price,
-            currency_code=currency_code,
+        currency_info = SUPPORTED_CURRENCIES.get(
+            currency_code, SUPPORTED_CURRENCIES["RUB"]
         )
-        
-        price_str = f"{price_in_currency:.{decimals}f}".rstrip('0').rstrip('.')
-        
+        decimals = currency_info["decimals"]
+
+        price_in_currency = (
+            await self._currency_rates_service.calculate_price_in_currency(
+                rub_price=rub_price,
+                currency_code=currency_code,
+            )
+        )
+
+        price_str = f"{price_in_currency:.{decimals}f}".rstrip("0").rstrip(".")
+
         bonus_eligible = await self._is_first_payment_bonus_eligible(pair)
 
         # Build confirmation message
@@ -468,7 +524,7 @@ class PaymentApplicationService:
             )
         else:
             period_text = f"{period_days} дней"
-        
+
         message_text = get_message(
             "PAY_CONFIRM_TERMS_MESSAGE",
             plan_name=plan_name,
@@ -476,21 +532,21 @@ class PaymentApplicationService:
             symbol=currency_info["symbol"],
             period_text=period_text,
         )
-        
+
         if bonus_eligible and not is_lifetime:
             message_text = (
                 f"{get_message('PAY_FIRST_PAYMENT_BONUS_BANNER')}{message_text}"
             )
-        
+
         # Build confirmation keyboard
         keyboard = self._payment_ui.build_terms_confirmation_keyboard(
             plan_id=plan_id,
             currency_code=currency_code,
             pair_id=pair_id,
         )
-        
+
         return True, message_text, keyboard
-    
+
     async def create_payment_for_tariff(
         self,
         tg_id: int,
@@ -499,47 +555,61 @@ class PaymentApplicationService:
         pair_id: int | None = None,
     ) -> tuple[bool, str, InlineKeyboardMarkup | None]:
         """Create payment for selected tariff.
-        
+
         Args:
             tg_id: Telegram user ID
             plan_id: Plan ID (e.g., "1_month", "lifetime")
             currency_code: Currency code (e.g., "RUB", "USD")
             pair_id: Optional pair ID (if None, uses first pair)
-            
+
         Returns:
             Tuple of (success: bool, message_text: str, keyboard: InlineKeyboardMarkup | None)
         """
         # Validate currency
         from src.bot.validators.currency import validate_currency
+
         validate_currency(currency_code, "PAY_ERROR")
-        
+
         # Validate user exists
         from src.bot.validators.user import validate_user_exists
+
         user = await validate_user_exists(self._session, tg_id, "PAY_START_REQUIRED")
-        
+
         # Get pair (either specified or first one)
         from src.db.repositories.pairs import PairsRepository
+
         pairs_repo = PairsRepository(self._session)
-        
+
         if pair_id:
             # Validate pair exists and user has access
-            from src.bot.validators.pair import validate_pair_exists, validate_pair_access
+            from src.bot.validators.pair import (
+                validate_pair_access,
+                validate_pair_exists,
+            )
+
             pair = await validate_pair_exists(self._session, pair_id, "PAY_NO_PAIR")
-            await validate_pair_access(self._session, pair, user.id, tg_id, "PAY_NO_PAIR")
+            await validate_pair_access(
+                self._session, pair, user.id, tg_id, "PAY_NO_PAIR"
+            )
         else:
             # Use first pair (backward compatibility)
             from src.bot.validators.pair import validate_user_has_pair
+
             pair = await validate_user_has_pair(self._session, tg_id, "PAY_NO_PAIR")
             pair_id = pair.id
-        
+
         # Validate subscription exists
         from src.bot.validators.subscription import validate_subscription_exists
+
         subscription = await validate_subscription_exists(self._session, pair)
-        
+
         # Check current status using domain service
-        can_pay, error_key = await self._subscription_status_service.check_subscription_for_payment(pair)
+        can_pay, error_key = (
+            await self._subscription_status_service.check_subscription_for_payment(pair)
+        )
         if not can_pay:
             from src.bot.exceptions import PaymentError
+
             if error_key == "PAY_SUBSCRIPTION_LIFETIME":
                 raise PaymentError(
                     message_key="PAY_SUBSCRIPTION_LIFETIME",
@@ -551,7 +621,9 @@ class PaymentApplicationService:
                 period_end_str = error_key.split(":")[1]
                 raise PaymentError(
                     message_key="PAY_SUBSCRIPTION_ACTIVE_UNTIL",
-                    message=get_message("PAY_SUBSCRIPTION_ACTIVE_UNTIL", period_text=period_end_str),
+                    message=get_message(
+                        "PAY_SUBSCRIPTION_ACTIVE_UNTIL", period_text=period_end_str
+                    ),
                     tg_id=tg_id,
                     pair_id=pair.id,
                 )
@@ -562,10 +634,11 @@ class PaymentApplicationService:
                     tg_id=tg_id,
                     pair_id=pair.id,
                 )
-        
+
         # Validate plan exists
         if plan_id not in SUBSCRIPTION_PLANS:
             from src.bot.exceptions import PaymentError
+
             raise PaymentError(
                 message_key="PAY_INVALID_TARIFF",
                 message=get_message("PAY_INVALID_TARIFF"),
@@ -582,28 +655,33 @@ class PaymentApplicationService:
         prices = self._settings.get_subscription_prices()
         rub_prices = prices.get("RUB", {})
         rub_price = rub_prices.get(plan_id, 0)
-        
+
         if rub_price == 0:
             from src.bot.exceptions import PaymentError
+
             raise PaymentError(
                 message_key="PAY_INVALID_TARIFF",
                 message=get_message("PAY_INVALID_TARIFF"),
                 tg_id=tg_id,
                 pair_id=pair.id,
             )
-        
+
         # Calculate price in selected currency using actual exchange rate
-        currency_info = SUPPORTED_CURRENCIES.get(currency_code, SUPPORTED_CURRENCIES["RUB"])
-        decimals = currency_info["decimals"]
-        
-        price_in_currency = await self._currency_rates_service.calculate_price_in_currency(
-            rub_price=rub_price,
-            currency_code=currency_code,
+        currency_info = SUPPORTED_CURRENCIES.get(
+            currency_code, SUPPORTED_CURRENCIES["RUB"]
         )
-        
+        decimals = currency_info["decimals"]
+
+        price_in_currency = (
+            await self._currency_rates_service.calculate_price_in_currency(
+                rub_price=rub_price,
+                currency_code=currency_code,
+            )
+        )
+
         # Convert price to smallest currency unit (kopecks/cents)
-        amount = int(price_in_currency * (10 ** decimals))
-        price_str = f"{price_in_currency:.{decimals}f}".rstrip('0').rstrip('.')
+        amount = int(price_in_currency * (10**decimals))
+        price_str = f"{price_in_currency:.{decimals}f}".rstrip("0").rstrip(".")
 
         # Create payment via payment service
         # Get bot username for return URL
@@ -627,8 +705,12 @@ class PaymentApplicationService:
             is_lifetime=is_lifetime,
             currency=currency_code,
         )
-        
-        if payment and "confirmation" in payment and "confirmation_url" in payment["confirmation"]:
+
+        if (
+            payment
+            and "confirmation" in payment
+            and "confirmation_url" in payment["confirmation"]
+        ):
             payment_url = payment["confirmation"]["confirmation_url"]
             keyboard = self._payment_ui.build_payment_keyboard(
                 payment_url, price_str, currency_info["symbol"], pair_id=pair_id
@@ -650,16 +732,14 @@ class PaymentApplicationService:
                 symbol=currency_info["symbol"],
                 period_text=period_text,
             )
-            
+
             # Add disclaimer about possible rate fluctuations for non-RUB currencies
             if currency_code != "RUB":
                 # Telegram HTML parse mode does NOT support <small> tag.
                 # Use supported formatting tags only to avoid TelegramBadRequest:
                 # "can't parse entities: Unsupported start tag".
-                message_text += (
-                    "\n\nℹ️ <i>Итоговая сумма может отличаться на ±2% из-за курсовой разницы.</i>"
-                )
-            
+                message_text += "\n\nℹ️ <i>Итоговая сумма может отличаться на ±2% из-за курсовой разницы.</i>"
+
             logger.info(
                 "Payment link created",
                 tg_id=tg_id,
@@ -680,6 +760,7 @@ class PaymentApplicationService:
                 payment_response=payment,
             )
             from src.bot.exceptions import PaymentError
+
             raise PaymentError(
                 message_key="PAY_CREATE_PAYMENT_ERROR_GENERIC",
                 message="❌ Ошибка при создании платежа. Попробуйте позже.",
@@ -698,4 +779,3 @@ class PaymentApplicationService:
 
         # Fallback for local/dev if public URL is not configured.
         return f"https://t.me/{bot_username}"
-

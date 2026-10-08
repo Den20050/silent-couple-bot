@@ -5,10 +5,10 @@ from aiogram.filters import Command
 from aiogram.types import Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.bot.handlers.admin.utils import is_admin
 from src.core.config import Settings
 from src.core.logger import get_logger
 from src.core.messages import get_message
-from src.bot.handlers.admin.utils import is_admin
 from src.services.application.admin import AdminApplicationService
 
 logger = get_logger(__name__)
@@ -68,10 +68,12 @@ async def cmd_reset_demo(
             await message.answer(get_message("ADMIN_INVALID_TG_ID_FORMAT"))
             return
 
-        success, message_text = await admin_application_service.reset_demo_for_user(tg_id=tg_id)
-        
+        success, message_text = await admin_application_service.reset_demo_for_user(
+            tg_id=tg_id
+        )
+
         await message.answer(message_text)
-        
+
         if not success:
             # Error message already included in message_text
             return
@@ -79,4 +81,3 @@ async def cmd_reset_demo(
         logger.error("Error resetting demo", error=str(e), exc_info=True)
         await message.answer(get_message("ADMIN_RESET_DEMO_ERROR"))
         raise
-

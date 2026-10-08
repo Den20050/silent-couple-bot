@@ -50,23 +50,22 @@ def test_bonus_tariff_button_label():
 
 @pytest.mark.asyncio
 async def test_is_eligible_when_unused(bonus_repo_unused):
-    assert await is_first_payment_bonus_eligible(
-        bonus_repo_unused, 111, 222
-    ) is True
+    assert await is_first_payment_bonus_eligible(bonus_repo_unused, 111, 222) is True
 
 
 @pytest.mark.asyncio
 async def test_not_eligible_when_used(bonus_repo_used):
-    assert await is_first_payment_bonus_eligible(
-        bonus_repo_used, 111, 222
-    ) is False
+    assert await is_first_payment_bonus_eligible(bonus_repo_used, 111, 222) is False
 
 
 @pytest.mark.asyncio
 async def test_not_eligible_for_lifetime(bonus_repo_unused):
-    assert await is_first_payment_bonus_eligible(
-        bonus_repo_unused, 111, 222, is_lifetime=True
-    ) is False
+    assert (
+        await is_first_payment_bonus_eligible(
+            bonus_repo_unused, 111, 222, is_lifetime=True
+        )
+        is False
+    )
 
 
 @pytest.mark.asyncio
@@ -88,7 +87,9 @@ async def test_resolve_no_bonus_for_repeat_payment(bonus_repo_used):
 
 
 @pytest.mark.asyncio
-async def test_resolve_lifetime_first_payment_consumes_promo_no_bonus(bonus_repo_unused):
+async def test_resolve_lifetime_first_payment_consumes_promo_no_bonus(
+    bonus_repo_unused,
+):
     bonus_days, is_first = await resolve_first_payment_bonus_days(
         bonus_repo_unused, 111, 222, is_lifetime=True
     )

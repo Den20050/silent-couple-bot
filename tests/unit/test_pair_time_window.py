@@ -28,13 +28,17 @@ def _user(*, utc_offset: int = 3, evening_hour: int = 21, morning_hour: int = 7)
 def test_is_user_in_prompt_window_evening() -> None:
     user = _user(evening_hour=21)
     assert is_user_in_prompt_window(user, "evening", datetime(2026, 8, 12, 18, 5, 0))
-    assert not is_user_in_prompt_window(user, "evening", datetime(2026, 8, 12, 17, 30, 0))
+    assert not is_user_in_prompt_window(
+        user, "evening", datetime(2026, 8, 12, 17, 30, 0)
+    )
 
 
 def test_is_user_in_prompt_window_morning() -> None:
     user = _user(morning_hour=7)
     assert is_user_in_prompt_window(user, "morning", datetime(2026, 8, 12, 4, 30, 0))
-    assert not is_user_in_prompt_window(user, "morning", datetime(2026, 8, 12, 10, 30, 0))
+    assert not is_user_in_prompt_window(
+        user, "morning", datetime(2026, 8, 12, 10, 30, 0)
+    )
 
 
 def test_is_user_in_time_window_alias() -> None:
@@ -57,7 +61,9 @@ def test_delivery_period_morning_wide_window() -> None:
     # 10:00 MSK — after prompt hour, still morning delivery period
     assert is_user_in_delivery_period(user, "morning", datetime(2026, 8, 12, 7, 0, 0))
     # 21:00 MSK — evening started, morning delivery closed
-    assert not is_user_in_delivery_period(user, "morning", datetime(2026, 8, 12, 18, 0, 0))
+    assert not is_user_in_delivery_period(
+        user, "morning", datetime(2026, 8, 12, 18, 0, 0)
+    )
 
 
 def test_should_defer_morning_before_window_only() -> None:
@@ -65,7 +71,9 @@ def test_should_defer_morning_before_window_only() -> None:
     # 06:20 MSK — defer
     assert should_defer_wish_delivery(user, "morning", datetime(2026, 8, 12, 3, 20, 0))
     # 10:08 MSK — deliver immediately
-    assert not should_defer_wish_delivery(user, "morning", datetime(2026, 8, 12, 7, 8, 0))
+    assert not should_defer_wish_delivery(
+        user, "morning", datetime(2026, 8, 12, 7, 8, 0)
+    )
 
 
 def test_can_send_morning_until_evening_window_starts() -> None:

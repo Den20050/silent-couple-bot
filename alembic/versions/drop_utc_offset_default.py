@@ -8,9 +8,9 @@ Create Date: 2026-08-28
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = "drop_utc_offset_default"
 down_revision: Union[str, None] = "add_user_timezone_name"

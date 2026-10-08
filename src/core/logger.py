@@ -2,11 +2,11 @@
 
 import logging
 import sys
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Optional
 
 import structlog
-from logging.handlers import RotatingFileHandler
 
 
 def configure_logging(
@@ -16,7 +16,7 @@ def configure_logging(
     log_file_backup_count: int = 5,
 ) -> None:
     """Configure structured logging with optional file output.
-    
+
     Args:
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         log_file: Path to log file (relative to project root). None or empty string disables file logging.
@@ -26,17 +26,17 @@ def configure_logging(
     # Get root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(getattr(logging, log_level.upper()))
-    
+
     # Clear existing handlers to avoid duplicates
     root_logger.handlers.clear()
-    
+
     # Console handler (always enabled)
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(getattr(logging, log_level.upper()))
     console_formatter = logging.Formatter("%(message)s")
     console_handler.setFormatter(console_formatter)
     root_logger.addHandler(console_handler)
-    
+
     # File handler (if log_file is specified)
     log_path: Optional[Path] = None
     if log_file:
@@ -47,10 +47,10 @@ def configure_logging(
                 # Assume project root is parent of src/
                 project_root = Path(__file__).parent.parent.parent
                 log_path = project_root / log_file
-            
+
             # Create log directory if it doesn't exist
             log_path.parent.mkdir(parents=True, exist_ok=True)
-            
+
             # Create rotating file handler
             file_handler = RotatingFileHandler(
                 filename=str(log_path),
@@ -62,13 +62,15 @@ def configure_logging(
             # Use JSON format for file logs (more structured)
             file_formatter = logging.Formatter(
                 '{"time": "%(asctime)s", "level": "%(levelname)s", "logger": "%(name)s", "message": "%(message)s"}',
-                datefmt="%Y-%m-%d %H:%M:%S"
+                datefmt="%Y-%m-%d %H:%M:%S",
             )
             file_handler.setFormatter(file_formatter)
             root_logger.addHandler(file_handler)
         except Exception as e:
             # If file logging fails, log warning but continue with console logging
-            root_logger.warning(f"Failed to setup file logging: {e}. Continuing with console logging only.")
+            root_logger.warning(
+                f"Failed to setup file logging: {e}. Continuing with console logging only."
+            )
             log_path = None
 
     # Configure structlog
@@ -89,7 +91,7 @@ def configure_logging(
         wrapper_class=structlog.stdlib.BoundLogger,
         cache_logger_on_first_use=True,
     )
-    
+
     # Log that file logging is enabled (after structlog is configured)
     if log_file:
         logger = structlog.get_logger(__name__)
@@ -99,4 +101,3 @@ def configure_logging(
 def get_logger(name: str) -> Any:
     """Get logger instance."""
     return structlog.get_logger(name)
-

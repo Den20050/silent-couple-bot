@@ -1,9 +1,9 @@
 """IP extractor middleware for webhook requests."""
 
-from typing import Callable, Dict, Any, Awaitable
+from typing import Any, Awaitable, Callable, Dict
 
 from aiogram import BaseMiddleware
-from aiogram.types import TelegramObject, Message, CallbackQuery
+from aiogram.types import CallbackQuery, Message, TelegramObject
 from fastapi import Request
 
 logger = None
@@ -14,6 +14,7 @@ def get_logger():
     global logger
     if logger is None:
         from src.core.logger import get_logger
+
         logger = get_logger(__name__)
     return logger
 

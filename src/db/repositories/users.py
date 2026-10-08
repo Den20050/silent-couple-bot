@@ -72,7 +72,12 @@ class UsersRepository:
 
     async def update_utc_offset(self, tg_id: int, utc_offset: int) -> Optional[User]:
         """Update user UTC offset."""
-        stmt = update(User).where(User.tg_id == tg_id).values(utc_offset=utc_offset).returning(User)
+        stmt = (
+            update(User)
+            .where(User.tg_id == tg_id)
+            .values(utc_offset=utc_offset)
+            .returning(User)
+        )
         result = await self.session.execute(stmt)
         await self.session.flush()
         return result.scalar_one_or_none()
@@ -97,14 +102,26 @@ class UsersRepository:
 
     async def update_payer_id(self, tg_id: int, payer_id: int) -> Optional[User]:
         """Update payer ID (who paid for any pair)."""
-        stmt = update(User).where(User.tg_id == tg_id).values(payer_id=payer_id).returning(User)
+        stmt = (
+            update(User)
+            .where(User.tg_id == tg_id)
+            .values(payer_id=payer_id)
+            .returning(User)
+        )
         result = await self.session.execute(stmt)
         await self.session.flush()
         return result.scalar_one_or_none()
 
-    async def update_preferred_mode(self, tg_id: int, mode: Optional[str]) -> Optional[User]:
+    async def update_preferred_mode(
+        self, tg_id: int, mode: Optional[str]
+    ) -> Optional[User]:
         """Update preferred mode (silent/chat) or clear it (None)."""
-        stmt = update(User).where(User.tg_id == tg_id).values(preferred_mode=mode).returning(User)
+        stmt = (
+            update(User)
+            .where(User.tg_id == tg_id)
+            .values(preferred_mode=mode)
+            .returning(User)
+        )
         result = await self.session.execute(stmt)
         await self.session.flush()
         return result.scalar_one_or_none()

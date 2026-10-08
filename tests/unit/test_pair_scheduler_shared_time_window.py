@@ -32,26 +32,38 @@ class _FakeLockService:
 
 
 class _FakeMessenger:
-    async def send_message(self, *args: object, **kwargs: object) -> object:  # pragma: no cover
+    async def send_message(
+        self, *args: object, **kwargs: object
+    ) -> object:  # pragma: no cover
         raise NotImplementedError
 
-    async def send_photo(self, *args: object, **kwargs: object) -> object:  # pragma: no cover
+    async def send_photo(
+        self, *args: object, **kwargs: object
+    ) -> object:  # pragma: no cover
         raise NotImplementedError
 
-    async def edit_message(self, *args: object, **kwargs: object) -> object:  # pragma: no cover
+    async def edit_message(
+        self, *args: object, **kwargs: object
+    ) -> object:  # pragma: no cover
         raise NotImplementedError
 
-    async def remove_reply_markup(self, *args: object, **kwargs: object) -> object:  # pragma: no cover
+    async def remove_reply_markup(
+        self, *args: object, **kwargs: object
+    ) -> object:  # pragma: no cover
         raise NotImplementedError
 
-    async def delete_message(self, *args: object, **kwargs: object) -> bool:  # pragma: no cover
+    async def delete_message(
+        self, *args: object, **kwargs: object
+    ) -> bool:  # pragma: no cover
         raise NotImplementedError
 
 
 @pytest.mark.asyncio
 async def test_should_prompt_user_inside_personal_window() -> None:
     scheduler = PairScheduler(
-        session=object(), telegram_messenger=_FakeMessenger(), lock_service=_FakeLockService()
+        session=object(),
+        telegram_messenger=_FakeMessenger(),
+        lock_service=_FakeLockService(),
     )
     scheduler.daily_state_repo = _FakeDailyStateRepo()  # type: ignore[assignment]
 
@@ -79,7 +91,9 @@ async def test_should_prompt_user_inside_personal_window() -> None:
 @pytest.mark.asyncio
 async def test_should_prompt_user_outside_personal_window() -> None:
     scheduler = PairScheduler(
-        session=object(), telegram_messenger=_FakeMessenger(), lock_service=_FakeLockService()
+        session=object(),
+        telegram_messenger=_FakeMessenger(),
+        lock_service=_FakeLockService(),
     )
     scheduler.daily_state_repo = _FakeDailyStateRepo()  # type: ignore[assignment]
 
@@ -107,7 +121,9 @@ async def test_should_prompt_user_outside_personal_window() -> None:
 @pytest.mark.asyncio
 async def test_check_pair_needs_wish_prompt_skips_already_sent() -> None:
     scheduler = PairScheduler(
-        session=object(), telegram_messenger=_FakeMessenger(), lock_service=_FakeLockService()
+        session=object(),
+        telegram_messenger=_FakeMessenger(),
+        lock_service=_FakeLockService(),
     )
 
     class _SentRepo(_FakeDailyStateRepo):

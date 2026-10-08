@@ -3,28 +3,30 @@
 from datetime import date
 from typing import Optional
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from redis.asyncio import Redis
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.constants import PicType, PairStatus
+from src.core.constants import PairStatus, PicType
 from src.core.logger import get_logger
 from src.core.messages import get_message
-from src.services.messaging.pending_wish_delivery import (
-    PendingWishDelivery,
-    store_pending_delivery,
-)
-from src.services.messaging.wish_request_prompt_refresher import refresh_aggregated_wish_prompt
-from src.services.messaging.wish_photo_message_id import wish_photo_message_id_key
-from src.services.pair_time_window import (
-    is_user_in_delivery_period,
-    should_defer_wish_delivery,
-)
+from src.core.protocols.messenger import MessengerProtocol
 from src.db.repositories.daily_state import DailyStateRepository
 from src.db.repositories.pairs import PairsRepository
 from src.db.repositories.users import UsersRepository
 from src.services.image import ImageService
 from src.services.messaging.caption_service import CaptionService
-from src.core.protocols.messenger import MessengerProtocol
+from src.services.messaging.pending_wish_delivery import (
+    PendingWishDelivery,
+    store_pending_delivery,
+)
+from src.services.messaging.wish_photo_message_id import wish_photo_message_id_key
+from src.services.messaging.wish_request_prompt_refresher import (
+    refresh_aggregated_wish_prompt,
+)
+from src.services.pair_time_window import (
+    is_user_in_delivery_period,
+    should_defer_wish_delivery,
+)
 
 logger = get_logger(__name__)
 

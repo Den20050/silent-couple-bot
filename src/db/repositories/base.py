@@ -14,4 +14,3 @@ class BaseRepository(Generic[ModelType]):
         """Initialize repository."""
         self.session = session
         self.model = model
-

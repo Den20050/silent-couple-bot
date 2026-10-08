@@ -2,20 +2,23 @@
 
 from datetime import date
 
-from aiogram import Router, F
+from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.bot.handlers.callbacks.validators import (
+    parse_callback_data,
+    parse_callback_data_with_day,
+)
 from src.core.config import Settings
-from src.core.messages import get_message
-from src.core.logger import get_logger
 from src.core.di.container import Container
-from src.services.telegram.messenger import TelegramMessenger
-from src.bot.handlers.callbacks.validators import parse_callback_data, parse_callback_data_with_day
+from src.core.logger import get_logger
+from src.core.messages import get_message
+from src.services.messaging.active_action_message import ActionKind, is_message_active
 from src.services.messaging.process_wish_request import process_wish_request
 from src.services.messaging.ui.wish_request_ui import WishRequestUIService
-from src.services.messaging.active_action_message import is_message_active, ActionKind
+from src.services.telegram.messenger import TelegramMessenger
 
 logger = get_logger(__name__)
 
@@ -51,7 +54,9 @@ async def handle_request_evening_all_legacy(
         callback.data, expected_parts=4, prefix="request_evening_all_"
     )
     if not parsed:
-        await _safe_callback_answer(callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+        await _safe_callback_answer(
+            callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True
+        )
         return
 
     (user_id,) = parsed
@@ -62,12 +67,16 @@ async def handle_request_evening_all_legacy(
     users_repo = UsersRepository(session)
     user = await users_repo.get_by_id(user_id)
     if not user or user.tg_id != tg_id:
-        await _safe_callback_answer(callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True)
+        await _safe_callback_answer(
+            callback, get_message("CALLBACK_ERROR_GENERIC"), show_alert=True
+        )
         return
 
     today = date.today()
     ui_builder = WishRequestUIService(session)
-    ui = await ui_builder.build_for_user(user_tg_id=tg_id, pic_type="evening", day=today)
+    ui = await ui_builder.build_for_user(
+        user_tg_id=tg_id, pic_type="evening", day=today
+    )
 
     await telegram_messenger.edit_message(
         chat_id=tg_id,

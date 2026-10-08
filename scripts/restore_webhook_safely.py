@@ -8,10 +8,11 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+from aiogram import Bot
+
+from src.bot.webhook_server import set_webhook
 from src.core.config import settings
 from src.core.logger import configure_logging, get_logger
-from aiogram import Bot
-from src.bot.webhook_server import set_webhook
 
 logger = get_logger(__name__)
 
@@ -19,21 +20,21 @@ logger = get_logger(__name__)
 async def restore_webhook_safely() -> None:
     """Безопасно восстановить webhook с проверками."""
     configure_logging(settings.log_level)
-    
+
     bot = Bot(token=settings.tg_bot_token)
-    
+
     try:
         logger.info("=== Безопасное восстановление webhook ===")
         logger.info("")
-        
+
         # 1. Проверить текущий статус
         webhook_info = await bot.get_webhook_info()
-        
+
         if webhook_info.url:
             logger.info(f"✅ Webhook уже установлен: {webhook_info.url}")
             logger.info("Ничего делать не нужно.")
             return
-        
+
         # 2. Проверить, указан ли WEBHOOK_URL
         if not settings.webhook_url:
             logger.warning("⚠️  WEBHOOK_URL не указан в .env")
@@ -47,7 +48,7 @@ async def restore_webhook_safely() -> None:
             logger.warning("   WEBHOOK_SECRET_TOKEN=your-secret-token-here")
             logger.warning("3. Запустите этот скрипт снова")
             return
-        
+
         # 3. Проверить конфликт polling
         logger.info("Проверка конфликта polling...")
         try:
@@ -56,18 +57,18 @@ async def restore_webhook_safely() -> None:
         except Exception as e:
             logger.warning(f"⚠️  Возможный конфликт: {e}")
             logger.warning("Убедитесь, что бот не запущен на других ПК")
-        
+
         logger.info("")
         logger.info(f"Восстанавливаю webhook: {settings.webhook_url}")
-        
+
         response = input("Продолжить? (y/n): ")
         if response.lower() != "y":
             logger.info("Отменено")
             return
-        
+
         # 4. Установить webhook
         success = await set_webhook()
-        
+
         if success:
             logger.info("✅ Webhook успешно восстановлен!")
             logger.info("")
@@ -87,7 +88,7 @@ async def restore_webhook_safely() -> None:
             logger.error("1. Доступен ли сервер по адресу из WEBHOOK_URL")
             logger.error("2. Настроен ли Nginx для проксирования")
             logger.error("3. Запущен ли webhook сервер на сервере")
-        
+
     except Exception as e:
         logger.error(f"Ошибка: {e}", exc_info=True)
     finally:

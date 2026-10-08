@@ -34,7 +34,9 @@ async def clear_all_user_data() -> None:
         # Reset sequences.
         await session.execute(text("ALTER SEQUENCE users_id_seq RESTART WITH 1"))
         await session.execute(text("ALTER SEQUENCE pairs_id_seq RESTART WITH 1"))
-        await session.execute(text("ALTER SEQUENCE subscriptions_id_seq RESTART WITH 1"))
+        await session.execute(
+            text("ALTER SEQUENCE subscriptions_id_seq RESTART WITH 1")
+        )
         await session.execute(
             text("ALTER SEQUENCE lifetime_pair_history_id_seq RESTART WITH 1")
         )
@@ -65,4 +67,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

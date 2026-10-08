@@ -141,10 +141,7 @@ async def _expire_period_for_user(
         return
 
     pairs_repo = PairsRepository(session)
-    pair_ids = [
-        p.id
-        for p in await pairs_repo.get_all_by_user_tg_id(user.tg_id)
-    ]
+    pair_ids = [p.id for p in await pairs_repo.get_all_by_user_tg_id(user.tg_id)]
 
     await _clear_wish_prompt(
         messenger,

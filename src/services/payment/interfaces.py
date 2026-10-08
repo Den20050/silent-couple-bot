@@ -8,11 +8,11 @@ from redis.asyncio import Redis
 
 class PaymentServiceProtocol(Protocol):
     """Protocol for payment service implementations.
-    
+
     This protocol allows easy addition of new payment providers
     without changing existing code that depends on payment services.
     """
-    
+
     async def create_payment(
         self,
         amount: int,  # in smallest currency unit (kopecks/cents)
@@ -23,7 +23,7 @@ class PaymentServiceProtocol(Protocol):
         currency: str = "RUB",
     ) -> Optional[dict]:
         """Create payment link.
-        
+
         Args:
             amount: Payment amount in smallest currency unit
             pair_id: Pair ID for subscription
@@ -31,7 +31,7 @@ class PaymentServiceProtocol(Protocol):
             period_days: Subscription period in days (ignored if is_lifetime=True)
             is_lifetime: Whether this is a lifetime subscription
             currency: Currency code (e.g., "RUB", "USD")
-            
+
         Returns:
             Payment data dict with at least:
             - "id": Payment ID
@@ -40,24 +40,24 @@ class PaymentServiceProtocol(Protocol):
             None if payment creation failed
         """
         ...
-    
+
     async def verify_webhook(self, *args, **kwargs) -> bool:
         """Verify webhook signature.
-        
+
         Args:
             *args, **kwargs: Provider-specific webhook parameters
-            
+
         Returns:
             True if signature is valid, False otherwise
         """
         ...
-    
+
     async def process_webhook(self, *args, **kwargs) -> Optional[dict]:
         """Process webhook notification.
-        
+
         Args:
             *args, **kwargs: Provider-specific webhook parameters
-            
+
         Returns:
             Processed payment data dict with at least:
             - "payment_id": str
@@ -74,28 +74,28 @@ class PaymentServiceProtocol(Protocol):
 
 class WebhookHandlerProtocol(Protocol):
     """Protocol for webhook handler implementations.
-    
+
     This protocol allows easy addition of new webhook handlers
     without changing existing code that depends on webhook handlers.
     """
-    
+
     async def verify_webhook(self, *args, **kwargs) -> bool:
         """Verify webhook signature.
-        
+
         Args:
             *args, **kwargs: Provider-specific webhook parameters
-            
+
         Returns:
             True if signature is valid, False otherwise
         """
         ...
-    
+
     async def process_webhook(self, *args, **kwargs) -> Optional[dict]:
         """Process webhook notification.
-        
+
         Args:
             *args, **kwargs: Provider-specific webhook parameters
-            
+
         Returns:
             Processed payment data dict with at least:
             - "payment_id": str
@@ -112,19 +112,19 @@ class WebhookHandlerProtocol(Protocol):
 
 class PaymentProvider(ABC):
     """Abstract base class for payment providers.
-    
+
     This interface allows easy addition of new payment providers
     (e.g., YooKassa, Stripe, PayPal) without changing existing code.
     """
-    
+
     def __init__(self, redis: Redis | None) -> None:
         """Initialize payment provider.
-        
+
         Args:
             redis: Redis client for circuit breaker (optional)
         """
         self.redis = redis
-    
+
     @abstractmethod
     async def create_payment(
         self,
@@ -136,7 +136,7 @@ class PaymentProvider(ABC):
         currency: str = "RUB",
     ) -> Optional[dict]:
         """Create payment link.
-        
+
         Args:
             amount: Payment amount in smallest currency unit
             pair_id: Pair ID for subscription
@@ -144,7 +144,7 @@ class PaymentProvider(ABC):
             period_days: Subscription period in days (ignored if is_lifetime=True)
             is_lifetime: Whether this is a lifetime subscription
             currency: Currency code (e.g., "RUB", "USD")
-            
+
         Returns:
             Payment data dict with at least:
             - "id": Payment ID
@@ -153,26 +153,26 @@ class PaymentProvider(ABC):
             None if payment creation failed
         """
         pass
-    
+
     @abstractmethod
     async def verify_webhook(self, *args, **kwargs) -> bool:
         """Verify webhook signature.
-        
+
         Args:
             *args, **kwargs: Provider-specific webhook parameters
-            
+
         Returns:
             True if signature is valid, False otherwise
         """
         pass
-    
+
     @abstractmethod
     async def process_webhook(self, *args, **kwargs) -> Optional[dict]:
         """Process webhook notification.
-        
+
         Args:
             *args, **kwargs: Provider-specific webhook parameters
-            
+
         Returns:
             Processed payment data dict with at least:
             - "payment_id": str

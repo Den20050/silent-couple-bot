@@ -7,8 +7,10 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.core.config import settings
 import asyncpg
+
+from src.core.config import settings
+
 
 async def verify():
     url = settings.database_url.replace("postgresql+asyncpg://", "")
@@ -16,7 +18,7 @@ async def verify():
     user, password = auth_part.split(":", 1)
     host_part, database = db_part.rsplit("/", 1)
     host, port = host_part.split(":", 1)
-    
+
     conn = await asyncpg.connect(
         host=host,
         port=int(port),
@@ -24,18 +26,20 @@ async def verify():
         password=password,
         database=database,
     )
-    
+
     try:
-        cols = await conn.fetch("""
+        cols = await conn.fetch(
+            """
             SELECT column_name 
             FROM information_schema.columns 
             WHERE table_name='pairs' 
             AND column_name IN ('delivery_chat', 'private_chat_id')
-        """)
-        
-        found = [c['column_name'] for c in cols]
-        
-        if 'delivery_chat' in found and 'private_chat_id' in found:
+        """
+        )
+
+        found = [c["column_name"] for c in cols]
+
+        if "delivery_chat" in found and "private_chat_id" in found:
             print("✅ Миграция применена успешно!")
             print(f"   Найдены колонки: {', '.join(found)}")
             return True
@@ -45,6 +49,7 @@ async def verify():
             return False
     finally:
         await conn.close()
+
 
 if __name__ == "__main__":
     result = asyncio.run(verify())

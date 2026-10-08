@@ -1,20 +1,19 @@
 """Service for sending responses to wishes."""
 
 from datetime import date, datetime
-
-from src.services.pair_time_window import is_wish_response_still_valid
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.constants import PicType
 from src.core.logger import get_logger
+from src.core.protocols.messenger import MessengerProtocol
 from src.db.repositories.daily_state import DailyStateRepository
 from src.db.repositories.pairs import PairsRepository
 from src.db.repositories.users import UsersRepository
 from src.services.image import ImageService
 from src.services.messaging.caption_service import CaptionService
-from src.core.protocols.messenger import MessengerProtocol
+from src.services.pair_time_window import is_wish_response_still_valid
 
 logger = get_logger(__name__)
 
@@ -70,7 +69,7 @@ class ResponseSenderService:
             initiator_tg_id=initiator_tg_id,
             pic_type=pic_type,
         )
-        
+
         # Get pair and users
         pair = await self.pairs_repo.get_by_id(pair_id)
         if not pair:
@@ -186,7 +185,7 @@ class ResponseSenderService:
                 pic_type=pic_type,
             )
             return False, "CALLBACK_SAVE_RESPONSE_ERROR"
-        
+
         # Commit BEFORE any Telegram API calls so that even if callback.answer()
         # later raises "query is too old", the response is durably recorded.
         # Without this commit, a Telegram exception rolling back the session would
@@ -202,9 +201,7 @@ class ResponseSenderService:
         )
 
         # Get random image for response
-        pic_type_enum = (
-            PicType.MORNING if pic_type == "morning" else PicType.EVENING
-        )
+        pic_type_enum = PicType.MORNING if pic_type == "morning" else PicType.EVENING
         file_id = await self.image_service.get_random_image(pair_id, pic_type_enum)
         if not file_id:
             logger.error(
@@ -217,9 +214,7 @@ class ResponseSenderService:
             return False, "CALLBACK_NO_IMAGES_AVAILABLE"
 
         # Send response photo to initiator
-        initiator_user_obj = (
-            user_a if initiator_user_id == user_a.id else user_b
-        )
+        initiator_user_obj = user_a if initiator_user_id == user_a.id else user_b
         initiator_tg_id_final = initiator_user_obj.tg_id
 
         # Build caption for response
@@ -242,13 +237,13 @@ class ResponseSenderService:
             initiator_tg_id=initiator_tg_id_final,
             file_id=file_id,
         )
-        
+
         await self.telegram_messenger.send_photo(
             chat_id=initiator_tg_id_final,
             photo=file_id,
             caption=caption,
         )
-        
+
         logger.info(
             "Response photo sent successfully",
             pair_id=pair_id,

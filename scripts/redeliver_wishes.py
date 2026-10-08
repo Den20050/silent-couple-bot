@@ -42,7 +42,9 @@ async def _redeliver_rows(
     caption_service = CaptionService(session)
     for daily_state, pair in rows:
         target_day = daily_state.day
-        initiator = await session.get(User, getattr(daily_state, f"{pic_type}_initiator"))
+        initiator = await session.get(
+            User, getattr(daily_state, f"{pic_type}_initiator")
+        )
         if not initiator:
             continue
         user_a = await session.get(User, pair.uid_a)

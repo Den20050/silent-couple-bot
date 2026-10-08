@@ -40,6 +40,7 @@ def _mask_proxy(proxy_url: str) -> str:
     """Return proxy URL with credentials hidden for safe logging."""
     try:
         from urllib.parse import urlparse, urlunparse
+
         parsed = urlparse(proxy_url)
         if parsed.password:
             masked = parsed._replace(netloc=f"{parsed.hostname}:{parsed.port}")

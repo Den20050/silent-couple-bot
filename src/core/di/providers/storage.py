@@ -4,10 +4,10 @@ from typing import Optional
 
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
-    AsyncEngine,
 )
 
 from src.core.config import Settings
@@ -107,7 +107,7 @@ async def provide_redis(settings: Settings) -> Optional[Redis]:
         Redis client instance or None if unavailable
     """
     redis = await create_redis_client()
-    
+
     if redis:
         if await test_redis_connection(redis):
             logger.info("Redis connection verified")
@@ -115,6 +115,5 @@ async def provide_redis(settings: Settings) -> Optional[Redis]:
             logger.warning("Redis connection test failed, but continuing")
     else:
         logger.info("Redis not available, continuing without it")
-    
-    return redis
 
+    return redis

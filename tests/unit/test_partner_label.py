@@ -25,4 +25,3 @@ def test_format_partner_label_username_without_at() -> None:
 def test_format_partner_label_empty_returns_none() -> None:
     assert format_partner_label(partner_nickname=None, partner_username=None) is None
     assert format_partner_label(partner_nickname="   ", partner_username="   ") is None
-

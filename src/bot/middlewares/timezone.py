@@ -1,6 +1,6 @@
 """Timezone detection middleware."""
 
-from typing import Callable, Dict, Any, Awaitable
+from typing import Any, Awaitable, Callable, Dict
 
 from aiogram import BaseMiddleware
 from aiogram.types import Message, TelegramObject
@@ -42,22 +42,20 @@ class TimezoneMiddleware(BaseMiddleware):
                 return await handler(event, data)
 
             # Only detect from IP when timezone was not synced via Mini App yet
-            if settings.timezone_detect_from_ip_enabled and not is_timezone_configured(user):
+            if settings.timezone_detect_from_ip_enabled and not is_timezone_configured(
+                user
+            ):
                 # Get IP from data dict (passed by webhook server via middleware)
                 # Note: Cannot setattr on frozen Pydantic models, so IP is passed via data
                 consent_ip = data.get("ip") or getattr(event, "ip", None)
                 if consent_ip:
                     try:
-                        detected_offset = await detect_timezone_from_ip(
-                            consent_ip
-                        )
+                        detected_offset = await detect_timezone_from_ip(consent_ip)
                         if (
                             detected_offset is not None
                             and detected_offset != user.utc_offset
                         ):
-                            await users_repo.update_utc_offset(
-                                tg_id, detected_offset
-                            )
+                            await users_repo.update_utc_offset(tg_id, detected_offset)
                             await session.commit()
                             logger.info(
                                 "Timezone auto-detected from IP",

@@ -21,4 +21,3 @@ async def test_week_summary_silent_without_nickname() -> None:
     builder = NotificationBuilder(messenger=None)  # type: ignore[arg-type]
     text = await builder.build_week_summary_message(pair_mode="silent", days_count=4)
     assert text.startswith("Вы уже 4 дней")
-

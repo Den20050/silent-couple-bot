@@ -3,11 +3,11 @@
 import asyncio
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from alembic import context
 from src.db.base import Base
 from src.db.models import *  # noqa: F401, F403
 
@@ -24,13 +24,18 @@ if config.config_file_name is not None:
 # Try to get from settings, but fallback to config if not available
 try:
     from src.core.config import settings
+
     database_url = settings.database_url
 except Exception:
     # Fallback: use from alembic.ini or environment
     database_url = config.get_main_option("sqlalchemy.url")
     if not database_url:
         import os
-        database_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/silent_couple_bot")
+
+        database_url = os.getenv(
+            "DATABASE_URL",
+            "postgresql+asyncpg://postgres:postgres@localhost:5432/silent_couple_bot",
+        )
 
 config.set_main_option("sqlalchemy.url", database_url)
 
@@ -107,6 +112,7 @@ def run_migrations_online() -> None:
             print(f"Async migration failed: {e}")
         print("Using sync mode...")
         from sqlalchemy import create_engine
+
         sync_url = database_url.replace("+asyncpg", "")
         sync_engine = create_engine(sync_url)
         with sync_engine.connect() as connection:
@@ -119,4 +125,3 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
-

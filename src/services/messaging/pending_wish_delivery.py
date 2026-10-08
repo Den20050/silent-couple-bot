@@ -15,7 +15,9 @@ from src.core.messages import get_message
 from src.core.protocols.messenger import MessengerProtocol
 from src.db.repositories.users import UsersRepository
 from src.services.messaging.wish_photo_message_id import wish_photo_message_id_key
-from src.services.messaging.wish_request_prompt_refresher import refresh_aggregated_wish_prompt
+from src.services.messaging.wish_request_prompt_refresher import (
+    refresh_aggregated_wish_prompt,
+)
 from src.services.pair_time_window import (
     is_deferred_wish_annulled,
     is_user_in_delivery_period,
@@ -75,7 +77,9 @@ class PendingWishDelivery:
         )
 
 
-async def store_pending_delivery(redis: Redis | None, pending: PendingWishDelivery) -> None:
+async def store_pending_delivery(
+    redis: Redis | None, pending: PendingWishDelivery
+) -> None:
     """Persist a wish waiting for the recipient's time window."""
     if redis is None:
         raise RuntimeError("Redis is required for deferred wish delivery")
@@ -113,9 +117,7 @@ async def deliver_pending_wish(
 ) -> bool:
     """Send a previously deferred wish photo to the recipient."""
     button_text = get_message("RESPOND_BUTTON")
-    callback_prefix = (
-        "tap_morning" if pending.pic_type == "morning" else "tap_evening"
-    )
+    callback_prefix = "tap_morning" if pending.pic_type == "morning" else "tap_evening"
     reply_markup = {
         "inline_keyboard": [
             [
@@ -144,9 +146,7 @@ async def deliver_pending_wish(
             pic_type=pending.pic_type,
             day=pending.day,
         )
-        await redis.setex(
-            key, _WISH_PHOTO_MESSAGE_ID_TTL_SECONDS, str(msg.message_id)
-        )
+        await redis.setex(key, _WISH_PHOTO_MESSAGE_ID_TTL_SECONDS, str(msg.message_id))
     except Exception as e:
         logger.debug(
             "Failed to store wish photo message_id after deferred delivery",
@@ -238,7 +238,9 @@ async def flush_pending_deliveries(
         try:
             pending = PendingWishDelivery.from_json(raw_payload)
         except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
-            logger.warning("Invalid pending wish payload, dropping", key=key, error=str(e))
+            logger.warning(
+                "Invalid pending wish payload, dropping", key=key, error=str(e)
+            )
             await _remove_pending(redis, key)
             continue
 

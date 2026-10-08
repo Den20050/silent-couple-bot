@@ -8,10 +8,11 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.core.config import settings
-from src.core.logger import configure_logging, get_logger
 from aiogram import Bot
 from aiogram.exceptions import TelegramConflictError
+
+from src.core.config import settings
+from src.core.logger import configure_logging, get_logger
 
 logger = get_logger(__name__)
 
@@ -19,22 +20,24 @@ logger = get_logger(__name__)
 async def test_polling_conflict() -> None:
     """Попытаться запустить polling и проверить, есть ли конфликт."""
     configure_logging(settings.log_level)
-    
+
     bot = Bot(token=settings.tg_bot_token)
-    
+
     try:
         logger.info("=== Тест конфликта polling ===")
         logger.info("")
         logger.info("Попытка получить обновления через getUpdates...")
         logger.info("(Это безопасно - мы не запускаем полноценный polling)")
         logger.info("")
-        
+
         # Попробовать получить обновления один раз
         try:
             updates = await bot.get_updates(limit=1, timeout=1)
             logger.info("✅ Успешно получены обновления - конфликта нет!")
             logger.info("")
-            logger.info("Вывод: Бот НЕ запущен на другом ПК (или запущен, но не использует polling)")
+            logger.info(
+                "Вывод: Бот НЕ запущен на другом ПК (или запущен, но не использует polling)"
+            )
             logger.info("Можно запускать локально: python run.py")
         except TelegramConflictError as e:
             logger.error("❌ КОНФЛИКТ ОБНАРУЖЕН!")
@@ -53,8 +56,10 @@ async def test_polling_conflict() -> None:
             logger.warning("Это может быть нормально (таймаут или другие причины)")
             logger.info("")
             logger.info("Попробуйте запустить бот: python run.py")
-            logger.info("Если появится TelegramConflictError - бот запущен на другом ПК")
-        
+            logger.info(
+                "Если появится TelegramConflictError - бот запущен на другом ПК"
+            )
+
     except Exception as e:
         logger.error(f"Ошибка при тесте: {e}", exc_info=True)
     finally:

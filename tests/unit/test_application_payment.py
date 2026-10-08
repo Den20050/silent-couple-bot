@@ -1,20 +1,21 @@
 """Unit tests for PaymentApplicationService."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from src.services.application.payment import PaymentApplicationService
+import pytest
+
 from src.bot.exceptions import (
-    UserNotFoundError,
     PairNotFoundError,
-    SubscriptionNotFoundError,
     PaymentError,
+    SubscriptionNotFoundError,
+    UserNotFoundError,
 )
 from src.core.messages import get_message
-from src.domain.services.subscription_status import SubscriptionStatusService
-from src.services.messaging.ui.payment_ui import PaymentUIService
-from src.core.protocols.payment import PaymentServiceProtocol
 from src.core.protocols.bot_provider import BotProviderProtocol
+from src.core.protocols.payment import PaymentServiceProtocol
+from src.domain.services.subscription_status import SubscriptionStatusService
+from src.services.application.payment import PaymentApplicationService
+from src.services.messaging.ui.payment_ui import PaymentUIService
 
 
 @pytest.fixture
@@ -61,7 +62,9 @@ def mock_currency_rates_service():
     """Create mock CurrencyRatesService."""
     service = AsyncMock()
     # For RUB, service should just return the original RUB price (no conversion).
-    service.calculate_price_in_currency = AsyncMock(side_effect=lambda rub_price, currency_code: rub_price)
+    service.calculate_price_in_currency = AsyncMock(
+        side_effect=lambda rub_price, currency_code: rub_price
+    )
     return service
 
 
@@ -107,6 +110,7 @@ async def test_show_currencies_without_pair_id_and_multiple_pairs_returns_pair_s
     tg_id = 12345
 
     from src.db.models import Pair
+
     mock_pair_1 = MagicMock(spec=Pair)
     mock_pair_1.id = 1
     mock_pair_1.status = "trial"
@@ -118,16 +122,26 @@ async def test_show_currencies_without_pair_id_and_multiple_pairs_returns_pair_s
     expected_keyboard = MagicMock()
     expected_text = get_message("PAY_SELECT_PAIR")
 
-    from unittest.mock import patch, AsyncMock as AsyncMockPatch
+    from unittest.mock import AsyncMock as AsyncMockPatch
+    from unittest.mock import patch
 
-    with patch("src.bot.validators.user.validate_user_exists") as mock_validate_user, \
-         patch("src.db.repositories.pairs.PairsRepository.get_all_by_user_tg_id", new_callable=AsyncMockPatch) as mock_get_all_pairs, \
-         patch.object(payment_service, "show_pair_selection", new_callable=AsyncMockPatch) as mock_show_pair_selection:
+    with (
+        patch("src.bot.validators.user.validate_user_exists") as mock_validate_user,
+        patch(
+            "src.db.repositories.pairs.PairsRepository.get_all_by_user_tg_id",
+            new_callable=AsyncMockPatch,
+        ) as mock_get_all_pairs,
+        patch.object(
+            payment_service, "show_pair_selection", new_callable=AsyncMockPatch
+        ) as mock_show_pair_selection,
+    ):
         mock_validate_user.return_value = MagicMock(id=111)
         mock_get_all_pairs.return_value = [mock_pair_1, mock_pair_2]
         mock_show_pair_selection.return_value = (True, expected_text, expected_keyboard)
 
-        success, text, keyboard = await payment_service.show_currencies(tg_id=tg_id, pair_id=None)
+        success, text, keyboard = await payment_service.show_currencies(
+            tg_id=tg_id, pair_id=None
+        )
         assert success is True
         assert text == expected_text
         assert keyboard == expected_keyboard
@@ -141,40 +155,53 @@ async def test_show_currencies_success(
 ):
     """Test successful currency selection display."""
     tg_id = 12345
-    
+
     # Setup mocks
     from src.db.models import Pair, Subscription
+
     mock_pair = MagicMock(spec=Pair)
     mock_pair.id = 1
     mock_subscription = MagicMock(spec=Subscription)
-    
+
     mock_subscription_status_service.check_subscription_for_payment.return_value = (
-        True,   # can_pay
-        None,   # error_key
+        True,  # can_pay
+        None,  # error_key
     )
-    
+
     mock_payment_ui.build_currencies_keyboard.return_value = MagicMock()
-    
-    from unittest.mock import patch, AsyncMock as AsyncMockPatch
-    
-    with patch('src.bot.validators.user.validate_user_exists') as mock_validate_user, \
-         patch('src.db.repositories.pairs.PairsRepository.get_all_by_user_tg_id', new_callable=AsyncMockPatch) as mock_get_all_pairs, \
-         patch('src.bot.validators.subscription.validate_subscription_exists') as mock_validate_sub:
-        
+
+    from unittest.mock import AsyncMock as AsyncMockPatch
+    from unittest.mock import patch
+
+    with (
+        patch("src.bot.validators.user.validate_user_exists") as mock_validate_user,
+        patch(
+            "src.db.repositories.pairs.PairsRepository.get_all_by_user_tg_id",
+            new_callable=AsyncMockPatch,
+        ) as mock_get_all_pairs,
+        patch(
+            "src.bot.validators.subscription.validate_subscription_exists"
+        ) as mock_validate_sub,
+    ):
+
         mock_user = MagicMock()
         mock_validate_user.return_value = mock_user
         mock_get_all_pairs.return_value = [mock_pair]
         mock_validate_sub.return_value = mock_subscription
-        
+
         # Execute
-        success, message_text, keyboard = await payment_service.show_currencies(tg_id=tg_id)
-        
+        success, message_text, keyboard = await payment_service.show_currencies(
+            tg_id=tg_id
+        )
+
         # Assert
         assert success is True
         assert keyboard is not None
-        
+
         # Verify calls
-        mock_subscription_status_service.check_subscription_for_payment.assert_called_once_with(mock_pair)
+        mock_subscription_status_service.check_subscription_for_payment.assert_called_once_with(
+            mock_pair
+        )
         mock_payment_ui.build_currencies_keyboard.assert_called_once()
 
 
@@ -182,15 +209,18 @@ async def test_show_currencies_success(
 async def test_show_currencies_user_not_found(payment_service):
     """Test currency selection when user is not found."""
     tg_id = 12345
-    
-    from unittest.mock import patch, AsyncMock as AsyncMockPatch
-    
-    with patch('src.bot.validators.user.validate_user_exists', new_callable=AsyncMockPatch) as mock_validate_user:
+
+    from unittest.mock import AsyncMock as AsyncMockPatch
+    from unittest.mock import patch
+
+    with patch(
+        "src.bot.validators.user.validate_user_exists", new_callable=AsyncMockPatch
+    ) as mock_validate_user:
         mock_validate_user.side_effect = UserNotFoundError(
             tg_id=tg_id,
             message_key="PAY_START_REQUIRED",
         )
-        
+
         # Execute & Assert
         with pytest.raises(UserNotFoundError):
             await payment_service.show_currencies(tg_id=tg_id)
@@ -200,16 +230,24 @@ async def test_show_currencies_user_not_found(payment_service):
 async def test_show_currencies_pair_not_found(payment_service):
     """Test currency selection when user has no pair."""
     tg_id = 12345
-    
-    from unittest.mock import patch, AsyncMock as AsyncMockPatch
-    
-    with patch('src.bot.validators.user.validate_user_exists', new_callable=AsyncMockPatch) as mock_validate_user, \
-         patch('src.db.repositories.pairs.PairsRepository.get_all_by_user_tg_id', new_callable=AsyncMockPatch) as mock_get_all_pairs:
-        
+
+    from unittest.mock import AsyncMock as AsyncMockPatch
+    from unittest.mock import patch
+
+    with (
+        patch(
+            "src.bot.validators.user.validate_user_exists", new_callable=AsyncMockPatch
+        ) as mock_validate_user,
+        patch(
+            "src.db.repositories.pairs.PairsRepository.get_all_by_user_tg_id",
+            new_callable=AsyncMockPatch,
+        ) as mock_get_all_pairs,
+    ):
+
         mock_user = MagicMock()
         mock_validate_user.return_value = mock_user
         mock_get_all_pairs.return_value = []
-        
+
         # Execute & Assert
         with pytest.raises(PairNotFoundError):
             await payment_service.show_currencies(tg_id=tg_id)
@@ -219,13 +257,24 @@ async def test_show_currencies_pair_not_found(payment_service):
 async def test_show_currencies_subscription_not_found(payment_service):
     """Test currency selection when subscription is not found."""
     tg_id = 12345
-    
-    from unittest.mock import patch, AsyncMock as AsyncMockPatch
-    
-    with patch('src.bot.validators.user.validate_user_exists', new_callable=AsyncMockPatch) as mock_validate_user, \
-         patch('src.db.repositories.pairs.PairsRepository.get_all_by_user_tg_id', new_callable=AsyncMockPatch) as mock_get_all_pairs, \
-         patch('src.bot.validators.subscription.validate_subscription_exists', new_callable=AsyncMockPatch) as mock_validate_sub:
-        
+
+    from unittest.mock import AsyncMock as AsyncMockPatch
+    from unittest.mock import patch
+
+    with (
+        patch(
+            "src.bot.validators.user.validate_user_exists", new_callable=AsyncMockPatch
+        ) as mock_validate_user,
+        patch(
+            "src.db.repositories.pairs.PairsRepository.get_all_by_user_tg_id",
+            new_callable=AsyncMockPatch,
+        ) as mock_get_all_pairs,
+        patch(
+            "src.bot.validators.subscription.validate_subscription_exists",
+            new_callable=AsyncMockPatch,
+        ) as mock_validate_sub,
+    ):
+
         mock_user = MagicMock()
         mock_pair = MagicMock()
         mock_validate_user.return_value = mock_user
@@ -234,7 +283,7 @@ async def test_show_currencies_subscription_not_found(payment_service):
             pair_id=mock_pair.id,
             message_key="PAY_SUBSCRIPTION_NOT_FOUND",
         )
-        
+
         # Execute & Assert
         with pytest.raises(SubscriptionNotFoundError):
             await payment_service.show_currencies(tg_id=tg_id)
@@ -247,33 +296,40 @@ async def test_show_currencies_subscription_lifetime(
 ):
     """Test currency selection when subscription is lifetime."""
     tg_id = 12345
-    
+
     # Setup mocks
     from src.db.models import Pair, Subscription
+
     mock_pair = MagicMock(spec=Pair)
     mock_pair.id = 1
     mock_subscription = MagicMock(spec=Subscription)
-    
+
     mock_subscription_status_service.check_subscription_for_payment.return_value = (
         False,  # can_pay
         "PAY_SUBSCRIPTION_LIFETIME",  # error_key
     )
-    
+
     from unittest.mock import patch
-    
-    with patch('src.bot.validators.user.validate_user_exists') as mock_validate_user, \
-         patch('src.db.repositories.pairs.PairsRepository.get_all_by_user_tg_id') as mock_get_all_pairs, \
-         patch('src.bot.validators.subscription.validate_subscription_exists') as mock_validate_sub:
-        
+
+    with (
+        patch("src.bot.validators.user.validate_user_exists") as mock_validate_user,
+        patch(
+            "src.db.repositories.pairs.PairsRepository.get_all_by_user_tg_id"
+        ) as mock_get_all_pairs,
+        patch(
+            "src.bot.validators.subscription.validate_subscription_exists"
+        ) as mock_validate_sub,
+    ):
+
         mock_user = MagicMock()
         mock_validate_user.return_value = mock_user
         mock_get_all_pairs.return_value = [mock_pair]
         mock_validate_sub.return_value = mock_subscription
-        
+
         # Execute & Assert
         with pytest.raises(PaymentError) as exc_info:
             await payment_service.show_currencies(tg_id=tg_id)
-        
+
         assert exc_info.value.message_key == "PAY_SUBSCRIPTION_LIFETIME"
 
 
@@ -289,18 +345,19 @@ async def test_create_payment_for_tariff_success(
     tg_id = 12345
     plan_id = "1_month"
     currency_code = "RUB"
-    
+
     # Setup mocks
     from src.db.models import Pair, Subscription
+
     mock_pair = MagicMock(spec=Pair)
     mock_pair.id = 1
     mock_subscription = MagicMock(spec=Subscription)
-    
+
     mock_subscription_status_service.check_subscription_for_payment.return_value = (
-        True,   # can_pay
-        None,   # error_key
+        True,  # can_pay
+        None,  # error_key
     )
-    
+
     mock_payment_response = {
         "id": "payment_123",
         "confirmation": {
@@ -308,15 +365,26 @@ async def test_create_payment_for_tariff_success(
         },
     }
     mock_payment_service.create_payment.return_value = mock_payment_response
-    
+
     mock_payment_ui.build_payment_keyboard.return_value = MagicMock()
-    
-    from unittest.mock import patch, AsyncMock as AsyncMockPatch
-    
-    with patch('src.bot.validators.user.validate_user_exists', new_callable=AsyncMockPatch) as mock_validate_user, \
-         patch('src.bot.validators.pair.validate_user_has_pair', new_callable=AsyncMockPatch) as mock_validate_pair, \
-         patch('src.bot.validators.subscription.validate_subscription_exists', new_callable=AsyncMockPatch) as mock_validate_sub:
-        
+
+    from unittest.mock import AsyncMock as AsyncMockPatch
+    from unittest.mock import patch
+
+    with (
+        patch(
+            "src.bot.validators.user.validate_user_exists", new_callable=AsyncMockPatch
+        ) as mock_validate_user,
+        patch(
+            "src.bot.validators.pair.validate_user_has_pair",
+            new_callable=AsyncMockPatch,
+        ) as mock_validate_pair,
+        patch(
+            "src.bot.validators.subscription.validate_subscription_exists",
+            new_callable=AsyncMockPatch,
+        ) as mock_validate_sub,
+    ):
+
         mock_user = MagicMock()
         mock_validate_user.return_value = mock_user
         mock_validate_pair.return_value = mock_pair
@@ -324,20 +392,21 @@ async def test_create_payment_for_tariff_success(
         payment_service._is_first_payment_bonus_eligible = AsyncMock(return_value=True)
 
         # Execute
-        success, message_text, keyboard = await payment_service.create_payment_for_tariff(
-            tg_id=tg_id,
-            plan_id=plan_id,
-            currency_code=currency_code,
+        success, message_text, keyboard = (
+            await payment_service.create_payment_for_tariff(
+                tg_id=tg_id,
+                plan_id=plan_id,
+                currency_code=currency_code,
+            )
         )
-        
+
         # Assert
         assert success is True
         assert keyboard is not None
-        
+
         # Verify payment creation
         mock_payment_service.create_payment.assert_called_once()
         call_kwargs = mock_payment_service.create_payment.call_args[1]
         assert call_kwargs["pair_id"] == mock_pair.id
         assert call_kwargs["currency"] == currency_code
         assert call_kwargs["is_lifetime"] is False
-

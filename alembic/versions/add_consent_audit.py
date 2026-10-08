@@ -5,10 +5,10 @@ Revises: c9a3f0e5a1b2
 Create Date: 2026-01-29 21:05:00.000000
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
-
 
 # revision identifiers, used by Alembic.
 revision: str = "add_consent_audit"

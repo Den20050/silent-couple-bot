@@ -8,9 +8,9 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+from src.bot.webhook_server import delete_webhook, set_webhook
 from src.core.config import settings
 from src.core.logger import configure_logging, get_logger
-from src.bot.webhook_server import set_webhook, delete_webhook
 
 logger = get_logger(__name__)
 

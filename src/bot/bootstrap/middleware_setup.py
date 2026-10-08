@@ -2,14 +2,14 @@
 
 from aiogram import Dispatcher
 
-from src.core.di.container import Container
-from src.core.logger import get_logger
 from src.bot.middlewares.container import ContainerMiddleware
 from src.bot.middlewares.database import DatabaseMiddleware
 from src.bot.middlewares.error_handler import ErrorHandlerMiddleware
 from src.bot.middlewares.rate_limit import RateLimitMiddleware
 from src.bot.middlewares.timezone import TimezoneMiddleware
 from src.bot.middlewares.user_activity_logger import UserActivityLoggerMiddleware
+from src.core.di.container import Container
+from src.core.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -32,7 +32,7 @@ def setup_middlewares(dp: Dispatcher, container: Container) -> None:
     error_handler_middleware = ErrorHandlerMiddleware()
     dp.message.middleware(error_handler_middleware)
     dp.callback_query.middleware(error_handler_middleware)
-    
+
     # 1. Container middleware (provides container and services)
     container_middleware = ContainerMiddleware(container)
     dp.message.middleware(container_middleware)
@@ -60,6 +60,5 @@ def setup_middlewares(dp: Dispatcher, container: Container) -> None:
         logger.info("Rate limiting enabled")
     else:
         logger.warning("Rate limiting disabled (Redis not available)")
-    
-    logger.info("Middlewares configured")
 
+    logger.info("Middlewares configured")

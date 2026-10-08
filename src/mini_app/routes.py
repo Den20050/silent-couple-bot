@@ -2,12 +2,12 @@
 
 import os
 
-from fastapi import APIRouter, Request, HTTPException, Form
+from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from src.core.logger import get_logger
-from src.mini_app.security import verify_init_data
 from src.mini_app.api import router as api_router
+from src.mini_app.security import verify_init_data
 from src.services.telegram import send_photo_with_retry
 
 logger = get_logger(__name__)
@@ -32,6 +32,7 @@ async def index() -> str:
     """Serve Mini App HTML."""
     # Read HTML file
     import os
+
     html_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
     try:
         with open(html_path, "r", encoding="utf-8") as f:
@@ -61,12 +62,12 @@ async def send_photo(
     if not verify_init_data(initData):
         logger.warning("Invalid initData signature", ip=request.client.host)
         raise HTTPException(status_code=403, detail="Invalid signature")
-    
+
     try:
         chat_id_int = int(chat_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid chat_id")
-    
+
     # Send photo via bot
     try:
         await send_photo_with_retry(
@@ -85,4 +86,3 @@ async def send_photo(
 async def health() -> JSONResponse:
     """Health check endpoint."""
     return JSONResponse({"status": "ok"})
-

@@ -3,8 +3,9 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import Date, and_, case, func, or_, select, union_all
+from sqlalchemy import Date, and_, case
 from sqlalchemy import cast as sa_cast
+from sqlalchemy import func, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.constants import PairStatus, SubscriptionStatus
@@ -112,7 +113,9 @@ async def get_admin_user_statistics(
                 ),
             )
 
-        pair_period_filter = True if period_start is None else Pair.created_at >= period_start
+        pair_period_filter = (
+            True if period_start is None else Pair.created_at >= period_start
+        )
 
         total_users = (
             await session.execute(
@@ -167,9 +170,7 @@ async def get_admin_user_statistics(
         ).scalar() or 0
 
         total_pairs = (
-            await session.execute(
-                select(func.count(Pair.id)).where(pair_period_filter)
-            )
+            await session.execute(select(func.count(Pair.id)).where(pair_period_filter))
         ).scalar() or 0
 
         pairs_using_bot = (
@@ -318,7 +319,9 @@ async def get_admin_payment_statistics(
 
         gifted_by_plan = _empty_plan_dict()
         gift_rows = await session.execute(
-            select(plan_expr.label("plan"), func.count(func.distinct(Subscription.pair_id)))
+            select(
+                plan_expr.label("plan"), func.count(func.distinct(Subscription.pair_id))
+            )
             .join(Pair, Pair.id == Subscription.pair_id)
             .where(
                 Subscription.status == SubscriptionStatus.ACTIVE.value,
@@ -346,10 +349,14 @@ async def get_admin_payment_statistics(
             "gifted_pairs": gifted_pairs,
             "gifted_by_plan": gifted_by_plan,
             "has_detailed_payments": has_detailed_payments,
-            "legacy_pairs_only": legacy_pairs if legacy_pairs and not has_detailed_payments else 0,
+            "legacy_pairs_only": (
+                legacy_pairs if legacy_pairs and not has_detailed_payments else 0
+            ),
         }
     except Exception as e:
-        logger.error("Error getting admin payment statistics", error=str(e), exc_info=True)
+        logger.error(
+            "Error getting admin payment statistics", error=str(e), exc_info=True
+        )
         raise
 
 

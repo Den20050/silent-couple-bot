@@ -55,6 +55,7 @@ async def update_user_consent(
 
     if user:
         from datetime import datetime
+
         from src.db.models import ConsentAudit
 
         session.add(

@@ -23,10 +23,10 @@ def main() -> None:
         # worldtimeapi returns local MSK in datetime field
         msk_from_api = data["datetime"]
         print(f"API Europe/Moscow: {msk_from_api}")
-        server_msk = server_utc.replace(
-            hour=(server_utc.hour + 3) % 24
-        )  # rough
-        print(f"Server MSK (~utc+3): {(server_utc.hour + 3) % 24:02d}:{server_utc.minute:02d}:{server_utc.second:02d}")
+        server_msk = server_utc.replace(hour=(server_utc.hour + 3) % 24)  # rough
+        print(
+            f"Server MSK (~utc+3): {(server_utc.hour + 3) % 24:02d}:{server_utc.minute:02d}:{server_utc.second:02d}"
+        )
     except Exception as e:
         print(f"API time check failed: {e}")
 

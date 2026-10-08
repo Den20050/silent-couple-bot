@@ -8,20 +8,25 @@ from arq.connections import RedisSettings
 from src.core.config import settings
 from src.core.logger import get_logger
 from src.worker.di.context import WorkerContext, create_worker_context
-from src.worker.tasks.morning import morning_sender as morning_sender_task
+from src.worker.tasks.cleanup import cleanup_old_data as cleanup_old_data_task
+from src.worker.tasks.cleanup import cleanup_old_messages as cleanup_old_messages_task
 from src.worker.tasks.evening import evening_sender as evening_sender_task
-from src.worker.tasks.past_due import dunning_notifications as dunning_notifications_task
-from src.worker.tasks.reminders import (
-    send_recipient_reminder as send_recipient_reminder_task,
-    send_initiator_warning as send_initiator_warning_task,
-)
-from src.worker.tasks.cleanup import (
-    cleanup_old_data as cleanup_old_data_task,
-    cleanup_old_messages as cleanup_old_messages_task,
-)
+from src.worker.tasks.morning import morning_sender as morning_sender_task
+
 # from src.worker.tasks.summary import send_week_summary as send_week_summary_task
 from src.worker.tasks.nudges import send_share_nudge as send_share_nudge_task
-from src.worker.tasks.renewal import send_renewal_reminders as send_renewal_reminders_task
+from src.worker.tasks.past_due import (
+    dunning_notifications as dunning_notifications_task,
+)
+from src.worker.tasks.reminders import (
+    send_initiator_warning as send_initiator_warning_task,
+)
+from src.worker.tasks.reminders import (
+    send_recipient_reminder as send_recipient_reminder_task,
+)
+from src.worker.tasks.renewal import (
+    send_renewal_reminders as send_renewal_reminders_task,
+)
 
 logger = get_logger(__name__)
 
@@ -32,22 +37,24 @@ _context_lock = None
 
 async def get_worker_context() -> WorkerContext:
     """Get or create global worker context for worker jobs.
-    
+
     Note: This function is async because bootstrap() is async.
     It should be called from within an async context (Arq worker jobs).
     """
     global _global_worker_context, _context_lock
     if _context_lock is None:
         import asyncio
+
         _context_lock = asyncio.Lock()
-    
+
     if _global_worker_context is None:
         async with _context_lock:
             # Double-check pattern
             if _global_worker_context is None:
                 from src.core.bootstrap import bootstrap
+
                 container = await bootstrap()
-                
+
                 # Create worker context from container
                 _global_worker_context = create_worker_context(
                     settings=container.settings,
@@ -156,7 +163,7 @@ class WorkerSettings:
     # Configure Redis with increased timeouts for SSH tunnel stability
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     redis_settings.conn_timeout = 10  # Connection timeout in seconds
-    
+
     functions = [
         morning_sender,
         evening_sender,
@@ -173,7 +180,9 @@ class WorkerSettings:
         cron(morning_sender, minute=None),  # Every minute
         cron(evening_sender, minute=None),  # Every minute
         cron(cleanup_old_data, hour=3, minute=0),  # 03:00 UTC
-        cron(dunning_notifications, hour=None, minute=0),  # Every hour - check expired subscriptions
+        cron(
+            dunning_notifications, hour=None, minute=0
+        ),  # Every hour - check expired subscriptions
         # cron(send_week_summary, hour=0, minute=0),  # 00:00 UTC - Disabled: weekly summary
         cron(send_share_nudge, hour=14, minute=0),  # 14:00 UTC
         cron(cleanup_old_messages, hour=None, minute=30),  # Every hour at :30

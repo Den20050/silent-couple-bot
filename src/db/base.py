@@ -35,4 +35,3 @@ async def get_session() -> AsyncSession:
     """Get database session."""
     async with async_session_maker() as session:
         yield session
-

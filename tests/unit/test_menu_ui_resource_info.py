@@ -51,4 +51,3 @@ def test_build_bot_info_message_returns_empty_message_when_no_fields() -> None:
     # Contract: if nothing is configured in env -> show a dedicated empty-state message.
     assert isinstance(text, str)
     assert text.strip() != ""
-

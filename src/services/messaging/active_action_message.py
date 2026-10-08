@@ -32,7 +32,7 @@ class ActionKind:
     - reminders do not disable prompts (so users can still send today's wish)
     """
 
-    PROMPT = "prompt"    # morning/evening wish request
+    PROMPT = "prompt"  # morning/evening wish request
     REMINDER = "reminder"  # unanswered "Тебя ждут" / respond reminders
 
 
@@ -93,7 +93,9 @@ async def activate_message(
             )
             if reminder_id and reminder_id != message_id:
                 try:
-                    await messenger.remove_reply_markup(chat_id=tg_id, message_id=reminder_id)
+                    await messenger.remove_reply_markup(
+                        chat_id=tg_id, message_id=reminder_id
+                    )
                 except Exception:
                     pass
                 try:
@@ -142,4 +144,3 @@ async def is_message_active(
         # If we don't know, don't block (backward-compatible).
         return True
     return active_id == message_id
-

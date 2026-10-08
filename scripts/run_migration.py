@@ -1,17 +1,17 @@
 """Run Alembic migration directly with SSH tunnel support."""
 
-import sys
 import subprocess
-from urllib.parse import urlsplit, urlunsplit
+import sys
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlsplit, urlunsplit
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from alembic.config import Config
 from alembic import command
+from alembic.config import Config
 from src.core.config import settings
 from src.core.ssh_tunnel import ensure_database_tunnel
 
@@ -40,22 +40,25 @@ def _sanitize_database_url(database_url: str) -> str:
             userinfo = f"{userinfo}:***"
 
         netloc = f"{userinfo}@{host_port}" if host_port else userinfo
-        return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+        return urlunsplit(
+            (parts.scheme, netloc, parts.path, parts.query, parts.fragment)
+        )
     except Exception:
         # Never fail migrations due to logging sanitization.
         return "<redacted>"
 
+
 def main():
     """Run migration with automatic SSH tunnel creation if needed."""
     tunnel_process: Optional[subprocess.Popen] = None
-    
+
     try:
         print("=" * 60)
         print("Applying Alembic Migration")
         print("=" * 60)
         print(f"Database URL: {_sanitize_database_url(settings.database_url)}")
         print()
-        
+
         # Try to create SSH tunnel if needed
         print("Checking SSH tunnel configuration...")
         tunnel_process = ensure_database_tunnel()
@@ -64,12 +67,12 @@ def main():
         else:
             print("ℹ️  No SSH tunnel needed or tunnel already exists")
         print()
-        
-        cfg = Config('alembic.ini')
-        
+
+        cfg = Config("alembic.ini")
+
         # Set database URL
         cfg.set_main_option("sqlalchemy.url", settings.database_url)
-        
+
         print("Checking current revision...")
         try:
             current = command.current(cfg)
@@ -77,17 +80,18 @@ def main():
         except Exception as e:
             print(f"Could not get current revision: {e}")
             print("This is normal if no migrations have been applied yet.")
-        
+
         print("\nApplying migration to 'head'...")
         try:
-            command.upgrade(cfg, 'head')
+            command.upgrade(cfg, "head")
             print("\n✅ Migration applied successfully!")
         except Exception as e:
             print(f"\n❌ Error applying migration: {e}")
             import traceback
+
             traceback.print_exc()
             sys.exit(1)
-        
+
         print("\nChecking new revision...")
         try:
             new_current = command.current(cfg)
@@ -108,6 +112,7 @@ def main():
                 print("⚠️  SSH tunnel force-closed")
             except Exception as e:
                 print(f"⚠️  Error closing SSH tunnel: {e}")
+
 
 if __name__ == "__main__":
     main()

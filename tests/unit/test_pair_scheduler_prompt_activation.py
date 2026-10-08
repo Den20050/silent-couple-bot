@@ -87,18 +87,26 @@ class _FakeMessenger:
         self.edited.append((chat_id, message_id))
         return None
 
-    async def send_photo(self, *args: object, **kwargs: object) -> Any:  # pragma: no cover
+    async def send_photo(
+        self, *args: object, **kwargs: object
+    ) -> Any:  # pragma: no cover
         raise NotImplementedError
 
-    async def remove_reply_markup(self, *args: object, **kwargs: object) -> Any:  # pragma: no cover
+    async def remove_reply_markup(
+        self, *args: object, **kwargs: object
+    ) -> Any:  # pragma: no cover
         raise NotImplementedError
 
-    async def delete_message(self, *args: object, **kwargs: object) -> bool:  # pragma: no cover
+    async def delete_message(
+        self, *args: object, **kwargs: object
+    ) -> bool:  # pragma: no cover
         raise NotImplementedError
 
 
 @pytest.mark.asyncio
-async def test_prompt_send_succeeds_even_if_activation_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_prompt_send_succeeds_even_if_activation_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Activation errors must not make the scheduler resend prompts every minute."""
 
     # Arrange: replace UI builder and force activate_message to fail.
@@ -109,14 +117,18 @@ async def test_prompt_send_succeeds_even_if_activation_fails(monkeypatch: pytest
     )
 
     async def _boom(**_: object) -> None:
-        raise TypeError("activate_message() missing 1 required keyword-only argument: 'kind'")
+        raise TypeError(
+            "activate_message() missing 1 required keyword-only argument: 'kind'"
+        )
 
     monkeypatch.setattr(pair_scheduler_module, "activate_message", _boom)
 
     lock_service = _FakeLockService()
     messenger = _FakeMessenger()
 
-    scheduler = PairScheduler(session=object(), telegram_messenger=messenger, lock_service=lock_service)
+    scheduler = PairScheduler(
+        session=object(), telegram_messenger=messenger, lock_service=lock_service
+    )
 
     attempt_ctx_by_tg_id = {
         111: WishRequestAttemptContext(
@@ -145,7 +157,9 @@ async def test_prompt_send_succeeds_even_if_activation_fails(monkeypatch: pytest
 
 
 @pytest.mark.asyncio
-async def test_prompt_edit_succeeds_even_if_activation_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_prompt_edit_succeeds_even_if_activation_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Activation errors must not make edit-path fail (otherwise we fallback to new sends)."""
 
     import src.worker.services.pair_scheduler as pair_scheduler_module
@@ -164,7 +178,9 @@ async def test_prompt_edit_succeeds_even_if_activation_fails(monkeypatch: pytest
     lock_service.store["wish_request_prompt_message_id:111:evening:2026-01-20"] = "555"
 
     messenger = _FakeMessenger()
-    scheduler = PairScheduler(session=object(), telegram_messenger=messenger, lock_service=lock_service)
+    scheduler = PairScheduler(
+        session=object(), telegram_messenger=messenger, lock_service=lock_service
+    )
 
     attempt_ctx_by_tg_id = {
         111: WishRequestAttemptContext(

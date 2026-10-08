@@ -8,4 +8,3 @@ router = Router(name="pay")
 
 # Register sub-routers
 router.include_router(payment_handlers.router)
-

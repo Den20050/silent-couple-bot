@@ -39,14 +39,16 @@ def create_bot_and_dispatcher(container: Container) -> tuple[Bot, Dispatcher]:
         storage = MemoryStorage()
 
     # Initialize bot (with proxy if configured)
-    bot = _create_bot(container.settings.tg_bot_token, proxy_url=container.settings.telegram_proxy_url)
-    
+    bot = _create_bot(
+        container.settings.tg_bot_token, proxy_url=container.settings.telegram_proxy_url
+    )
+
     # Set bot in provider (for dependency injection)
     container.bot_provider.set_bot(bot)
-    
+
     # Initialize dispatcher
     dp = Dispatcher(storage=storage)
-    
+
     logger.info(
         "Bot and Dispatcher created",
         environment=container.settings.environment,
@@ -54,4 +56,3 @@ def create_bot_and_dispatcher(container: Container) -> tuple[Bot, Dispatcher]:
     )
 
     return bot, dp
-

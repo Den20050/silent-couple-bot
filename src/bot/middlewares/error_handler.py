@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 
 class ErrorHandlerMiddleware(BaseMiddleware):
     """Middleware for handling exceptions in handlers."""
-    
+
     async def __call__(
         self,
         handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
@@ -22,12 +22,12 @@ class ErrorHandlerMiddleware(BaseMiddleware):
         data: Dict[str, Any],
     ) -> Any:
         """Handle exceptions raised by handlers.
-        
+
         Args:
             handler: Handler function
             event: Telegram event (Message, CallbackQuery, etc.)
             data: Event data
-            
+
         Returns:
             Handler result or None if error occurred
         """
@@ -45,20 +45,20 @@ class ErrorHandlerMiddleware(BaseMiddleware):
                 exc_info=True,
             )
             await self._handle_unexpected_error(event)
-    
+
     async def _handle_bot_exception(
         self,
         event: TelegramObject,
         exception: BotException,
     ) -> None:
         """Handle bot exception.
-        
+
         Args:
             event: Telegram event
             exception: Bot exception
         """
         error_message = exception.message or get_message(exception.message_key)
-        
+
         if isinstance(event, CallbackQuery):
             if exception.show_alert:
                 await event.answer(error_message, show_alert=True)
@@ -78,17 +78,16 @@ class ErrorHandlerMiddleware(BaseMiddleware):
                 error_message,
                 reply_markup=exception.reply_markup,
             )
-    
+
     async def _handle_unexpected_error(self, event: TelegramObject) -> None:
         """Handle unexpected error.
-        
+
         Args:
             event: Telegram event
         """
         error_message = get_message("MENU_ERROR")
-        
+
         if isinstance(event, CallbackQuery):
             await event.answer(error_message, show_alert=True)
         elif isinstance(event, Message):
             await event.answer(error_message)
-

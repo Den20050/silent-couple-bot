@@ -1,17 +1,18 @@
 """Pair service - pair finding, creation, status checks, demo restoration."""
 
 from datetime import date, timedelta
+
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.constants import (
+    TRIAL_PERIOD_DAYS,
     DeliveryChat,
     PairStatus,
     SubscriptionStatus,
-    TRIAL_PERIOD_DAYS,
 )
 from src.core.logger import get_logger
-from src.core.messages import get_message, get_days_text
+from src.core.messages import get_days_text, get_message
 from src.db.models import LifetimePairHistory, Pair, Subscription
 from src.db.repositories.pair_demo import PairDemoRepository
 from src.db.repositories.pairs import PairsRepository
@@ -22,26 +23,26 @@ from src.services.telegram import get_bot, send_message_with_retry
 logger = get_logger(__name__)
 
 
-async def find_existing_pair(
-    user_id: int, session: AsyncSession
-) -> Pair | None:
+async def find_existing_pair(user_id: int, session: AsyncSession) -> Pair | None:
     """
     Find existing active pair for user.
     If user has multiple pairs, returns the first active one.
-    
+
     Args:
         user_id: User ID
         session: Database session
-        
+
     Returns:
         Pair object if found, None otherwise
     """
     try:
         pair_result = await session.execute(
-            select(Pair).where(
+            select(Pair)
+            .where(
                 ((Pair.uid_a == user_id) | (Pair.uid_b == user_id))
                 & (Pair.status.in_([PairStatus.TRIAL.value, PairStatus.ACTIVE.value]))
-            ).order_by(Pair.created_at.desc())
+            )
+            .order_by(Pair.created_at.desc())
         )
         # Get first active pair if multiple exist
         pairs = pair_result.scalars().all()
@@ -66,13 +67,13 @@ async def check_and_restore_demo(
 ) -> bool:
     """
     Check if demo was reset by admin and restore it if needed.
-    
+
     Args:
         pair: Pair object
         user_id: Current user ID
         partner_id: Partner user ID
         session: Database session
-        
+
     Returns:
         True if demo was restored, False otherwise
     """
@@ -92,24 +93,24 @@ async def check_and_restore_demo(
             demo_used = True
 
     demo_was_reset = pair.status == PairStatus.PAST_DUE.value and not demo_used
-    
+
     if not demo_was_reset:
         return False
-    
+
     # Admin reset demo - restore trial period
     logger.info(
         "Demo was reset by admin - restoring trial period",
         pair_id=pair.id,
     )
-    
+
     # Get subscription
     subs_repo = SubscriptionsRepository(session)
     subscription = await subs_repo.get_by_pair_id(pair.id)
-    
+
     if subscription:
         # Update subscription with new trial period
         trial_end = date.today() + timedelta(days=TRIAL_PERIOD_DAYS)
-        
+
         await session.execute(
             update(Subscription)
             .where(Subscription.id == subscription.id)
@@ -119,16 +120,16 @@ async def check_and_restore_demo(
                 is_lifetime=False,
             )
         )
-    
+
     # Update pair status to trial
     pairs_repo = PairsRepository(session)
     await pairs_repo.update_status(pair.id, PairStatus.TRIAL)
-    
+
     # Create new demo record
     await pair_demo_repo.mark_pair(user.tg_id, partner.tg_id)
-    
+
     await session.commit()
-    
+
     return True
 
 
@@ -139,24 +140,24 @@ async def validate_pair_creation(
 ) -> tuple[bool, str | None]:
     """
     Validate if pair can be created between two users.
-    
+
     Args:
         user_id: User ID
         partner_id: Partner user ID
         session: Database session
-        
+
     Returns:
         tuple: (is_valid, error_message)
     """
     pairs_repo = PairsRepository(session)
     pair_demo_repo = PairDemoRepository(session)
     users_repo = UsersRepository(session)
-    
+
     # Check if pair already exists
     existing_pair = await pairs_repo.get_by_user_ids(user_id, partner_id)
     if existing_pair:
         return False, get_message("START_PAIR_ALREADY_CREATED")
-    
+
     # Check if this pair was previously broken with lifetime subscription
     uid_a, uid_b = (
         (user_id, partner_id) if user_id < partner_id else (partner_id, user_id)
@@ -170,7 +171,7 @@ async def validate_pair_creation(
     if lifetime_history.scalar_one_or_none():
         # Lifetime pairs can be restored without demo restrictions.
         return True, None
-    
+
     user = await users_repo.get_by_id(user_id)
     partner = await users_repo.get_by_id(partner_id)
     if not user or not partner:
@@ -183,7 +184,7 @@ async def validate_pair_creation(
         pair_used_demo = True
     if pair_used_demo:
         return False, get_message("START_BOTH_DEMO_USED")
-    
+
     return True, None
 
 
@@ -196,14 +197,14 @@ async def create_pair_from_invite(
 ) -> Pair:
     """
     Create pair from invite link.
-    
+
     Args:
         inviter_id: Inviter user ID (User A)
         invited_id: Invited user ID (User B)
         inviter_mode: Inviter's preferred mode
         delivery_chat: Delivery chat type
         session: Database session
-        
+
     Returns:
         Created Pair object
     """
@@ -211,7 +212,7 @@ async def create_pair_from_invite(
     subs_repo = SubscriptionsRepository(session)
     pair_demo_repo = PairDemoRepository(session)
     users_repo = UsersRepository(session)
-    
+
     uid_a, uid_b = (
         (inviter_id, invited_id)
         if inviter_id < invited_id
@@ -232,7 +233,7 @@ async def create_pair_from_invite(
         mode=inviter_mode,
         delivery_chat=delivery_chat,
     )
-    
+
     # Create subscription (trial) - 7 days
     trial_end = date.today() + timedelta(days=TRIAL_PERIOD_DAYS)
     subscription = await subs_repo.create(
@@ -256,17 +257,17 @@ async def create_pair_from_invite(
         if inviter and invited:
             # Mark this pair as demo used (by tg_id hash)
             await pair_demo_repo.mark_pair(invited.tg_id, inviter.tg_id)
-    
+
     # Explicitly commit to ensure pair is saved before sending messages
     await session.commit()
-    
+
     logger.info(
         "Pair created and committed",
         inviter_id=inviter_id,
         invited_id=invited_id,
         pair_id=pair.id,
     )
-    
+
     return pair
 
 
@@ -275,23 +276,23 @@ def format_partner_text(
     partner_nickname: str | None = None,
 ) -> str:
     """Format partner text for display.
-    
+
     Args:
         partner_username: Partner's Telegram username (optional)
         partner_nickname: Nickname that user gave to partner (optional)
-        
+
     Returns:
         Formatted text like "@username, никнейм" or "@username" or "никнейм" or fallback
     """
     parts = []
-    
+
     if partner_username:
         parts.append(f"@{partner_username}")
-    
+
     if partner_nickname:
         parts.append(partner_nickname)
-    
+
     if parts:
         return ", ".join(parts)
-    
+
     return get_message("START_PARTNER_FALLBACK")

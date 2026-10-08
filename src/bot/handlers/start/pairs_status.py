@@ -6,11 +6,11 @@ from typing import Any, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.bot.handlers.start.services.pair_service import format_partner_text
 from src.core.logger import get_logger
 from src.core.messages import get_message
 from src.db.repositories.pairs import PairsRepository
 from src.db.repositories.users import UsersRepository
-from src.bot.handlers.start.services.pair_service import format_partner_text
 
 logger = get_logger(__name__)
 

@@ -9,4 +9,3 @@ __all__ = [
     "setup_middlewares",
     "register_routers",
 ]
-

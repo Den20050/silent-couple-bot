@@ -1,2 +1,1 @@
 """Pay handlers."""
-

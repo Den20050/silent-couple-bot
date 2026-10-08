@@ -28,7 +28,7 @@ class ImageService:
         exclude_last_days: int = 30,
     ) -> Optional[str]:
         """Get random image for pair, excluding used in last N days.
-        
+
         Returns file_id or None if no images available.
         """
         # Get used file IDs
@@ -36,13 +36,13 @@ class ImageService:
             pair_id=pair_id,
             days=exclude_last_days,
         )
-        
+
         # Get random image excluding used ones
         pic = await self.pics_pool_repo.get_random(
             pic_type=pic_type,
             exclude_file_ids=used_file_ids if used_file_ids else None,
         )
-        
+
         if pic:
             logger.debug(
                 "Selected image",
@@ -51,7 +51,7 @@ class ImageService:
                 file_id=pic.file_id,
             )
             return pic.file_id
-        
+
         # If no images available, check if we should reset
         total_count = await self.pics_pool_repo.count(pic_type=pic_type)
         if total_count > 0 and len(used_file_ids) >= total_count:
@@ -64,14 +64,15 @@ class ImageService:
                 total_count=total_count,
             )
             # Return random image without exclusions
-            pic = await self.pics_pool_repo.get_random(pic_type=pic_type, exclude_file_ids=None)
+            pic = await self.pics_pool_repo.get_random(
+                pic_type=pic_type, exclude_file_ids=None
+            )
             if pic:
                 return pic.file_id
-        
+
         logger.warning(
             "No images available",
             pair_id=pair_id,
             pic_type=pic_type.value,
         )
         return None
-

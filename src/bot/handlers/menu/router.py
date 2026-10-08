@@ -2,7 +2,7 @@
 
 from aiogram import Router
 
-from src.bot.handlers.menu.handlers import menu_items, admin, admin_actions
+from src.bot.handlers.menu.handlers import admin, admin_actions, menu_items
 
 router = Router(name="menu")
 
@@ -10,4 +10,3 @@ router = Router(name="menu")
 router.include_router(menu_items.router)
 router.include_router(admin.router)
 router.include_router(admin_actions.router)
-

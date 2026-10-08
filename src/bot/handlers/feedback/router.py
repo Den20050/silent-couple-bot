@@ -8,4 +8,3 @@ router = Router(name="feedback")
 
 # Register sub-routers
 router.include_router(feedback_handlers.router)
-

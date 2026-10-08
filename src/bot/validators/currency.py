@@ -10,11 +10,11 @@ logger = get_logger(__name__)
 
 def validate_currency(currency_code: str, error_message_key: str = "PAY_ERROR") -> None:
     """Validate currency code.
-    
+
     Args:
         currency_code: Currency code to validate
         error_message_key: Message key for error
-        
+
     Raises:
         ValidationError: If currency code is invalid
     """
@@ -28,4 +28,3 @@ def validate_currency(currency_code: str, error_message_key: str = "PAY_ERROR") 
             message_key=error_message_key,
             message=get_message(error_message_key),
         )
-

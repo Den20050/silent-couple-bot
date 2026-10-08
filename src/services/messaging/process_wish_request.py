@@ -7,6 +7,12 @@ from datetime import date, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.bot.handlers.callbacks.use_cases.schedule_reminders import (
+    schedule_reminder_tasks,
+)
+from src.bot.handlers.callbacks.use_cases.send_wish import send_wish_to_partner
+from src.bot.handlers.callbacks.validators import validate_pair_and_user
+from src.bot.handlers.start.services.pair_service import format_partner_text
 from src.core.config import Settings
 from src.core.constants import PairStatus
 from src.core.logger import get_logger
@@ -21,10 +27,6 @@ from src.services.messaging.wish_request_prompt_refresher import (
 )
 from src.services.pair_time_window import can_user_send_wish
 from src.services.telegram.messenger import TelegramMessenger
-from src.bot.handlers.callbacks.validators import validate_pair_and_user
-from src.bot.handlers.callbacks.use_cases.send_wish import send_wish_to_partner
-from src.bot.handlers.callbacks.use_cases.schedule_reminders import schedule_reminder_tasks
-from src.bot.handlers.start.services.pair_service import format_partner_text
 
 logger = get_logger(__name__)
 
@@ -139,10 +141,14 @@ async def process_wish_request(
     if not success:
         daily_state = await daily_state_repo.get_by_pair_and_day(pair_id, day)
         initiator_field = (
-            daily_state.morning_initiator
-            if pic_type == "morning"
-            else daily_state.evening_initiator
-        ) if daily_state else None
+            (
+                daily_state.morning_initiator
+                if pic_type == "morning"
+                else daily_state.evening_initiator
+            )
+            if daily_state
+            else None
+        )
 
         if initiator_field is not None and resolved_prompt_id is not None:
             try:
@@ -197,9 +203,11 @@ async def process_wish_request(
     await telegram_messenger.send_message(
         chat_id=tg_id,
         text=get_message(
-            "CALLBACK_WISH_DELIVERED"
-            if delivered_immediately
-            else "CALLBACK_WISH_DELIVERY_DEFERRED",
+            (
+                "CALLBACK_WISH_DELIVERED"
+                if delivered_immediately
+                else "CALLBACK_WISH_DELIVERY_DEFERRED"
+            ),
             partner_text=partner_text,
         ),
     )

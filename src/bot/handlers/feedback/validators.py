@@ -6,4 +6,3 @@ from src.bot.validators.user import validate_user_exists
 __all__ = [
     "validate_user_exists",
 ]
-

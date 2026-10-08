@@ -6,17 +6,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, MenuButtonCommands, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.error_handling import handle_errors
-from src.core.logger import get_logger
-from src.core.messages import get_message
-from src.core.redis_client import create_redis_client
-from src.db.repositories.pairs import PairsRepository
-from src.db.repositories.users import UsersRepository
-from src.services.messaging.user_command_session import delete_user_command_message, track_user_command
-from src.services.telegram.bot_provider import BotProvider
-from src.services.telegram.messenger import TelegramMessenger
-from src.services.timezone import format_timezone_label, is_timezone_configured
-
 from src.bot.handlers.start.commands import handle_start_logic
 from src.bot.handlers.start.pairs_status import send_pairs_status_messages
 from src.bot.handlers.start.services.onboarding_service import get_or_create_user
@@ -31,6 +20,19 @@ from src.bot.handlers.start.ui.builders import (
     get_start_cleanup_keyboard,
     get_update_timezone_keyboard,
 )
+from src.core.error_handling import handle_errors
+from src.core.logger import get_logger
+from src.core.messages import get_message
+from src.core.redis_client import create_redis_client
+from src.db.repositories.pairs import PairsRepository
+from src.db.repositories.users import UsersRepository
+from src.services.messaging.user_command_session import (
+    delete_user_command_message,
+    track_user_command,
+)
+from src.services.telegram.bot_provider import BotProvider
+from src.services.telegram.messenger import TelegramMessenger
+from src.services.timezone import format_timezone_label, is_timezone_configured
 
 logger = get_logger(__name__)
 
@@ -43,7 +45,9 @@ async def _set_menu_button(bot_provider: BotProvider, chat_id: int, tg_id: int) 
             menu_button=MenuButtonCommands(),
         )
     except Exception as exc:
-        logger.warning("Failed to set menu button for user", tg_id=tg_id, error=str(exc))
+        logger.warning(
+            "Failed to set menu button for user", tg_id=tg_id, error=str(exc)
+        )
 
 
 async def _delete_messages(
@@ -253,7 +257,9 @@ async def finish_start_update_after_timezone_sync(
     kept_ids.append(confirm_msg.message_id)
 
     updated_session = StartFlowSession(
-        user_start_message_id=flow_session.user_start_message_id if flow_session else None,
+        user_start_message_id=(
+            flow_session.user_start_message_id if flow_session else None
+        ),
         bot_message_ids=kept_ids,
         prompt_message_id=None,
     )

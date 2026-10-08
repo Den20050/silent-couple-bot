@@ -16,7 +16,10 @@ from sqlalchemy import select
 
 from src.core.di.container import create_container, initialize_container
 from src.db.models import User
-from src.services.pair_time_window import get_user_window_bounds, is_user_in_prompt_window
+from src.services.pair_time_window import (
+    get_user_window_bounds,
+    is_user_in_prompt_window,
+)
 
 
 async def main() -> None:
@@ -29,8 +32,7 @@ async def main() -> None:
     try:
         async with c.session_factory() as s:
             users = {
-                u.tg_id: u
-                for u in (await s.execute(select(User))).scalars().all()
+                u.tg_id: u for u in (await s.execute(select(User))).scalars().all()
             }
 
         pat = re.compile(

@@ -1,2 +1,1 @@
 """Telegram Mini App (FastAPI)."""
-

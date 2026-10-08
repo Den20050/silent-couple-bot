@@ -15,7 +15,10 @@ from src.services.application.payment import PaymentApplicationService
 from src.services.application.settings import SettingsApplicationService
 from src.services.application.subscription import SubscriptionApplicationService
 from src.services.messaging.ui.menu_ui import MenuUIService
-from src.services.messaging.user_command_session import cleanup_back_to_chat, track_user_command
+from src.services.messaging.user_command_session import (
+    cleanup_back_to_chat,
+    track_user_command,
+)
 from src.services.telegram.messenger import TelegramMessenger
 
 logger = get_logger(__name__)
@@ -35,8 +38,10 @@ async def cmd_share(
         # Clear any active FSM state
         await state.clear()
 
-        success, message_text, keyboard = await menu_application_service.show_share_menu()
-        
+        success, message_text, keyboard = (
+            await menu_application_service.show_share_menu()
+        )
+
         if success:
             await message.answer(
                 message_text,
@@ -74,10 +79,10 @@ async def cmd_bot_info(
             resource_email=settings.resource_email,
             resource_phone=settings.resource_phone,
         )
-        
+
         message_text = menu_ui.build_bot_info_message()
         keyboard = menu_ui.build_bot_info_keyboard()
-        
+
         await message.answer(
             message_text,
             reply_markup=keyboard,
@@ -116,10 +121,12 @@ async def cmd_create_pair(
         # Clear any active FSM state (e.g., waiting_nickname)
         await state.clear()
 
-        success, message_text, reply_markup = await pair_application_service.handle_create_pair_command(
-            message=message,
+        success, message_text, reply_markup = (
+            await pair_application_service.handle_create_pair_command(
+                message=message,
+            )
         )
-        
+
         if success:
             await message.answer(
                 message_text,
@@ -143,11 +150,13 @@ async def handle_menu_subscription(
     try:
         # Clear any active FSM state (e.g., waiting_nickname)
         await state.clear()
-        
-        success, message_text, keyboard = await subscription_application_service.show_subscription_info(
-            callback=callback,
+
+        success, message_text, keyboard = (
+            await subscription_application_service.show_subscription_info(
+                callback=callback,
+            )
         )
-        
+
         if success:
             await callback.message.edit_text(
                 message_text,
@@ -180,25 +189,30 @@ async def handle_menu_pay(
     try:
         # Clear any active FSM state (e.g., waiting_nickname)
         await state.clear()
-        
+
         tg_id = callback.from_user.id
-        
+
         # Check if user has multiple pairs
         from src.db.repositories.pairs import PairsRepository
+
         pairs_repo = PairsRepository(session)
         all_pairs = await pairs_repo.get_all_by_user_tg_id(tg_id)
         active_pairs = [p for p in all_pairs if p.status in ("trial", "active")]
-        
+
         if len(active_pairs) > 1:
             # Show pair selection
-            success, message_text, keyboard = await payment_application_service.show_pair_selection(tg_id=tg_id)
+            success, message_text, keyboard = (
+                await payment_application_service.show_pair_selection(tg_id=tg_id)
+            )
             if success:
                 await callback.message.edit_text(message_text, reply_markup=keyboard)
             else:
                 await callback.answer(message_text, show_alert=True)
         else:
             # Single pair - show currency selection directly
-            success, message_text, keyboard = await payment_application_service.show_currencies(tg_id=tg_id)
+            success, message_text, keyboard = (
+                await payment_application_service.show_currencies(tg_id=tg_id)
+            )
             if success:
                 await callback.message.edit_text(message_text, reply_markup=keyboard)
             else:
@@ -222,9 +236,11 @@ async def handle_menu_share(
     try:
         # Clear any active FSM state (e.g., waiting_nickname)
         await state.clear()
-        
-        success, message_text, keyboard = await menu_application_service.show_share_menu()
-        
+
+        success, message_text, keyboard = (
+            await menu_application_service.show_share_menu()
+        )
+
         if success:
             await callback.message.edit_text(
                 message_text,
@@ -253,8 +269,10 @@ async def handle_menu_share_copy(
 ) -> None:
     """Show bot link for copying."""
     try:
-        success, message_text, keyboard = await menu_application_service.show_share_copy()
-        
+        success, message_text, keyboard = (
+            await menu_application_service.show_share_copy()
+        )
+
         if success:
             await callback.message.edit_text(
                 message_text,
@@ -286,38 +304,41 @@ async def handle_menu_feedback(
     try:
         # Clear any active FSM state (e.g., waiting_nickname)
         await state.clear()
-        
+
         # Validate user exists
         from src.db.repositories.users import UsersRepository
+
         users_repo = UsersRepository(session)
         user = await users_repo.get_by_tg_id(callback.from_user.id)
-        
+
         if not user:
             await callback.answer(
                 get_message("FEEDBACK_START_REQUIRED"),
                 show_alert=True,
             )
             return
-        
+
         # Clear any active FSM state
         await state.clear()
-        
+
         # Request feedback description
         text = get_message("FEEDBACK_DESCRIPTION_PROMPT")
-        
+
         from src.services.messaging.templates import KeyboardTemplates
+
         keyboard = KeyboardTemplates.back_only()
-        
+
         await callback.message.edit_text(
             text,
             reply_markup=keyboard,
             parse_mode="HTML",
         )
-        
+
         # Set FSM state
         from src.bot.handlers.feedback.states import FeedbackStates
+
         await state.set_state(FeedbackStates.waiting_description)
-        
+
         await callback.answer()
     except Exception as e:
         logger.error(
@@ -362,18 +383,20 @@ async def handle_menu_settings(
     try:
         # Clear any active FSM state (e.g., waiting_nickname)
         await state.clear()
-        
+
         tg_id = callback.from_user.id
-        
-        success, message_text, reply_markup = await settings_application_service.show_settings(tg_id=tg_id)
-        
+
+        success, message_text, reply_markup = (
+            await settings_application_service.show_settings(tg_id=tg_id)
+        )
+
         await callback.message.edit_text(
             message_text,
             reply_markup=reply_markup,
             parse_mode="HTML",
         )
         await callback.answer()
-        
+
     except Exception as e:
         logger.error("Error in handle_menu_settings", error=str(e), exc_info=True)
         await callback.answer(
@@ -392,10 +415,10 @@ async def handle_menu_bot_info(
     try:
         # Clear any active FSM state
         await state.clear()
-        
+
         message_text = menu_ui.build_bot_info_message()
         keyboard = menu_ui.build_bot_info_keyboard()
-        
+
         await callback.message.edit_text(
             message_text,
             reply_markup=keyboard,
@@ -412,4 +435,3 @@ async def handle_menu_bot_info(
             get_message("MENU_ERROR"),
             show_alert=True,
         )
-

@@ -7,4 +7,3 @@ __all__ = [
     "show_currencies",
     "show_tariffs",
 ]
-

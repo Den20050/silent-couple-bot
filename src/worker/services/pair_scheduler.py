@@ -7,21 +7,20 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.constants import PairStatus
 from src.core.config import settings
+from src.core.constants import PairStatus
 from src.core.logger import get_logger
+from src.core.protocols.messenger import MessengerProtocol
 from src.db.repositories.daily_state import DailyStateRepository
 from src.db.repositories.pairs import PairsRepository
 from src.db.repositories.users import UsersRepository
 from src.services.image import ImageService
+from src.services.messaging.active_action_message import ActionKind, activate_message
 from src.services.messaging.caption_service import CaptionService
-from src.core.protocols.messenger import MessengerProtocol
+from src.services.messaging.ui.wish_request_ui import WishRequestUIService
 from src.services.pair_time_window import is_user_in_prompt_window
 from src.services.timezone import is_timezone_configured
 from src.worker.services.lock_service import LockService
-
-from src.services.messaging.ui.wish_request_ui import WishRequestUIService
-from src.services.messaging.active_action_message import activate_message, ActionKind
 
 logger = get_logger(__name__)
 
@@ -86,9 +85,7 @@ class PairScheduler:
         now_iso = now_utc.isoformat()
 
         if ctx.attempt_count == 0:
-            await self.lock_service.set_key_with_ttl(
-                ctx.first_sent_key, now_iso, 86400
-            )
+            await self.lock_service.set_key_with_ttl(ctx.first_sent_key, now_iso, 86400)
 
         await self.lock_service.set_key_with_ttl(ctx.last_sent_key, now_iso, 86400)
         await self.lock_service.set_key_with_ttl(ctx.count_key, str(new_count), 86400)

@@ -3,14 +3,14 @@
 from aiogram import Bot, Dispatcher
 from aiogram.types import BotCommand, BotCommandScopeChat, MenuButtonCommands
 
+from src.bot.bootstrap import (
+    create_bot_and_dispatcher,
+    register_routers,
+    setup_middlewares,
+)
 from src.core.di.container import Container
 from src.core.logger import get_logger
 from src.core.redis_client import test_redis_connection
-from src.bot.bootstrap import (
-    create_bot_and_dispatcher,
-    setup_middlewares,
-    register_routers,
-)
 
 logger = get_logger(__name__)
 
@@ -26,13 +26,13 @@ async def create_bot_app(container: Container) -> tuple[Bot, Dispatcher]:
     """
     # Create bot and dispatcher
     bot, dp = create_bot_and_dispatcher(container)
-    
+
     # Set up middlewares
     setup_middlewares(dp, container)
-    
+
     # Register routers
     register_routers(dp)
-    
+
     logger.info(
         "Bot application created",
         environment=container.settings.environment,
@@ -52,7 +52,9 @@ async def setup_bot_commands(bot: Bot, container: Container) -> None:
         # Set commands for all users (without admin commands)
         user_commands = [
             BotCommand(command="start", description="🚀 Начать/Перезапустить бота"),
-            BotCommand(command="create_pair", description="➕ Создать дополнительную пару"),
+            BotCommand(
+                command="create_pair", description="➕ Создать дополнительную пару"
+            ),
             BotCommand(command="subscription", description="📊 Подписка"),
             BotCommand(command="pay", description="💳 Оплатить"),
             BotCommand(command="settings", description="⚙️ Настройки"),
@@ -85,7 +87,7 @@ async def setup_bot_commands(bot: Bot, container: Container) -> None:
                 admin_tg_id=container.settings.admin_tg_id,
                 commands_count=len(admin_commands),
             )
-        
+
         # Set Menu Button (left of input field)
         # chat_id=None sets global menu button for all chats
         menu_button = MenuButtonCommands()
@@ -97,10 +99,10 @@ async def setup_bot_commands(bot: Bot, container: Container) -> None:
 
 async def verify_bot_connection(bot: Bot) -> None:
     """Verify bot connection to Telegram.
-    
+
     Args:
         bot: Bot instance
-        
+
     Raises:
         Exception: If connection fails
     """

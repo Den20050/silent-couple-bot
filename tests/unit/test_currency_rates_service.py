@@ -46,4 +46,3 @@ async def test_get_cached_rate_returns_none_when_cache_empty() -> None:
     rate = await service._get_cached_rate("USD")
 
     assert rate is None
-

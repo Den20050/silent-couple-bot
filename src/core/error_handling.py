@@ -1,9 +1,9 @@
 """Common error handling utilities."""
 
-from typing import Callable, Awaitable, TypeVar, ParamSpec
 from functools import wraps
+from typing import Awaitable, Callable, ParamSpec, TypeVar
 
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.logger import get_logger
@@ -21,7 +21,7 @@ async def send_error_to_user(
     show_alert: bool = False,
 ) -> None:
     """Send error message to user.
-    
+
     Args:
         message_or_callback: Message or CallbackQuery object
         error_key: Message key from messages.py
@@ -43,17 +43,18 @@ def handle_errors(
     reraise: bool = False,
 ):
     """Decorator for error handling in handlers.
-    
+
     Args:
         error_key: Message key for error message
         show_alert: Whether to show alert (for CallbackQuery)
         reraise: Whether to re-raise exception after handling
-        
+
     Example:
         @handle_errors(error_key="PAY_ERROR", show_alert=True)
         async def my_handler(message: Message, session: AsyncSession):
             # handler code
     """
+
     def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T | None]]:
         @wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T | None:
@@ -65,24 +66,25 @@ def handle_errors(
                     error=str(e),
                     exc_info=True,
                 )
-                
+
                 # Try to find Message or CallbackQuery in args/kwargs
                 message_or_callback = None
                 for arg in args:
                     if isinstance(arg, (Message, CallbackQuery)):
                         message_or_callback = arg
                         break
-                
+
                 if message_or_callback:
                     await send_error_to_user(
                         message_or_callback,
                         error_key=error_key,
                         show_alert=show_alert,
                     )
-                
+
                 if reraise:
                     raise
                 return None
-        
+
         return wrapper
+
     return decorator

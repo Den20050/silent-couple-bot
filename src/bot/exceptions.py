@@ -5,7 +5,7 @@ from typing import Optional
 
 class BotException(Exception):
     """Base exception for bot-related errors."""
-    
+
     def __init__(
         self,
         message_key: str,
@@ -14,7 +14,7 @@ class BotException(Exception):
         reply_markup: Optional[dict] = None,
     ) -> None:
         """Initialize bot exception.
-        
+
         Args:
             message_key: Message key for localization
             message: Optional pre-formatted message
@@ -30,12 +30,13 @@ class BotException(Exception):
 
 class ValidationError(BotException):
     """Exception raised when validation fails."""
+
     pass
 
 
 class UserNotFoundError(ValidationError):
     """Exception raised when user is not found."""
-    
+
     def __init__(
         self,
         tg_id: int,
@@ -43,7 +44,7 @@ class UserNotFoundError(ValidationError):
         message: Optional[str] = None,
     ) -> None:
         """Initialize user not found error.
-        
+
         Args:
             tg_id: Telegram user ID that was not found
             message_key: Message key for error
@@ -55,7 +56,7 @@ class UserNotFoundError(ValidationError):
 
 class PairNotFoundError(ValidationError):
     """Exception raised when pair is not found."""
-    
+
     def __init__(
         self,
         pair_id: Optional[int] = None,
@@ -64,7 +65,7 @@ class PairNotFoundError(ValidationError):
         message: Optional[str] = None,
     ) -> None:
         """Initialize pair not found error.
-        
+
         Args:
             pair_id: Optional pair ID that was not found
             tg_id: Optional Telegram user ID
@@ -78,7 +79,7 @@ class PairNotFoundError(ValidationError):
 
 class PairAccessDeniedError(ValidationError):
     """Exception raised when user doesn't have access to pair."""
-    
+
     def __init__(
         self,
         user_id: Optional[int] = None,
@@ -88,7 +89,7 @@ class PairAccessDeniedError(ValidationError):
         message: Optional[str] = None,
     ) -> None:
         """Initialize pair access denied error.
-        
+
         Args:
             user_id: Optional user ID that was denied access
             pair_id: Optional pair ID
@@ -104,7 +105,7 @@ class PairAccessDeniedError(ValidationError):
 
 class SubscriptionNotFoundError(ValidationError):
     """Exception raised when subscription is not found."""
-    
+
     def __init__(
         self,
         pair_id: int,
@@ -112,7 +113,7 @@ class SubscriptionNotFoundError(ValidationError):
         message: Optional[str] = None,
     ) -> None:
         """Initialize subscription not found error.
-        
+
         Args:
             pair_id: Pair ID
             message_key: Message key for error
@@ -124,7 +125,7 @@ class SubscriptionNotFoundError(ValidationError):
 
 class SubscriptionExpiredError(ValidationError):
     """Exception raised when subscription is expired."""
-    
+
     def __init__(
         self,
         pair_id: int,
@@ -134,7 +135,7 @@ class SubscriptionExpiredError(ValidationError):
         reply_markup: Optional[dict] = None,
     ) -> None:
         """Initialize subscription expired error.
-        
+
         Args:
             pair_id: Pair ID
             message_key: Message key for error
@@ -142,19 +143,22 @@ class SubscriptionExpiredError(ValidationError):
             show_pay_button: Whether to include pay keyboard
             reply_markup: Optional reply markup
         """
-        super().__init__(message_key, message, show_alert=False, reply_markup=reply_markup)
+        super().__init__(
+            message_key, message, show_alert=False, reply_markup=reply_markup
+        )
         self.pair_id = pair_id
         self.show_pay_button = show_pay_button
 
 
 class BusinessLogicError(BotException):
     """Exception raised when business logic validation fails."""
+
     pass
 
 
 class PaymentError(BusinessLogicError):
     """Exception raised when payment operation fails."""
-    
+
     def __init__(
         self,
         message_key: str = "PAY_ERROR",
@@ -163,7 +167,7 @@ class PaymentError(BusinessLogicError):
         pair_id: Optional[int] = None,
     ) -> None:
         """Initialize payment error.
-        
+
         Args:
             message_key: Message key for error
             message: Optional pre-formatted message
@@ -173,4 +177,3 @@ class PaymentError(BusinessLogicError):
         super().__init__(message_key, message)
         self.tg_id = tg_id
         self.pair_id = pair_id
-

@@ -28,4 +28,3 @@ def format_partner_label(
         return username
 
     return f"@{username}"
-

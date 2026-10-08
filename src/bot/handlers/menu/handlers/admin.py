@@ -2,34 +2,33 @@
 
 from datetime import date, timedelta
 
-from aiogram import Router, F
+from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import func, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.config import Settings
-from src.core.constants import PairStatus, SUBSCRIPTION_PLANS
-from src.core.logger import get_logger
-from src.core.messages import get_message
-from src.db.models import Pair, Subscription, User
-from src.db.repositories.daily_state import DailyStateRepository
-from src.db.repositories.pairs import PairsRepository
-from src.db.repositories.pair_demo import PairDemoRepository
-from src.db.repositories.subscriptions import SubscriptionsRepository
-from src.db.repositories.users import UsersRepository
-from src.services.telegram.messenger import TelegramMessenger
-from src.services.messaging.ui.menu_ui import MenuUIService
-from src.services.messaging.ui.admin_ui import AdminUIService
-from src.services.messaging.user_command_session import track_user_command
-from src.bot.handlers.menu.states import AdminStates
-
 from src.bot.handlers.admin.use_cases.stats import (
     DEFAULT_ADMIN_STATS_PERIOD_DAYS,
     DEFAULT_ADMIN_STATS_TAB,
     get_admin_statistics,
 )
+from src.bot.handlers.menu.states import AdminStates
+from src.core.config import Settings
+from src.core.constants import SUBSCRIPTION_PLANS, PairStatus
+from src.core.logger import get_logger
+from src.core.messages import get_message
+from src.db.models import Pair, Subscription, User
+from src.db.repositories.daily_state import DailyStateRepository
+from src.db.repositories.pair_demo import PairDemoRepository
+from src.db.repositories.pairs import PairsRepository
+from src.db.repositories.subscriptions import SubscriptionsRepository
+from src.db.repositories.users import UsersRepository
+from src.services.messaging.ui.admin_ui import AdminUIService
+from src.services.messaging.ui.menu_ui import MenuUIService
+from src.services.messaging.user_command_session import track_user_command
+from src.services.telegram.messenger import TelegramMessenger
 
 logger = get_logger(__name__)
 
@@ -47,7 +46,11 @@ def _parse_stats_period(callback_data: str) -> int | None:
 def _parse_stats_view(callback_data: str) -> tuple[str, int | None]:
     """Parse admin_stats_view:{tab}:{period} callback."""
     parts = callback_data.removeprefix("admin_stats_view:").split(":")
-    tab = parts[0] if parts and parts[0] in ("users", "payments") else DEFAULT_ADMIN_STATS_TAB
+    tab = (
+        parts[0]
+        if parts and parts[0] in ("users", "payments")
+        else DEFAULT_ADMIN_STATS_TAB
+    )
     period_raw = parts[1] if len(parts) > 1 else str(DEFAULT_ADMIN_STATS_PERIOD_DAYS)
     period_days = None if period_raw == "all" else int(period_raw)
     return tab, period_days
@@ -107,14 +110,14 @@ async def handle_menu_admin_enter(
     """Handle admin menu button click - show admin menu."""
     try:
         tg_id = callback.from_user.id
-        
+
         # Check if user is admin
         if not menu_ui._is_admin(tg_id):
             await callback.answer(get_message("MENU_ADMIN_ONLY"), show_alert=True)
             return
-        
+
         text = "👑 <b>Админ-меню</b>\n\nВыберите действие:"
-        
+
         await callback.message.edit_text(
             text,
             reply_markup=menu_ui.build_admin_menu_keyboard(),
@@ -202,7 +205,7 @@ async def handle_admin_reset_demo_callback(
     if not menu_ui._is_admin(callback.from_user.id):
         await callback.answer(get_message("MENU_ADMIN_ONLY"), show_alert=True)
         return
-    
+
     try:
         admin_ui = AdminUIService()
         text = get_message("ADMIN_RESET_DEMO_PROMPT")
@@ -216,7 +219,9 @@ async def handle_admin_reset_demo_callback(
         await state.update_data(action="reset_demo")
         await callback.answer()
     except Exception as e:
-        logger.error("Error in handle_admin_reset_demo_callback", error=str(e), exc_info=True)
+        logger.error(
+            "Error in handle_admin_reset_demo_callback", error=str(e), exc_info=True
+        )
         await callback.answer(get_message("MENU_ERROR"), show_alert=True)
 
 
@@ -231,7 +236,7 @@ async def handle_admin_gift_callback(
     if not menu_ui._is_admin(callback.from_user.id):
         await callback.answer(get_message("MENU_ADMIN_ONLY"), show_alert=True)
         return
-    
+
     try:
         admin_ui = AdminUIService()
         text = (
@@ -265,7 +270,7 @@ async def handle_admin_broadcast_callback(
     if not menu_ui._is_admin(callback.from_user.id):
         await callback.answer(get_message("MENU_ADMIN_ONLY"), show_alert=True)
         return
-    
+
     try:
         admin_ui = AdminUIService()
         text = get_message("ADMIN_BROADCAST_PROMPT")
@@ -278,7 +283,9 @@ async def handle_admin_broadcast_callback(
         await state.set_state(AdminStates.waiting_broadcast_message)
         await callback.answer()
     except Exception as e:
-        logger.error("Error in handle_admin_broadcast_callback", error=str(e), exc_info=True)
+        logger.error(
+            "Error in handle_admin_broadcast_callback", error=str(e), exc_info=True
+        )
         await callback.answer(get_message("MENU_ERROR"), show_alert=True)
 
 
@@ -293,7 +300,7 @@ async def cmd_admin_stats(
     if not menu_ui._is_admin(message.from_user.id):
         await message.answer(get_message("MENU_ADMIN_ONLY"))
         return
-    
+
     try:
         await _show_admin_stats(message, session, menu_ui)
     except Exception as e:
@@ -404,4 +411,3 @@ async def cmd_cancel(message: Message, state: FSMContext) -> None:
         await message.answer(get_message("MENU_OPERATION_CANCELLED"))
     else:
         await message.answer("Нет активных операций для отмены.")
-

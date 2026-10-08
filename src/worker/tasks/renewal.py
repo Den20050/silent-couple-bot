@@ -17,13 +17,15 @@ from src.worker.di.context import WorkerContext
 logger = get_logger(__name__)
 
 
-async def send_renewal_reminders(ctx: dict[str, Any], worker_context: WorkerContext) -> None:
+async def send_renewal_reminders(
+    ctx: dict[str, Any], worker_context: WorkerContext
+) -> None:
     """Send renewal reminders for subscriptions expiring soon.
-    
+
     Sends reminders to users whose subscriptions expire within configured days.
     Reminders are sent every configured interval (default: 6 hours).
     Lifetime subscriptions are excluded.
-    
+
     Args:
         ctx: Arq context
         worker_context: Worker context with dependencies
@@ -31,36 +33,36 @@ async def send_renewal_reminders(ctx: dict[str, Any], worker_context: WorkerCont
     settings = worker_context.settings
     lock_service = worker_context.lock_service
     messenger = worker_context.messenger
-    
+
     days_before = settings.subscription_renewal_days_before
     interval_hours = settings.subscription_renewal_reminder_interval_hours
     key_prefix = settings.redis_key_prefix_renewal_reminder
-    
+
     today = date.today()
     expiry_threshold = today + timedelta(days=days_before)
-    
+
     async with worker_context.session_factory() as session:
         subs_repo = SubscriptionsRepository(session)
         pairs_repo = PairsRepository(session)
-        
+
         # Get active subscriptions expiring within threshold
         # Exclude lifetime subscriptions
         expiring_subs = await subs_repo.get_active_expiring_before(expiry_threshold)
-        
+
         if not expiring_subs:
             logger.debug("No subscriptions expiring soon")
             return
-        
+
         logger.info(
             "Found subscriptions expiring soon",
             count=len(expiring_subs),
             days_before=days_before,
             expiry_threshold=expiry_threshold.isoformat(),
         )
-        
+
         sent_count = 0
         skipped_count = 0
-        
+
         for sub in expiring_subs:
             try:
                 # Skip lifetime subscriptions
@@ -72,7 +74,7 @@ async def send_renewal_reminders(ctx: dict[str, Any], worker_context: WorkerCont
                     )
                     skipped_count += 1
                     continue
-                
+
                 # Get pair
                 pair = await pairs_repo.get_by_id(sub.pair_id)
                 if not pair:
@@ -82,7 +84,7 @@ async def send_renewal_reminders(ctx: dict[str, Any], worker_context: WorkerCont
                         pair_id=sub.pair_id,
                     )
                     continue
-                
+
                 # Only send for active pairs
                 if pair.status != PairStatus.ACTIVE.value:
                     logger.debug(
@@ -92,10 +94,10 @@ async def send_renewal_reminders(ctx: dict[str, Any], worker_context: WorkerCont
                     )
                     skipped_count += 1
                     continue
-                
+
                 # Calculate days left
                 days_left = (sub.period_end - today).days
-                
+
                 # Only send if within threshold (1-3 days before expiry)
                 # Do NOT send on expiry day (days_left = 0) or after
                 if days_left > days_before or days_left <= 0:
@@ -107,20 +109,23 @@ async def send_renewal_reminders(ctx: dict[str, Any], worker_context: WorkerCont
                     )
                     skipped_count += 1
                     continue
-                
+
                 # Check if reminder was sent recently (within interval)
                 # Use daily key to track reminders per day
                 reminder_key = f"{key_prefix}:{sub.pair_id}:{today.isoformat()}"
                 last_reminder_timestamp = await lock_service.get_last_warning_time(
                     reminder_key,
                 )
-                
+
                 if last_reminder_timestamp:
                     # Check if enough time has passed
                     import time
+
                     now_timestamp = time.time()
-                    time_since_last = (now_timestamp - last_reminder_timestamp) / 3600  # hours
-                    
+                    time_since_last = (
+                        now_timestamp - last_reminder_timestamp
+                    ) / 3600  # hours
+
                     if time_since_last < interval_hours:
                         logger.debug(
                             "Reminder sent recently, skipping",
@@ -131,7 +136,7 @@ async def send_renewal_reminders(ctx: dict[str, Any], worker_context: WorkerCont
                         )
                         skipped_count += 1
                         continue
-                
+
                 # Get users
                 user_a_result = await session.execute(
                     select(User).where(User.id == pair.uid_a)
@@ -141,7 +146,7 @@ async def send_renewal_reminders(ctx: dict[str, Any], worker_context: WorkerCont
                     select(User).where(User.id == pair.uid_b)
                 )
                 user_b = user_b_result.scalar_one()
-                
+
                 # Build message
                 # Russian pluralization for days
                 if days_left == 1:
@@ -150,17 +155,21 @@ async def send_renewal_reminders(ctx: dict[str, Any], worker_context: WorkerCont
                     days_word = "дня"
                 else:
                     days_word = "дней"
-                
+
                 # Format partner labels
                 label_for_a = format_partner_label(
-                    partner_nickname=pairs_repo.get_my_nickname_for_partner(pair, user_a.id),
+                    partner_nickname=pairs_repo.get_my_nickname_for_partner(
+                        pair, user_a.id
+                    ),
                     partner_username=user_b.username,
                 )
                 label_for_b = format_partner_label(
-                    partner_nickname=pairs_repo.get_my_nickname_for_partner(pair, user_b.id),
+                    partner_nickname=pairs_repo.get_my_nickname_for_partner(
+                        pair, user_b.id
+                    ),
                     partner_username=user_a.username,
                 )
-                
+
                 # Build personalized reminder messages
                 if label_for_a:
                     reminder_text_a = get_message(
@@ -175,7 +184,7 @@ async def send_renewal_reminders(ctx: dict[str, Any], worker_context: WorkerCont
                         days_left=days_left,
                         days_word=days_word,
                     )
-                
+
                 if label_for_b:
                     reminder_text_b = get_message(
                         "SUBSCRIPTION_RENEWAL_REMINDER_WITH_PARTNER",
@@ -189,9 +198,10 @@ async def send_renewal_reminders(ctx: dict[str, Any], worker_context: WorkerCont
                         days_left=days_left,
                         days_word=days_word,
                     )
-                
+
                 # Add pay button
                 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
                 keyboard = InlineKeyboardMarkup(
                     inline_keyboard=[
                         [
@@ -202,7 +212,7 @@ async def send_renewal_reminders(ctx: dict[str, Any], worker_context: WorkerCont
                         ],
                     ],
                 )
-                
+
                 # Send personalized reminders to both users
                 await messenger.send_message(
                     chat_id=user_a.tg_id,
@@ -214,14 +224,15 @@ async def send_renewal_reminders(ctx: dict[str, Any], worker_context: WorkerCont
                     text=reminder_text_b,
                     reply_markup=keyboard,
                 )
-                
+
                 # Mark reminder as sent
                 import time
+
                 now_timestamp = time.time()
                 await lock_service.set_last_warning_time(reminder_key, now_timestamp)
-                
+
                 sent_count += 1
-                
+
                 logger.info(
                     "Renewal reminder sent",
                     subscription_id=sub.id,
@@ -230,7 +241,7 @@ async def send_renewal_reminders(ctx: dict[str, Any], worker_context: WorkerCont
                     user_a_tg_id=user_a.tg_id,
                     user_b_tg_id=user_b.tg_id,
                 )
-                
+
             except Exception as e:
                 logger.error(
                     "Error sending renewal reminder",
@@ -239,11 +250,10 @@ async def send_renewal_reminders(ctx: dict[str, Any], worker_context: WorkerCont
                     error=str(e),
                     exc_info=True,
                 )
-        
+
         logger.info(
             "Renewal reminders processing completed",
             total_found=len(expiring_subs),
             sent=sent_count,
             skipped=skipped_count,
         )
-

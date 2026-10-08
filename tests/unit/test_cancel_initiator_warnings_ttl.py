@@ -8,7 +8,9 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_cancel_initiator_warnings_uses_warning_ttl_days(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_cancel_initiator_warnings_uses_warning_ttl_days(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Cancel should be stored for the full warning horizon, not just 48h."""
 
     # Load module by file path (handlers package may not be importable as a package).
@@ -48,13 +50,19 @@ async def test_cancel_initiator_warnings_uses_warning_ttl_days(monkeypatch: pyte
     import src.core.redis_client as redis_client_module
 
     monkeypatch.setattr(
-        redis_client_module, "create_redis_client", _fake_create_redis_client, raising=True
+        redis_client_module,
+        "create_redis_client",
+        _fake_create_redis_client,
+        raising=True,
     )
 
     # Patch settings to a known TTL and prefix
     monkeypatch.setattr(other_module.settings, "warning_ttl_days", 7, raising=False)
     monkeypatch.setattr(
-        other_module.settings, "redis_key_prefix_warning_cancelled", "initiator_warning_cancelled", raising=False
+        other_module.settings,
+        "redis_key_prefix_warning_cancelled",
+        "initiator_warning_cancelled",
+        raising=False,
     )
 
     # Minimal fakes for callback/session/messenger path until Redis write.
@@ -76,8 +84,12 @@ async def test_cancel_initiator_warnings_uses_warning_ttl_days(monkeypatch: pyte
     import src.db.repositories.pairs as pairs_repo_module
     import src.db.repositories.users as users_repo_module
 
-    monkeypatch.setattr(pairs_repo_module, "PairsRepository", lambda _s: _FakePairsRepo())
-    monkeypatch.setattr(users_repo_module, "UsersRepository", lambda _s: _FakeUsersRepo())
+    monkeypatch.setattr(
+        pairs_repo_module, "PairsRepository", lambda _s: _FakePairsRepo()
+    )
+    monkeypatch.setattr(
+        users_repo_module, "UsersRepository", lambda _s: _FakeUsersRepo()
+    )
 
     callback = SimpleNamespace(
         data="cancel_initiator_warnings_123_2026-01-20_evening",
@@ -103,4 +115,3 @@ async def test_cancel_initiator_warnings_uses_warning_ttl_days(monkeypatch: pyte
     assert key == "initiator_warning_cancelled:123:2026-01-20:evening"
     assert ttl == 7 * 24 * 3600
     assert value == "1"
-

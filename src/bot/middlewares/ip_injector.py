@@ -1,7 +1,7 @@
 """IP injector middleware for webhook server."""
 
-from typing import Callable, Dict, Any, Awaitable
 from contextvars import ContextVar
+from typing import Any, Awaitable, Callable, Dict
 
 from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject

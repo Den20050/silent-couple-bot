@@ -5,10 +5,10 @@ from typing import Optional
 from redis.asyncio import Redis
 
 from src.core.config import Settings
+from src.core.protocols.payment import PaymentServiceProtocol
+from src.services.payment.currency_rates import CurrencyRatesService
 from src.services.payment.robokassa_service import RobokassaService
 from src.services.payment.webhook_handler import RobokassaWebhookHandler
-from src.services.payment.currency_rates import CurrencyRatesService
-from src.core.protocols.payment import PaymentServiceProtocol
 
 
 def provide_payment_service(
@@ -57,4 +57,3 @@ def provide_currency_rates_service(
         CurrencyRatesService instance
     """
     return CurrencyRatesService(redis=redis, settings=settings)
-

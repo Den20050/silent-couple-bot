@@ -5,11 +5,11 @@ from datetime import date
 from src.core.config import settings
 from src.core.logger import get_logger
 from src.core.messages import get_message
-from src.worker.di.context import WorkerContext
-from src.worker.services.reminder_finder import ReminderCandidate
-from src.services.messaging.active_action_message import activate_message, ActionKind
+from src.services.messaging.active_action_message import ActionKind, activate_message
 from src.services.messaging.partner_label import format_partner_label
 from src.services.messaging.wish_photo_message_id import wish_photo_message_id_key
+from src.worker.di.context import WorkerContext
+from src.worker.services.reminder_finder import ReminderCandidate
 
 logger = get_logger(__name__)
 
@@ -22,20 +22,20 @@ def _reminder_prompt_message_id_key(tg_id: int, pic_type: str, day: date) -> str
 
 class ReminderSender:
     """Service for sending reminders to recipients."""
-    
+
     def __init__(
         self,
         worker_context: WorkerContext,
     ):
         """Initialize reminder sender.
-        
+
         Args:
             worker_context: Worker context with dependencies
         """
         self._worker_context = worker_context
         self._messenger = worker_context.messenger
         self._notification_builder = worker_context.notification_builder
-    
+
     async def send_reminder(
         self,
         candidate: ReminderCandidate,
@@ -43,7 +43,7 @@ class ReminderSender:
         lock_service,
     ) -> None:
         """Send reminder to recipient.
-        
+
         Args:
             candidate: ReminderCandidate with all necessary data
             reminder_key: Redis key for tracking
@@ -56,28 +56,32 @@ class ReminderSender:
         nickname_for_initiator = (
             candidate.pair.nickname_a
             if candidate.pair.uid_a == candidate.recipient.id
-            else candidate.pair.nickname_b
-            if candidate.pair.uid_b == candidate.recipient.id
-            else None
+            else (
+                candidate.pair.nickname_b
+                if candidate.pair.uid_b == candidate.recipient.id
+                else None
+            )
         )
         initiator_label = format_partner_label(
             partner_nickname=nickname_for_initiator,
             partner_username=candidate.initiator.username,
         )
 
-        reminder_text, reply_markup = await self._notification_builder.build_reminder_message(
-            pair_mode=candidate.pair.mode,
-            pic_type=candidate.pic_type,
-            pair_id=candidate.pair.id,
-            initiator_tg_id=candidate.initiator.tg_id,
-            target_day=candidate.target_day,
-            initiator_label=initiator_label,
+        reminder_text, reply_markup = (
+            await self._notification_builder.build_reminder_message(
+                pair_mode=candidate.pair.mode,
+                pic_type=candidate.pic_type,
+                pair_id=candidate.pair.id,
+                initiator_tg_id=candidate.initiator.tg_id,
+                target_day=candidate.target_day,
+                initiator_label=initiator_label,
+            )
         )
 
         # Best-effort: disable the old respond button on the original wish photo,
         # so the user sees only the latest reminder button.
         await self._disable_wish_photo_reply_button(candidate)
-        
+
         msg = await self._messenger.send_message(
             chat_id=candidate.recipient.tg_id,
             text=reminder_text,
@@ -92,12 +96,12 @@ class ReminderSender:
             message_id=msg.message_id,
             kind=ActionKind.REMINDER,
         )
-        
+
         # Mark reminder as sent
         await lock_service.set_key_with_ttl(
             reminder_key, "1", settings.reminder_ttl_hours * 3600
         )
-        
+
         logger.info(
             "Recipient reminder sent",
             pair_id=candidate.pair.id,
@@ -128,24 +132,26 @@ class ReminderSender:
             nickname_for_initiator = (
                 c.pair.nickname_a
                 if c.pair.uid_a == c.recipient.id
-                else c.pair.nickname_b
-                if c.pair.uid_b == c.recipient.id
-                else None
+                else c.pair.nickname_b if c.pair.uid_b == c.recipient.id else None
             )
             initiator_label = format_partner_label(
                 partner_nickname=nickname_for_initiator,
                 partner_username=c.initiator.username,
             ) or get_message("WORKER_RECIPIENT_FALLBACK")
 
-            callback_prefix = "tap_morning" if c.pic_type == "morning" else "tap_evening"
-            callback_data = (
-                f"{callback_prefix}_{c.pair.id}_{c.initiator.tg_id}|{c.target_day.isoformat()}"
+            callback_prefix = (
+                "tap_morning" if c.pic_type == "morning" else "tap_evening"
             )
-            items.append({"partner_label": initiator_label, "callback_data": callback_data})
+            callback_data = f"{callback_prefix}_{c.pair.id}_{c.initiator.tg_id}|{c.target_day.isoformat()}"
+            items.append(
+                {"partner_label": initiator_label, "callback_data": callback_data}
+            )
 
-        text, reply_markup = await self._notification_builder.build_aggregated_reminder_message(
-            pair_mode=pair_mode,
-            items=items,
+        text, reply_markup = (
+            await self._notification_builder.build_aggregated_reminder_message(
+                pair_mode=pair_mode,
+                items=items,
+            )
         )
 
         # Best-effort: disable reply buttons on all underlying wish photo messages.
@@ -157,7 +163,9 @@ class ReminderSender:
         msg_id: int | None = None
         if redis is not None:
             try:
-                raw = await redis.get(_reminder_prompt_message_id_key(recipient_tg_id, pic_type, day))
+                raw = await redis.get(
+                    _reminder_prompt_message_id_key(recipient_tg_id, pic_type, day)
+                )
                 if raw:
                     if isinstance(raw, bytes):
                         raw = raw.decode()
@@ -219,7 +227,9 @@ class ReminderSender:
             items_count=len(items),
         )
 
-    async def _disable_wish_photo_reply_button(self, candidate: ReminderCandidate) -> None:
+    async def _disable_wish_photo_reply_button(
+        self, candidate: ReminderCandidate
+    ) -> None:
         """Remove reply_markup from the original wish photo message (best-effort).
 
         This prevents confusion when multiple reminder messages arrive: only the latest reminder
@@ -263,20 +273,20 @@ class ReminderSender:
 
 class WarningSender:
     """Service for sending warnings to initiators."""
-    
+
     def __init__(
         self,
         worker_context: WorkerContext,
     ):
         """Initialize warning sender.
-        
+
         Args:
             worker_context: Worker context with dependencies
         """
         self._worker_context = worker_context
         self._messenger = worker_context.messenger
         self._notification_builder = worker_context.notification_builder
-    
+
     async def send_warning(
         self,
         candidate: ReminderCandidate,
@@ -286,7 +296,7 @@ class WarningSender:
         pairs_repo,
     ) -> None:
         """Send warning to initiator.
-        
+
         Args:
             candidate: ReminderCandidate with all necessary data
             hours: Hours since picture was sent
@@ -299,33 +309,35 @@ class WarningSender:
             candidate.pair,
             candidate.initiator.id,  # Get nickname from initiator's perspective
         )
-        
+
         # Format partner label (nickname if exists, otherwise @username, otherwise None)
         partner_label = format_partner_label(
             partner_nickname=partner_nickname,
             partner_username=candidate.recipient.username,
         )
-        
+
         # If no label available, partner_label will be None - handled in build_warning_message
-        
+
         # Build warning message using NotificationBuilder
-        warning_message, reply_markup = await self._notification_builder.build_warning_message(
-            pair_mode=candidate.pair.mode,
-            partner_label=partner_label,
-            hours=hours,
-            pair_id=candidate.pair.id,
-            target_day=candidate.target_day,
-            pic_type=candidate.pic_type,
+        warning_message, reply_markup = (
+            await self._notification_builder.build_warning_message(
+                pair_mode=candidate.pair.mode,
+                partner_label=partner_label,
+                hours=hours,
+                pair_id=candidate.pair.id,
+                target_day=candidate.target_day,
+                pic_type=candidate.pic_type,
+            )
         )
-        
+
         await self._messenger.send_message(
             chat_id=candidate.initiator.tg_id,
             text=warning_message,
             reply_markup=reply_markup,
         )
-        
+
         # Note: Last warning time is tracked by caller using set_last_warning_time
-        
+
         logger.info(
             "Initiator warning sent",
             pair_id=candidate.pair.id,
@@ -334,4 +346,3 @@ class WarningSender:
             pic_type=candidate.pic_type,
             hours=hours,
         )
-

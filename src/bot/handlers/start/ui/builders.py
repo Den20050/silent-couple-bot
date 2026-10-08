@@ -15,7 +15,9 @@ def _notif_time_back_callback(pair_id: int | None) -> str:
     return "settings_time_window_back"
 
 
-def get_register_timezone_keyboard(start_param: str | None = None) -> InlineKeyboardMarkup:
+def get_register_timezone_keyboard(
+    start_param: str | None = None,
+) -> InlineKeyboardMarkup:
     """First-time registration: apply phone timezone via Mini App."""
     params: dict[str, str | int] = {"action": "register"}
     if start_param:

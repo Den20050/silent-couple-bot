@@ -1,6 +1,6 @@
 """Payment handlers."""
 
-from aiogram import Router, F
+from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,7 +9,10 @@ from src.core.constants import SUPPORTED_CURRENCIES
 from src.core.logger import get_logger
 from src.core.messages import get_message
 from src.services.application.payment import PaymentApplicationService
-from src.services.messaging.user_command_session import cleanup_back_to_chat, track_user_command
+from src.services.messaging.user_command_session import (
+    cleanup_back_to_chat,
+    track_user_command,
+)
 from src.services.telegram.messenger import TelegramMessenger
 
 logger = get_logger(__name__)
@@ -26,22 +29,27 @@ async def cmd_pay(
 ) -> None:
     """Handle /pay command."""
     tg_id = message.from_user.id
-    
+
     # Check if user has multiple pairs
     from src.db.repositories.pairs import PairsRepository
+
     pairs_repo = PairsRepository(session)
     all_pairs = await pairs_repo.get_all_by_user_tg_id(tg_id)
-    
+
     if len(all_pairs) > 1:
         # Show pair selection
-        success, message_text, keyboard = await payment_application_service.show_pair_selection(tg_id=tg_id)
+        success, message_text, keyboard = (
+            await payment_application_service.show_pair_selection(tg_id=tg_id)
+        )
         if success:
             await message.answer(message_text, reply_markup=keyboard)
         else:
             await message.answer(message_text)
     else:
         # Single pair - show currency selection directly
-        success, message_text, keyboard = await payment_application_service.show_currencies(tg_id=tg_id)
+        success, message_text, keyboard = (
+            await payment_application_service.show_currencies(tg_id=tg_id)
+        )
         if success:
             await message.answer(message_text, reply_markup=keyboard)
         else:
@@ -57,22 +65,27 @@ async def handle_pay_now_callback(
 ) -> None:
     """Handle pay_now callback from menu or notifications."""
     tg_id = callback.from_user.id
-    
+
     # Check if user has multiple pairs
     from src.db.repositories.pairs import PairsRepository
+
     pairs_repo = PairsRepository(session)
     all_pairs = await pairs_repo.get_all_by_user_tg_id(tg_id)
-    
+
     if len(all_pairs) > 1:
         # Show pair selection
-        success, message_text, keyboard = await payment_application_service.show_pair_selection(tg_id=tg_id)
+        success, message_text, keyboard = (
+            await payment_application_service.show_pair_selection(tg_id=tg_id)
+        )
         if success:
             await callback.message.edit_text(message_text, reply_markup=keyboard)
         else:
             await callback.answer(message_text, show_alert=True)
     else:
         # Single pair - show currency selection directly
-        success, message_text, keyboard = await payment_application_service.show_currencies(tg_id=tg_id)
+        success, message_text, keyboard = (
+            await payment_application_service.show_currencies(tg_id=tg_id)
+        )
         if success:
             await callback.message.edit_text(message_text, reply_markup=keyboard)
         else:
@@ -87,21 +100,26 @@ async def handle_pay_select_currency(
 ) -> None:
     """Handle currency selection (with optional pair_id)."""
     tg_id = callback.from_user.id
-    
+
     # Extract pair_id if present: pay_select_currency_{pair_id} or just pay_select_currency
     parts = callback.data.split("_")
     pair_id = None
-    if len(parts) == 4 and parts[0] == "pay" and parts[1] == "select" and parts[2] == "currency":
+    if (
+        len(parts) == 4
+        and parts[0] == "pay"
+        and parts[1] == "select"
+        and parts[2] == "currency"
+    ):
         try:
             pair_id = int(parts[3])
         except ValueError:
             pass
-    
+
     success, message_text, keyboard = await payment_application_service.show_currencies(
         tg_id=tg_id,
         pair_id=pair_id,
     )
-    
+
     await callback.message.edit_text(message_text, reply_markup=keyboard)
     await callback.answer()
 
@@ -113,26 +131,26 @@ async def handle_select_currency(
 ) -> None:
     """Handle currency selection (with optional pair_id)."""
     tg_id = callback.from_user.id
-    
+
     # Extract currency_code and optional pair_id
     # Format: select_currency_{currency_code} or select_currency_{currency_code}_{pair_id}
     parts = callback.data.replace("select_currency_", "").split("_")
     currency_code = parts[0]
     pair_id = None
-    
+
     if len(parts) > 1:
         try:
             pair_id = int(parts[1])
         except ValueError:
             pass
-    
+
     # Currency validation is done in application service (raises ValidationError on invalid)
     success, message_text, keyboard = await payment_application_service.show_tariffs(
         tg_id=tg_id,
         currency_code=currency_code,
         pair_id=pair_id,
     )
-    
+
     await callback.message.edit_text(message_text, reply_markup=keyboard)
     await callback.answer()
 
@@ -145,22 +163,27 @@ async def handle_select_tariff_from_expired(
 ) -> None:
     """Handle 'Выбрать тариф' button from expired demo notification."""
     tg_id = callback.from_user.id
-    
+
     # Check if user has multiple pairs
     from src.db.repositories.pairs import PairsRepository
+
     pairs_repo = PairsRepository(session)
     all_pairs = await pairs_repo.get_all_by_user_tg_id(tg_id)
-    
+
     if len(all_pairs) > 1:
         # Show pair selection
-        success, message_text, keyboard = await payment_application_service.show_pair_selection(tg_id=tg_id)
+        success, message_text, keyboard = (
+            await payment_application_service.show_pair_selection(tg_id=tg_id)
+        )
         if success:
             await callback.message.edit_text(message_text, reply_markup=keyboard)
         else:
             await callback.answer(message_text, show_alert=True)
     else:
         # Single pair - show currency selection directly
-        success, message_text, keyboard = await payment_application_service.show_currencies(tg_id=tg_id)
+        success, message_text, keyboard = (
+            await payment_application_service.show_currencies(tg_id=tg_id)
+        )
         if success:
             await callback.message.edit_text(message_text, reply_markup=keyboard)
         else:
@@ -176,7 +199,7 @@ async def handle_select_pair(
     """Handle pair selection for payment."""
     tg_id = callback.from_user.id
     pair_id = int(callback.data.replace("pay_select_pair_", ""))
-    
+
     try:
         # Show currency selection for selected pair
         success, message_text, keyboard = (
@@ -213,7 +236,7 @@ async def handle_select_tariff(
     tg_id = callback.from_user.id
     # Format: select_tariff_{plan_id}_{currency_code} or select_tariff_{plan_id}_{currency_code}_{pair_id}
     parts = callback.data.replace("select_tariff_", "").split("_")
-    
+
     pair_id = None
     if len(parts) >= 3:
         # Check if last part is a number (pair_id)
@@ -225,7 +248,7 @@ async def handle_select_tariff(
                 parts = parts[:-1]  # Remove pair_id from parts
         except ValueError:
             pass
-    
+
     if len(parts) < 2:
         # Backward compatibility: try to extract from old format
         plan_id = parts[0] if parts else ""
@@ -236,21 +259,24 @@ async def handle_select_tariff(
         # Last part is currency_code, everything before is plan_id
         currency_code = parts[-1]
         plan_id = "_".join(parts[:-1])
-    
+
     # Currency validation is done in application service (raises ValidationError on invalid)
     # Fallback to RUB for backward compatibility
     from src.core.constants import SUPPORTED_CURRENCIES
+
     if currency_code not in SUPPORTED_CURRENCIES:
         currency_code = "RUB"
-    
+
     # Show terms confirmation page instead of creating payment immediately
-    success, message_text, keyboard = await payment_application_service.show_terms_confirmation(
-        tg_id=tg_id,
-        plan_id=plan_id,
-        currency_code=currency_code,
-        pair_id=pair_id,
+    success, message_text, keyboard = (
+        await payment_application_service.show_terms_confirmation(
+            tg_id=tg_id,
+            plan_id=plan_id,
+            currency_code=currency_code,
+            pair_id=pair_id,
+        )
     )
-    
+
     await callback.message.edit_text(message_text, reply_markup=keyboard)
     await callback.answer()
 
@@ -264,7 +290,7 @@ async def handle_confirm_and_pay(
     tg_id = callback.from_user.id
     # Format: confirm_and_pay_{plan_id}_{currency_code} or confirm_and_pay_{plan_id}_{currency_code}_{pair_id}
     parts = callback.data.replace("confirm_and_pay_", "").split("_")
-    
+
     pair_id = None
     if len(parts) >= 3:
         # Check if last part is a number (pair_id)
@@ -276,7 +302,7 @@ async def handle_confirm_and_pay(
                 parts = parts[:-1]  # Remove pair_id from parts
         except ValueError:
             pass
-    
+
     if len(parts) < 2:
         # Backward compatibility: try to extract from old format
         plan_id = parts[0] if parts else ""
@@ -287,21 +313,24 @@ async def handle_confirm_and_pay(
         # Last part is currency_code, everything before is plan_id
         currency_code = parts[-1]
         plan_id = "_".join(parts[:-1])
-    
+
     # Currency validation is done in application service (raises ValidationError on invalid)
     # Fallback to RUB for backward compatibility
     from src.core.constants import SUPPORTED_CURRENCIES
+
     if currency_code not in SUPPORTED_CURRENCIES:
         currency_code = "RUB"
-    
+
     # User confirmed terms - create payment
-    success, message_text, keyboard = await payment_application_service.create_payment_for_tariff(
-        tg_id=tg_id,
-        plan_id=plan_id,
-        currency_code=currency_code,
-        pair_id=pair_id,
+    success, message_text, keyboard = (
+        await payment_application_service.create_payment_for_tariff(
+            tg_id=tg_id,
+            plan_id=plan_id,
+            currency_code=currency_code,
+            pair_id=pair_id,
+        )
     )
-    
+
     await callback.message.edit_text(message_text, reply_markup=keyboard)
     await callback.answer(get_message("PAY_LINK_CREATED"))
 
@@ -328,4 +357,3 @@ async def handle_pay_back_to_menu(
             await callback.answer()
         except Exception:
             pass
-

@@ -1,19 +1,19 @@
 """Mini App FastAPI application."""
 
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import os
 
+from src.bot.handlers.webhook import webhook_router
 from src.core.bootstrap import bootstrap
 from src.core.config import settings
 from src.core.di.providers.storage import provide_session_factory
 from src.core.logger import configure_logging, get_logger
-from src.mini_app.routes import router
 from src.mini_app.api import set_api_runtime
-from src.bot.handlers.webhook import webhook_router
+from src.mini_app.routes import router
 from src.services.telegram import set_bot
 from src.services.telegram.bot_factory import create_bot
 
@@ -67,4 +67,3 @@ app.include_router(webhook_router)
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
-

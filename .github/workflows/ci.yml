@@ -29,3 +29,8 @@ jobs:
           ROBOKASSA_PASSWORD_1: test-password-1
           ROBOKASSA_PASSWORD_2: test-password-2
         run: python -m pytest tests -q
+
+      - name: Check formatting (black, isort)
+        run: |
+          black --check src tests
+          isort --check-only src tests

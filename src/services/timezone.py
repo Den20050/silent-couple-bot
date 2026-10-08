@@ -48,7 +48,9 @@ async def detect_timezone_from_ip(ip: Optional[str]) -> Optional[int]:
     return None
 
 
-def _timezone_to_offset(timezone_str: str, at_time: datetime | None = None) -> Optional[int]:
+def _timezone_to_offset(
+    timezone_str: str, at_time: datetime | None = None
+) -> Optional[int]:
     """Convert IANA timezone string to UTC offset in hours."""
     try:
         import pytz
@@ -91,7 +93,9 @@ def is_timezone_configured(user_obj: Any) -> bool:
 def format_timezone_label(user_obj: Any) -> str:
     """Human-readable timezone for confirmation messages."""
     name = getattr(user_obj, "timezone_name", None) or "—"
-    offset = get_effective_utc_offset(user_obj) if is_timezone_configured(user_obj) else None
+    offset = (
+        get_effective_utc_offset(user_obj) if is_timezone_configured(user_obj) else None
+    )
     if offset is None:
         return str(name)
     sign = "+" if offset >= 0 else ""
@@ -130,7 +134,9 @@ async def sync_user_timezone(
         if computed_offset is not None:
             utc_offset = computed_offset
     elif utc_offset < -12 or utc_offset > 14:
-        logger.warning("Invalid utc_offset rejected", tg_id=tg_id, utc_offset=utc_offset)
+        logger.warning(
+            "Invalid utc_offset rejected", tg_id=tg_id, utc_offset=utc_offset
+        )
         return False
 
     users_repo = UsersRepository(session)

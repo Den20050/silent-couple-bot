@@ -5,7 +5,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.services.messaging.wish_request_prompt_refresher import refresh_aggregated_wish_prompt
+from src.services.messaging.wish_request_prompt_refresher import (
+    refresh_aggregated_wish_prompt,
+)
 
 
 @pytest.mark.asyncio
@@ -22,7 +24,9 @@ async def test_refresh_aggregated_wish_prompt_edits_message_when_redis_has_id(
 
     import src.core.redis_client as redis_client_module
 
-    monkeypatch.setattr(redis_client_module, "create_redis_client", _fake_create_redis_client)
+    monkeypatch.setattr(
+        redis_client_module, "create_redis_client", _fake_create_redis_client
+    )
 
     session = MagicMock()
     messenger = MagicMock()
@@ -36,7 +40,9 @@ async def test_refresh_aggregated_wish_prompt_edits_message_when_redis_has_id(
     fake_ui.reply_markup = {"inline_keyboard": []}
     fake_builder = MagicMock()
     fake_builder.build_for_user = AsyncMock(return_value=fake_ui)
-    monkeypatch.setattr(refresher_module, "WishRequestUIService", MagicMock(return_value=fake_builder))
+    monkeypatch.setattr(
+        refresher_module, "WishRequestUIService", MagicMock(return_value=fake_builder)
+    )
 
     # when
     await refresh_aggregated_wish_prompt(
@@ -49,4 +55,3 @@ async def test_refresh_aggregated_wish_prompt_edits_message_when_redis_has_id(
 
     # then
     messenger.edit_message.assert_awaited_once()
-

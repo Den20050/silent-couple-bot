@@ -33,4 +33,3 @@ async def test_warning_silent_24h_uses_24h_text() -> None:
         pic_type="morning",
     )
     assert text == get_message("WARNING_24H_SILENT", recipient_name="@user")
-

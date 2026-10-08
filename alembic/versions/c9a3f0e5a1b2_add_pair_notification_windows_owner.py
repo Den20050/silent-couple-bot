@@ -8,9 +8,9 @@ Create Date: 2026-01-21
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "c9a3f0e5a1b2"
@@ -74,4 +74,3 @@ def downgrade() -> None:
     op.drop_column("pairs", "notification_window_owner_id")
     op.drop_column("pairs", "evening_window_start_hour")
     op.drop_column("pairs", "morning_window_start_hour")
-

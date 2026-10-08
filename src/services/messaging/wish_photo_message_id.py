@@ -5,7 +5,9 @@ from __future__ import annotations
 from datetime import date
 
 
-def wish_photo_message_id_key(*, tg_id: int, pair_id: int, pic_type: str, day: date) -> str:
+def wish_photo_message_id_key(
+    *, tg_id: int, pair_id: int, pic_type: str, day: date
+) -> str:
     """Redis key for a sent wish photo (with respond button) for a specific recipient.
 
     Args:
@@ -18,4 +20,3 @@ def wish_photo_message_id_key(*, tg_id: int, pair_id: int, pic_type: str, day: d
         Redis key string.
     """
     return f"wish_photo_message_id:{tg_id}:{pair_id}:{pic_type}:{day.isoformat()}"
-

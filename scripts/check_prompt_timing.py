@@ -12,7 +12,10 @@ from sqlalchemy import select
 from src.core.constants import PairStatus
 from src.core.di.container import create_container, initialize_container
 from src.db.models import Pair, User
-from src.services.pair_time_window import get_user_window_bounds, is_user_in_prompt_window
+from src.services.pair_time_window import (
+    get_user_window_bounds,
+    is_user_in_prompt_window,
+)
 
 
 async def main() -> None:
@@ -52,15 +55,28 @@ async def main() -> None:
                             ok = is_user_in_prompt_window(u, pic, dt)
                             local = (dt.hour + u.utc_offset) % 24
                             local_m = dt.minute
-                            mark = " <-- FIRST IN" if ok and mins <= 0 and (
-                                not is_user_in_prompt_window(
-                                    u,
-                                    pic,
-                                    datetime(2026, 8, 28, utc_h - 1 if mins == -5 else utc_h, 0, 0),
+                            mark = (
+                                " <-- FIRST IN"
+                                if ok
+                                and mins <= 0
+                                and (
+                                    not is_user_in_prompt_window(
+                                        u,
+                                        pic,
+                                        datetime(
+                                            2026,
+                                            8,
+                                            28,
+                                            utc_h - 1 if mins == -5 else utc_h,
+                                            0,
+                                            0,
+                                        ),
+                                    )
+                                    if mins == 0
+                                    else True
                                 )
-                                if mins == 0
-                                else True
-                            ) else (" IN" if ok else "")
+                                else (" IN" if ok else "")
+                            )
                             if -15 <= mins <= 15:
                                 print(
                                     f"      offset {mins:+3d}min -> local ~{local:02d}:{local_m:02d} "

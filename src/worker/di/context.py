@@ -24,7 +24,7 @@ logger = get_logger(__name__)
 @dataclass
 class WorkerContext:
     """Context for worker tasks with all required dependencies.
-    
+
     Encapsulates dependencies needed by worker tasks:
     - Database session factory
     - Redis client
@@ -32,40 +32,40 @@ class WorkerContext:
     - Bot provider (for bot initialization)
     - Worker services (LockService, PairScheduler, etc.)
     """
-    
+
     settings: Settings
     session_factory: async_sessionmaker[AsyncSession]
     redis: Redis | None
     messenger: MessengerProtocol
     bot_provider: BotProviderProtocol
-    
+
     # Worker services (created on demand)
     _lock_service: LockService | None = None
     _notification_builder: NotificationBuilder | None = None
     _pair_scheduler: PairScheduler | None = None
     _time_window_service: TimeWindowService | None = None
     _bot: "Bot | None" = None
-    
+
     @property
     def lock_service(self) -> LockService:
         """Get LockService instance (lazy initialization)."""
         if self._lock_service is None:
             self._lock_service = LockService(redis_client=self.redis)
         return self._lock_service
-    
+
     @property
     def notification_builder(self) -> NotificationBuilder:
         """Get NotificationBuilder instance (lazy initialization)."""
         if self._notification_builder is None:
             self._notification_builder = NotificationBuilder(messenger=self.messenger)
         return self._notification_builder
-    
+
     def create_pair_scheduler(self, session: AsyncSession) -> PairScheduler:
         """Create PairScheduler instance for a specific session.
-        
+
         Args:
             session: Database session
-            
+
         Returns:
             PairScheduler instance
         """
@@ -74,26 +74,29 @@ class WorkerContext:
             telegram_messenger=self.messenger,
             lock_service=self.lock_service,
         )
-    
+
     @property
     def time_window_service(self) -> TimeWindowService:
         """Get TimeWindowService instance (lazy initialization)."""
         if self._time_window_service is None:
             self._time_window_service = TimeWindowService()
         return self._time_window_service
-    
+
     async def ensure_bot_initialized(self) -> None:
         """Ensure bot is initialized in bot_provider.
-        
+
         This method creates Bot instance and sets it in bot_provider.
         Should be called at the start of worker tasks that need bot.
         """
         if self._bot is not None:
             return
-        
+
         try:
             from src.services.telegram.bot_factory import create_bot as _create_bot
-            self._bot = _create_bot(self.settings.tg_bot_token, proxy_url=self.settings.telegram_proxy_url)
+
+            self._bot = _create_bot(
+                self.settings.tg_bot_token, proxy_url=self.settings.telegram_proxy_url
+            )
             self.bot_provider.set_bot(self._bot)
             logger.debug("Bot initialized in WorkerContext")
         except Exception as e:
@@ -103,10 +106,10 @@ class WorkerContext:
                 exc_info=True,
             )
             raise
-    
+
     async def close_bot(self) -> None:
         """Close bot instance if it was created.
-        
+
         Should be called at the end of worker tasks.
         """
         if self._bot is not None:
@@ -125,14 +128,14 @@ def create_worker_context(
     bot_provider: BotProviderProtocol,
 ) -> WorkerContext:
     """Create worker context with all dependencies.
-    
+
     Args:
         settings: Application settings
         session_factory: Database session factory
         redis: Redis client (optional)
         messenger: Telegram messenger
         bot_provider: Bot provider instance
-        
+
     Returns:
         WorkerContext instance
     """
@@ -143,4 +146,3 @@ def create_worker_context(
         messenger=messenger,
         bot_provider=bot_provider,
     )
-

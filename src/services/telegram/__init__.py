@@ -19,16 +19,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.services.telegram.bot_provider import (
     BotProvider,
     get_bot,
+    get_global_container,
     set_bot,
     set_global_container,
-    get_global_container,
 )
-from src.services.telegram.messenger import TelegramMessenger
 from src.services.telegram.message_store import (
     BotMessagesMessageStore,
     MessageStore,
     NullMessageStore,
 )
+from src.services.telegram.messenger import TelegramMessenger
 
 # Export for backward compatibility and new code
 __all__ = [
@@ -52,28 +52,29 @@ __all__ = [
     "delete_message_with_retry",
 ]
 
+
 def _get_messenger(session: Optional[AsyncSession] = None) -> TelegramMessenger:
     """Get or create messenger instance with proper session.
-    
+
     Args:
         session: Optional database session for message store
-        
+
     Returns:
         TelegramMessenger instance
-        
+
     Note:
         Creates a new messenger instance each time to ensure proper session handling.
         The bot_provider is shared (from global _bot_provider).
         If session is None, uses NullMessageStore (messages won't be saved).
     """
     from src.services.telegram.bot_provider import _bot_provider
-    
+
     if session is not None:
         message_store: MessageStore = BotMessagesMessageStore(session)
     else:
         # Use NullMessageStore when no session provided (for backward compatibility)
         message_store = NullMessageStore()
-    
+
     return TelegramMessenger(
         bot_provider=_bot_provider,
         message_store=message_store,
@@ -89,7 +90,7 @@ async def send_message_with_retry(
     session: Optional[AsyncSession] = None,
 ) -> Message:
     """Send message with retry logic (backward compatibility).
-    
+
     Args:
         chat_id: Telegram chat ID
         text: Message text
@@ -97,7 +98,7 @@ async def send_message_with_retry(
         parse_mode: Optional parse mode (HTML, Markdown, etc.)
         save_message: Whether to save message_id for cleanup (default: True)
         session: Optional database session for saving message_id
-        
+
     Returns:
         Sent Message object
     """
@@ -121,7 +122,7 @@ async def send_photo_with_retry(
     pic_type: Optional[str] = None,  # Kept for compatibility, not used
 ) -> Message:
     """Send photo with retry logic (backward compatibility).
-    
+
     Args:
         chat_id: Telegram chat ID
         photo: Telegram file_id
@@ -130,10 +131,10 @@ async def send_photo_with_retry(
         save_message: Whether to save message_id for cleanup (default: True)
         session: Optional database session for saving message_id
         pic_type: Picture type ("morning" or "evening") - kept for compatibility, not used
-        
+
     Returns:
         Sent Message object
-        
+
     Note:
         All pictures are sent via main bot (TG_BOT_TOKEN).
         file_ids are bot-specific, so we must use the same bot that uploaded them.
@@ -155,16 +156,16 @@ async def edit_message_with_retry(
     reply_markup: Optional[dict] = None,
 ) -> Optional[Message]:
     """Edit message with retry logic (backward compatibility).
-    
+
     Handles both text messages and photo messages.
     For photo messages, removes reply_markup if text editing fails.
-    
+
     Args:
         chat_id: Telegram chat ID
         message_id: Message ID to edit
         text: Optional new text
         reply_markup: Optional new reply markup
-        
+
     Returns:
         Edited Message if successful, None otherwise
     """
@@ -182,11 +183,11 @@ async def remove_reply_markup_with_retry(
     message_id: int,
 ) -> Optional[Message]:
     """Remove reply markup (buttons) from message with retry logic (backward compatibility).
-    
+
     Args:
         chat_id: Telegram chat ID
         message_id: Message ID to edit
-        
+
     Returns:
         Edited Message if successful, None otherwise
     """
@@ -202,11 +203,11 @@ async def delete_message_with_retry(
     message_id: int,
 ) -> bool:
     """Delete message with retry logic (backward compatibility).
-    
+
     Args:
         chat_id: Telegram chat ID
         message_id: Message ID to delete
-        
+
     Returns:
         True if message was deleted successfully, False otherwise
     """

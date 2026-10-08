@@ -20,7 +20,7 @@ async def schedule_reminder_tasks(
     settings: Settings,
 ) -> None:
     """Schedule reminder tasks for unanswered wishes.
-    
+
     Args:
         pair_id: Pair ID
         initiator_tg_id: Telegram ID of the initiator
@@ -32,7 +32,7 @@ async def schedule_reminder_tasks(
     try:
         redis_url = settings.redis_url
         arq_redis = await create_pool(RedisSettings.from_dsn(redis_url))
-        
+
         # Schedule recipient reminders
         for reminder_hours in settings.get_reminder_hours():
             await arq_redis.enqueue_job(
@@ -43,7 +43,7 @@ async def schedule_reminder_tasks(
                 hours=reminder_hours,
                 _defer_by=timedelta(hours=reminder_hours),
             )
-        
+
         # Schedule initiator warnings from min hours, then with interval, ensuring 24h is included.
         warning_hours_set = set(
             range(settings.warning_min_hours, 25, settings.warning_interval_hours)
@@ -61,9 +61,9 @@ async def schedule_reminder_tasks(
                 hours=warning_hours,
                 _defer_by=timedelta(hours=warning_hours),
             )
-        
+
         await arq_redis.close()
-        
+
         logger.info(
             "Scheduled reminder tasks",
             pair_id=pair_id,
@@ -79,4 +79,3 @@ async def schedule_reminder_tasks(
             exc_info=True,
         )
         # Don't fail the whole operation if scheduling fails
-

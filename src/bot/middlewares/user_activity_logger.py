@@ -1,9 +1,9 @@
 """User activity logging middleware."""
 
-from typing import Callable, Dict, Any, Awaitable
+from typing import Any, Awaitable, Callable, Dict
 
 from aiogram import BaseMiddleware
-from aiogram.types import Message, CallbackQuery, TelegramObject
+from aiogram.types import CallbackQuery, Message, TelegramObject
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.logger import get_logger
@@ -30,9 +30,7 @@ class UserActivityLoggerMiddleware(BaseMiddleware):
 
             if isinstance(event, Message):
                 tg_id = event.from_user.id if event.from_user else None
-                username = (
-                    event.from_user.username if event.from_user else None
-                )
+                username = event.from_user.username if event.from_user else None
                 action_type = "message"
 
                 if event.text:
@@ -46,9 +44,7 @@ class UserActivityLoggerMiddleware(BaseMiddleware):
 
             elif isinstance(event, CallbackQuery):
                 tg_id = event.from_user.id if event.from_user else None
-                username = (
-                    event.from_user.username if event.from_user else None
-                )
+                username = event.from_user.username if event.from_user else None
                 action_type = "callback"
                 action_data["data"] = event.data
 
@@ -59,28 +55,22 @@ class UserActivityLoggerMiddleware(BaseMiddleware):
 
                 if session:
                     try:
-                        from src.db.repositories.users import (
-                            UsersRepository,
-                        )
                         from src.db.repositories.pairs import PairsRepository
                         from src.db.repositories.subscriptions import (
                             SubscriptionsRepository,
                         )
+                        from src.db.repositories.users import UsersRepository
 
                         users_repo = UsersRepository(session)
                         user = await users_repo.get_by_tg_id(tg_id)
 
                         if user:
                             pairs_repo = PairsRepository(session)
-                            pairs = await (
-                                pairs_repo.get_all_by_user_tg_id(tg_id)
-                            )
+                            pairs = await pairs_repo.get_all_by_user_tg_id(tg_id)
 
                             if pairs:
                                 subs_repo = SubscriptionsRepository(session)
-                                sub = await subs_repo.get_by_pair_id(
-                                    pairs[0].id
-                                )
+                                sub = await subs_repo.get_by_pair_id(pairs[0].id)
                                 if sub:
                                     subscription_status = pairs[0].status
                     except Exception:
@@ -100,5 +90,5 @@ class UserActivityLoggerMiddleware(BaseMiddleware):
                 "User activity logging error",
                 error=str(e),
             )
-        
+
         return await handler(event, data)

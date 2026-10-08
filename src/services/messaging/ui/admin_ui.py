@@ -104,9 +104,7 @@ class AdminUIService:
         solo_waiting = stats.get("solo_waiting_partner", 0)
 
         pairs_scope = (
-            "созданные за период"
-            if stats.get("period_days") is not None
-            else "всего"
+            "созданные за период" if stats.get("period_days") is not None else "всего"
         )
 
         lines = [
@@ -115,8 +113,7 @@ class AdminUIService:
             f"  Новых за период: <b>{stats.get('new_users', 0)}</b>",
             f"  В паре(ах) сейчас: <b>{in_pairs}</b>",
             "",
-            "👤 <b>Одиночные сейчас</b> (без пары): "
-            f"<b>{solo}</b>",
+            "👤 <b>Одиночные сейчас</b> (без пары): " f"<b>{solo}</b>",
             f"  • зашли, не выбрали режим: <b>{solo_no_mode}</b>",
             f"  • выбрали режим, ждут партнёра: <b>{solo_waiting}</b>",
             f"  • новых за период и без пары: "
@@ -131,9 +128,7 @@ class AdminUIService:
         ]
 
         if stats.get("pairs_cancelled", 0):
-            lines.append(
-                f"  ⚫ отменены: <b>{stats['pairs_cancelled']}</b>"
-            )
+            lines.append(f"  ⚫ отменены: <b>{stats['pairs_cancelled']}</b>")
 
         return "\n".join(lines)
 
@@ -146,14 +141,11 @@ class AdminUIService:
         lines = [
             f"💰 <b>Оплата · {period_label}</b>",
             "<i>Единица учёта: пара (1 оплата = 1 пара)</i>\n",
-            f"Оплатили: <b>{paid_pairs}</b> "
-            f"{'пара' if paid_pairs == 1 else 'пар'}",
+            f"Оплатили: <b>{paid_pairs}</b> " f"{'пара' if paid_pairs == 1 else 'пар'}",
         ]
 
         if paid_transactions:
-            lines.append(
-                f"Транзакций за период: <b>{paid_transactions}</b>"
-            )
+            lines.append(f"Транзакций за период: <b>{paid_transactions}</b>")
 
         plan_lines = self._plan_lines(stats.get("payments_by_plan", {}))
         if plan_lines:
@@ -166,24 +158,30 @@ class AdminUIService:
             lines.extend(currency_lines)
 
         if stats.get("legacy_pairs_only"):
-            lines.extend([
-                "",
-                "<i>Детализация по суммам доступна для новых оплат. "
-                "Количество пар включает ранее оплаченные подписки.</i>",
-            ])
+            lines.extend(
+                [
+                    "",
+                    "<i>Детализация по суммам доступна для новых оплат. "
+                    "Количество пар включает ранее оплаченные подписки.</i>",
+                ]
+            )
         elif not stats.get("has_detailed_payments") and paid_pairs == 0:
-            lines.extend([
-                "",
-                "<i>За выбранный период оплат пока нет.</i>",
-            ])
+            lines.extend(
+                [
+                    "",
+                    "<i>За выбранный период оплат пока нет.</i>",
+                ]
+            )
 
         gifted_pairs = stats.get("gifted_pairs", 0)
         if gifted_pairs:
-            lines.extend([
-                "",
-                f"🎁 <b>Подарено админом</b>: <b>{gifted_pairs}</b> "
-                f"{'пара' if gifted_pairs == 1 else 'пар'}",
-            ])
+            lines.extend(
+                [
+                    "",
+                    f"🎁 <b>Подарено админом</b>: <b>{gifted_pairs}</b> "
+                    f"{'пара' if gifted_pairs == 1 else 'пар'}",
+                ]
+            )
             gift_lines = self._plan_lines(stats.get("gifted_by_plan", {}))
             lines.extend(gift_lines)
 

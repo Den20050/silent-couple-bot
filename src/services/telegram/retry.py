@@ -1,7 +1,7 @@
 """Retry policy for Telegram API calls."""
 
 import asyncio
-from typing import Callable, TypeVar, Awaitable, cast
+from typing import Awaitable, Callable, TypeVar, cast
 
 from aiogram.exceptions import TelegramAPIError, TelegramRetryAfter
 
@@ -19,21 +19,21 @@ async def retry_telegram_api(
     context: dict | None = None,
 ) -> T:
     """Execute Telegram API operation with retry logic.
-    
+
     Args:
         operation: Async function to execute
         operation_name: Name of operation for logging (e.g., "send_message")
         context: Optional context dict for logging (e.g., {"chat_id": 123})
-        
+
     Returns:
         Result of the operation
-        
+
     Raises:
         TelegramAPIError: If operation fails after all retries
         RuntimeError: If retry loop exits unexpectedly
     """
     context = context or {}
-    
+
     for attempt in range(TELEGRAM_RETRY_ATTEMPTS):
         try:
             return await operation()
@@ -85,5 +85,5 @@ async def retry_telegram_api(
                 **context,
             )
             await asyncio.sleep(delay)
-    
+
     raise RuntimeError(f"Unexpected retry loop exit for {operation_name}")

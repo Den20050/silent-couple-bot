@@ -138,7 +138,7 @@ class Settings(BaseSettings):
         ),
         description="JSON with subscription prices (only RUB required, others calculated automatically)",
     )
-    
+
     # Currency margin percentage (added to exchange rate for non-RUB currencies)
     # Example: 17 means +17% margin (price = RUB_price * exchange_rate * 1.17)
     currency_margin_percent: float = Field(
@@ -147,7 +147,7 @@ class Settings(BaseSettings):
         le=100.0,
         description="Margin percentage added to exchange rate for non-RUB currencies (default: 17%)",
     )
-    
+
     # Fixed exchange rates from RUB to other currencies (JSON format)
     # Format: {"CURRENCY": rate, ...}
     # Rate means: 1 RUB = rate * CURRENCY
@@ -157,7 +157,7 @@ class Settings(BaseSettings):
         default='{"USD": 0.010, "EUR": 0.009, "KZT": 4.5}',
         description="Fixed exchange rates from RUB to other currencies (JSON format)",
     )
-    
+
     # Currency rates cache TTL in minutes
     # Rates are fetched from ЦБ РФ API and cached in Redis
     currency_rates_cache_ttl_minutes: int = Field(
@@ -170,7 +170,7 @@ class Settings(BaseSettings):
     # Environment
     environment: str = "dev"
     log_level: str = "INFO"
-    
+
     # Logging
     log_file: Optional[str] = Field(
         default="logs/bot.log",
@@ -252,7 +252,7 @@ class Settings(BaseSettings):
             "Salt for demo pair hash (used to prevent demo reuse after account deletion)"
         ),
     )
-    
+
     # Redis key prefixes
     redis_key_prefix_reminder_sent: str = Field(
         default="reminder_sent",
@@ -278,7 +278,7 @@ class Settings(BaseSettings):
         default="active_action_message",
         description="Redis key prefix for the latest interactive message per user (buttons cleanup)",
     )
-    
+
     # Reminder settings
     reminder_hours: str = Field(
         default="3,6,9",
@@ -289,7 +289,7 @@ class Settings(BaseSettings):
         ge=1,
         description="TTL for reminder keys in hours (default: 24)",
     )
-    
+
     # Warning settings
     warning_min_hours: int = Field(
         default=10,
@@ -306,7 +306,7 @@ class Settings(BaseSettings):
         ge=1,
         description="TTL for warning keys in days (default: 7)",
     )
-    
+
     # Task lock settings
     # Must be longer than the Telegram request timeout (300s) + retry delays to
     # prevent multiple concurrent task instances when Telegram is unreachable.
@@ -315,7 +315,7 @@ class Settings(BaseSettings):
         ge=1,
         description="TTL for task locks in seconds (default: 360, must exceed Telegram timeout)",
     )
-    
+
     # Other notification TTL settings
     nudge_ttl_hours: int = Field(
         # Used for share nudge throttling. 5 days = 120 hours.
@@ -328,7 +328,7 @@ class Settings(BaseSettings):
         ge=1,
         description="TTL for summary keys in days (default: 7)",
     )
-    
+
     # Subscription renewal reminder settings
     subscription_renewal_days_before: int = Field(
         default=3,
@@ -355,7 +355,7 @@ class Settings(BaseSettings):
         ge=1,
         description="TTL for feedback tickets in hours (default: 72)",
     )
-    
+
     # Resource information (for display in user menu)
     # If a field is not relevant (e.g., EGRIP or OGRN), comment it out in .env
     resource_inn: Optional[str] = Field(
@@ -382,10 +382,10 @@ class Settings(BaseSettings):
         default=None,
         description="Телефон для связи",
     )
-    
+
     def get_reminder_hours(self) -> list[int]:
         """Parse reminder hours from comma-separated string.
-        
+
         Returns:
             List of hours as integers
         """
@@ -428,9 +428,7 @@ class Settings(BaseSettings):
                 except ValueError:
                     pass
         # If validation fails, raise error
-        raise ValueError(
-            f"Invalid time format: {v}. Expected HH:MM or HH (0-23)"
-        )
+        raise ValueError(f"Invalid time format: {v}. Expected HH:MM or HH (0-23)")
 
     @field_validator("admin_tg_id", mode="before")
     @classmethod
@@ -442,7 +440,7 @@ class Settings(BaseSettings):
             return int(v)
         except (ValueError, TypeError):
             return None
-    
+
     @field_validator(
         "resource_inn",
         "resource_status",
@@ -498,7 +496,7 @@ class Settings(BaseSettings):
 
     def get_currency_exchange_rates(self) -> dict:
         """Get currency exchange rates parsed from JSON.
-        
+
         Returns:
             Dictionary with exchange rates: {"USD": 0.010, "EUR": 0.009, ...}
             Rates mean: 1 RUB = rate * CURRENCY
@@ -512,16 +510,16 @@ class Settings(BaseSettings):
                 "EUR": 0.009,
                 "KZT": 4.5,
             }
-    
+
     def get_subscription_prices(self) -> dict:
         """Get subscription prices with automatic calculation for non-RUB currencies.
-        
+
         Prices for non-RUB currencies are calculated from RUB prices using:
         - Fixed exchange rates (currency_exchange_rates)
         - Margin percentage (currency_margin_percent)
-        
+
         Formula: price_in_currency = price_in_rub * exchange_rate * (1 + margin_percent / 100)
-        
+
         Returns:
             Dictionary with prices for all currencies:
             {"RUB": {...}, "USD": {...}, "EUR": {...}, ...}
@@ -540,47 +538,47 @@ class Settings(BaseSettings):
                     "lifetime": 4999,
                 }
             }
-        
+
         # Ensure RUB prices exist
         if "RUB" not in base_prices:
             raise ValueError("RUB prices must be specified in subscription_prices")
-        
+
         # Extract only RUB prices (ignore any other currencies if specified)
         # Other currencies will be calculated automatically
         rub_prices = base_prices["RUB"]
-        
+
         # Get exchange rates
         exchange_rates = self.get_currency_exchange_rates()
-        
+
         # Calculate margin multiplier (e.g., 25% = 1.25)
         margin_multiplier = 1.0 + (self.currency_margin_percent / 100.0)
-        
+
         # Get supported currencies from constants
         from src.core.constants import SUPPORTED_CURRENCIES
-        
+
         # Build result dictionary starting with RUB prices
         result = {"RUB": rub_prices.copy()}
-        
+
         # Calculate prices for each supported currency (except RUB)
         for currency_code in SUPPORTED_CURRENCIES.keys():
             if currency_code == "RUB":
                 continue
-            
+
             # Get exchange rate (default to 1.0 if not found)
             exchange_rate = exchange_rates.get(currency_code, 1.0)
-            
+
             # Calculate prices for this currency
             currency_prices = {}
             for plan_id, rub_price in rub_prices.items():
                 # Calculate: price = RUB_price * exchange_rate * margin_multiplier
                 calculated_price = rub_price * exchange_rate * margin_multiplier
-                
+
                 # Round to appropriate decimals based on currency
                 decimals = SUPPORTED_CURRENCIES[currency_code]["decimals"]
                 currency_prices[plan_id] = round(calculated_price, decimals)
-            
+
             result[currency_code] = currency_prices
-        
+
         return result
 
 

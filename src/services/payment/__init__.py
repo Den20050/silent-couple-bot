@@ -57,7 +57,7 @@ class PaymentService:
         self._webhook_handler = RobokassaWebhookHandler(redis=redis, settings=settings)
         # Expose circuit_breaker for backward compatibility
         self.circuit_breaker = self._robokassa_service.circuit_breaker
-    
+
     async def create_payment(
         self,
         amount: int,
@@ -68,7 +68,7 @@ class PaymentService:
         currency: str = "RUB",
     ):
         """Create payment link (backward compatibility).
-        
+
         Delegates to RobokassaService.create_payment.
         """
         return await self._robokassa_service.create_payment(
@@ -79,10 +79,10 @@ class PaymentService:
             is_lifetime=is_lifetime,
             currency=currency,
         )
-    
+
     async def verify_webhook(self, out_sum: str, inv_id: str, signature: str) -> bool:
         """Verify webhook signature (backward compatibility).
-        
+
         Delegates to RobokassaWebhookHandler.verify_webhook.
         """
         return await self._webhook_handler.verify_webhook(
@@ -90,12 +90,12 @@ class PaymentService:
             inv_id=inv_id,
             signature=signature,
         )
-    
+
     async def process_webhook(
         self, out_sum: str, inv_id: str, signature: str, shp_params: dict
     ):
         """Process webhook (backward compatibility).
-        
+
         Delegates to RobokassaWebhookHandler.process_webhook.
         """
         return await self._webhook_handler.process_webhook(

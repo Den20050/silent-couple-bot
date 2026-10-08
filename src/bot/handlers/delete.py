@@ -2,13 +2,20 @@
 
 from html import escape
 
-from aiogram import Router, F
+from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.fsm.context import FSMContext
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.bot.handlers.start.services.pair_service import format_partner_text
 from src.core.constants import PairStatus
 from src.core.logger import get_logger
 from src.core.messages import get_message
@@ -17,10 +24,7 @@ from src.db.repositories.pair_demo import PairDemoRepository
 from src.db.repositories.pairs import PairsRepository
 from src.db.repositories.subscriptions import SubscriptionsRepository
 from src.db.repositories.users import UsersRepository
-from aiogram.fsm.context import FSMContext
-
 from src.services.telegram.messenger import TelegramMessenger
-from src.bot.handlers.start.services.pair_service import format_partner_text
 
 logger = get_logger(__name__)
 
@@ -139,18 +143,22 @@ def _build_pairs_keyboard(pairs, partner_texts: dict[int, str]) -> InlineKeyboar
         base_text = partner_texts.get(pair.id, f"Пара #{pair.id}")
         status_label = _get_pair_status_label(pair.status)
         button_text = f"{base_text} ({status_label})"
-        keyboard.append([
-            InlineKeyboardButton(
-                text=button_text,
-                callback_data=f"delete_select_pair_{pair.id}",
-            )
-        ])
-    keyboard.append([
-        InlineKeyboardButton(
-            text=get_message("DELETE_CANCEL_BUTTON"),
-            callback_data="delete_cancel",
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text=button_text,
+                    callback_data=f"delete_select_pair_{pair.id}",
+                )
+            ]
         )
-    ])
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                text=get_message("DELETE_CANCEL_BUTTON"),
+                callback_data="delete_cancel",
+            )
+        ]
+    )
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
@@ -228,7 +236,9 @@ async def _show_delete_flow(
         if message:
             await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
         else:
-            await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+            await callback.message.edit_text(
+                text, reply_markup=keyboard, parse_mode="HTML"
+            )
             await callback.answer()
         return
 
@@ -246,7 +256,9 @@ async def _show_delete_flow(
         if message:
             await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
         else:
-            await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+            await callback.message.edit_text(
+                text, reply_markup=keyboard, parse_mode="HTML"
+            )
             await callback.answer()
         return
 
@@ -410,9 +422,7 @@ async def handle_delete_confirm_pair(
 
     partner_tg_id = partner.tg_id if partner else None
     partner_nickname_for_user = (
-        pairs_repo.get_my_nickname_for_partner(pair, partner.id)
-        if partner
-        else None
+        pairs_repo.get_my_nickname_for_partner(pair, partner.id) if partner else None
     )
     partner_view_text = format_partner_text(
         user.username if user else None,
@@ -463,4 +473,3 @@ async def handle_delete_confirm_pair(
             ),
             parse_mode="HTML",
         )
-

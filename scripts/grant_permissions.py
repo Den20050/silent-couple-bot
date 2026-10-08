@@ -6,9 +6,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import asyncpg
+
 from src.core.config import settings
 from src.core.logger import configure_logging, get_logger
-import asyncpg
 
 logger = get_logger(__name__)
 
@@ -20,12 +21,12 @@ async def grant_permissions() -> bool:
         # You need to connect as postgres superuser
         print("Для выдачи прав нужно подключиться как суперпользователь PostgreSQL.")
         print("Введите данные суперпользователя (postgres):")
-        
+
         admin_user = input("Username [postgres]: ").strip() or "postgres"
         admin_password = input("Password: ").strip()
         admin_host = input("Host [localhost]: ").strip() or "localhost"
         admin_port = input("Port [5433]: ").strip() or "5433"
-        
+
         # Connect as admin
         conn = await asyncpg.connect(
             host=admin_host,
@@ -34,11 +35,12 @@ async def grant_permissions() -> bool:
             password=admin_password,
             database="postgres",  # Connect to default database
         )
-        
+
         logger.info("Connected as admin, granting permissions...")
-        
+
         # Grant permissions
-        await conn.execute("""
+        await conn.execute(
+            """
             GRANT ALL ON SCHEMA public TO bot_user;
             GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO bot_user;
             GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO bot_user;
@@ -46,13 +48,14 @@ async def grant_permissions() -> bool:
             ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO bot_user;
             GRANT USAGE ON SCHEMA public TO bot_user;
             GRANT CREATE ON SCHEMA public TO bot_user;
-        """)
-        
+        """
+        )
+
         logger.info("Permissions granted successfully!")
-        
+
         await conn.close()
         return True
-        
+
     except Exception as e:
         logger.error(f"Failed to grant permissions: {e}")
         logger.info("\nАльтернативный способ:")
@@ -66,4 +69,3 @@ if __name__ == "__main__":
     configure_logging("INFO")
     success = asyncio.run(grant_permissions())
     sys.exit(0 if success else 1)
-

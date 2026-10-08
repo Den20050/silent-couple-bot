@@ -8,9 +8,10 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+import asyncpg
+
 from src.core.config import settings
 from src.core.logger import configure_logging, get_logger
-import asyncpg
 
 logger = get_logger(__name__)
 
@@ -24,7 +25,7 @@ async def check_and_apply() -> None:
         user, password = auth_part.split(":", 1)
         host_part, database = db_part.rsplit("/", 1)
         host, port = host_part.split(":", 1)
-        
+
         conn = await asyncpg.connect(
             host=host,
             port=int(port),
@@ -32,53 +33,64 @@ async def check_and_apply() -> None:
             password=password,
             database=database,
         )
-        
+
         # Check if column exists
-        column_exists = await conn.fetchval("""
+        column_exists = await conn.fetchval(
+            """
             SELECT EXISTS (
                 SELECT 1 
                 FROM information_schema.columns 
                 WHERE table_name = 'subscriptions' 
                 AND column_name = 'last_past_due_notification_date'
             )
-        """)
-        
+        """
+        )
+
         if column_exists:
-            print("✅ Колонка 'last_past_due_notification_date' уже существует в таблице 'subscriptions'")
+            print(
+                "✅ Колонка 'last_past_due_notification_date' уже существует в таблице 'subscriptions'"
+            )
             print("Миграция уже применена.")
         else:
-            print("❌ Колонка 'last_past_due_notification_date' не найдена в таблице 'subscriptions'")
+            print(
+                "❌ Колонка 'last_past_due_notification_date' не найдена в таблице 'subscriptions'"
+            )
             print("Применяю миграцию...")
-            
+
             # Apply migration
-            await conn.execute("""
+            await conn.execute(
+                """
                 ALTER TABLE subscriptions 
                 ADD COLUMN last_past_due_notification_date DATE NULL
-            """)
-            
+            """
+            )
+
             print("✅ Миграция применена успешно!")
-            
+
             # Verify
-            column_exists_after = await conn.fetchval("""
+            column_exists_after = await conn.fetchval(
+                """
                 SELECT EXISTS (
                     SELECT 1 
                     FROM information_schema.columns 
                     WHERE table_name = 'subscriptions' 
                     AND column_name = 'last_past_due_notification_date'
                 )
-            """)
-            
+            """
+            )
+
             if column_exists_after:
                 print("✅ Проверка: колонка успешно добавлена")
             else:
                 print("❌ Ошибка: колонка не была добавлена")
                 sys.exit(1)
-        
+
         await conn.close()
-        
+
     except Exception as e:
         logger.error(f"Ошибка: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 

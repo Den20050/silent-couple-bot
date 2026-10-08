@@ -29,12 +29,12 @@ def provide_subscription_application_service(
     menu_ui: MenuUIService,
 ) -> SubscriptionApplicationService:
     """Provide subscription application service.
-    
+
     Args:
         session: Database session
         subscription_status_service: Domain service for subscription status
         menu_ui: UI service for menu-related messages
-        
+
     Returns:
         SubscriptionApplicationService instance
     """
@@ -55,7 +55,7 @@ def provide_payment_application_service(
     currency_rates_service: CurrencyRatesService,
 ) -> PaymentApplicationService:
     """Provide payment application service.
-    
+
     Args:
         session: Database session
         payment_service: Payment service protocol implementation
@@ -64,7 +64,7 @@ def provide_payment_application_service(
         payment_ui: UI service for payment-related messages
         settings: Application settings
         currency_rates_service: Currency rates service for dynamic pricing
-        
+
     Returns:
         PaymentApplicationService instance
     """
@@ -85,12 +85,12 @@ def provide_settings_application_service(
     settings_ui: SettingsUIService,
 ) -> SettingsApplicationService:
     """Provide settings application service.
-    
+
     Args:
         session: Database session
         subscription_status_service: Domain service for subscription status
         settings_ui: UI service for settings-related messages
-        
+
     Returns:
         SettingsApplicationService instance
     """
@@ -106,11 +106,11 @@ def provide_pair_application_service(
     pair_onboarding_service: PairOnboardingService,
 ) -> PairApplicationService:
     """Provide pair application service.
-    
+
     Args:
         session: Database session
         pair_onboarding_service: Domain service for pair onboarding
-        
+
     Returns:
         PairApplicationService instance
     """
@@ -125,11 +125,11 @@ def provide_menu_application_service(
     menu_ui: MenuUIService,
 ) -> MenuApplicationService:
     """Provide menu application service.
-    
+
     Args:
         session: Database session
         menu_ui: UI service for menu-related messages
-        
+
     Returns:
         MenuApplicationService instance
     """
@@ -144,11 +144,11 @@ def provide_admin_application_service(
     admin_ui: AdminUIService,
 ) -> AdminApplicationService:
     """Provide admin application service.
-    
+
     Args:
         session: Database session
         admin_ui: UI service for admin-related messages
-        
+
     Returns:
         AdminApplicationService instance
     """
@@ -156,4 +156,3 @@ def provide_admin_application_service(
         session=session,
         admin_ui=admin_ui,
     )
-

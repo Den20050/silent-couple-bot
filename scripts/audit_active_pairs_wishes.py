@@ -27,9 +27,7 @@ async def audit(since: date) -> None:
         async with container.session_factory() as session:
             pairs = await session.execute(
                 select(Pair).where(
-                    Pair.status.in_(
-                        [PairStatus.TRIAL.value, PairStatus.ACTIVE.value]
-                    )
+                    Pair.status.in_([PairStatus.TRIAL.value, PairStatus.ACTIVE.value])
                 )
             )
             active_pairs = list(pairs.scalars().all())

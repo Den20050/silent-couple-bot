@@ -22,7 +22,7 @@ async def respond_to_wish(
     telegram_messenger: TelegramMessenger,
 ) -> tuple[bool, Optional[str]]:
     """Respond to a wish from partner.
-    
+
     Args:
         session: Database session
         pair_id: Pair ID
@@ -31,7 +31,7 @@ async def respond_to_wish(
         initiator_tg_id: Telegram ID of the initiator (from callback_data)
         pic_type: Picture type ("morning" or "evening")
         telegram_messenger: Telegram messenger instance
-        
+
     Returns:
         Tuple of (success: bool, error_message: Optional[str])
         error_message is None on success, otherwise contains error key
@@ -44,4 +44,3 @@ async def respond_to_wish(
         initiator_tg_id=initiator_tg_id,
         pic_type=pic_type,
     )
-

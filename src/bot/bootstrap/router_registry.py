@@ -2,21 +2,22 @@
 
 from aiogram import Dispatcher
 
-from src.core.logger import get_logger
 from src.bot.handlers.admin import router as admin_router
-from src.bot.handlers.menu import router as menu_router
-from src.bot.handlers.start import router as start_router
-from src.bot.handlers.settings import router as settings_router
-from src.bot.handlers.subscription import router as subscription_router
-from src.bot.handlers.pay import router as pay_router
-from src.bot.handlers.feedback import router as feedback_router
-from src.bot.handlers.delete import router as delete_router
-from src.bot.handlers.link import router as link_router
+
 # IMPORTANT:
 # There is a legacy file `src/bot/handlers/callbacks.py` in history that conflicts
 # with the callbacks package directory `src/bot/handlers/callbacks/`.
 # Always import the package router explicitly to avoid ambiguity.
 from src.bot.handlers.callbacks.router import router as callbacks_router
+from src.bot.handlers.delete import router as delete_router
+from src.bot.handlers.feedback import router as feedback_router
+from src.bot.handlers.link import router as link_router
+from src.bot.handlers.menu import router as menu_router
+from src.bot.handlers.pay import router as pay_router
+from src.bot.handlers.settings import router as settings_router
+from src.bot.handlers.start import router as start_router
+from src.bot.handlers.subscription import router as subscription_router
+from src.core.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -34,22 +35,26 @@ def register_routers(dp: Dispatcher) -> None:
     """
     # Check if routers are already registered to avoid double registration
     # This can happen if setup_bot() is called multiple times
-    if hasattr(dp, '_routers_registered'):
+    if hasattr(dp, "_routers_registered"):
         logger.debug("Routers already registered, skipping")
         return
-    
+
     # 1. Commands (e.g., /create_pair) - register FIRST
     dp.include_router(admin_router)
     dp.include_router(menu_router)
-    dp.include_router(delete_router)  # Before FSM routers so delete callbacks aren't delayed
+    dp.include_router(
+        delete_router
+    )  # Before FSM routers so delete callbacks aren't delayed
 
     # 2. FSM state handlers - register BEFORE general message handlers
     # IMPORTANT: FSM state handlers must be registered BEFORE general text handlers
     # to ensure FSM-filtered handlers have priority
     dp.include_router(settings_router)  # Has SettingsStates handlers
-    dp.include_router(feedback_router)  # Has FeedbackStates handlers - register BEFORE start_router
+    dp.include_router(
+        feedback_router
+    )  # Has FeedbackStates handlers - register BEFORE start_router
     dp.include_router(start_router)  # Has PairCreationStates handlers
-    
+
     # 3. Other handlers
     dp.include_router(subscription_router)
     dp.include_router(pay_router)
@@ -57,9 +62,8 @@ def register_routers(dp: Dispatcher) -> None:
     # 5. Other handlers
     dp.include_router(link_router)
     dp.include_router(callbacks_router)
-    
+
     # Mark routers as registered to prevent double registration
     dp._routers_registered = True
-    
-    logger.info("Routers registered", router_count=9)
 
+    logger.info("Routers registered", router_count=9)

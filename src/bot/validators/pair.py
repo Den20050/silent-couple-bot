@@ -18,21 +18,21 @@ async def validate_pair_exists(
     error_message_key: str = "SETTINGS_NO_PAIR",
 ) -> Pair:
     """Validate pair exists.
-    
+
     Args:
         session: Database session
         pair_id: Pair ID
         error_message_key: Message key for error (default: "SETTINGS_NO_PAIR")
-        
+
     Returns:
         Pair object if found
-        
+
     Raises:
         PairNotFoundError: If pair is not found
     """
     pairs_repo = PairsRepository(session)
     pair = await pairs_repo.get_by_id(pair_id)
-    
+
     if not pair:
         logger.warning(
             "Pair not found",
@@ -43,7 +43,7 @@ async def validate_pair_exists(
             message_key=error_message_key,
             message=get_message(error_message_key),
         )
-    
+
     return pair
 
 
@@ -53,21 +53,21 @@ async def validate_user_has_pair(
     error_message_key: str = "MENU_NO_PAIR_ALERT",
 ) -> Pair:
     """Validate user has at least one pair.
-    
+
     Args:
         session: Database session
         tg_id: Telegram user ID
         error_message_key: Message key for error (default: "MENU_NO_PAIR_ALERT")
-        
+
     Returns:
         Pair object if user has pair
-        
+
     Raises:
         PairNotFoundError: If user has no pair
     """
     pairs_repo = PairsRepository(session)
     pair = await pairs_repo.get_by_user_tg_id(tg_id)
-    
+
     if not pair:
         logger.warning(
             "User has no pair",
@@ -78,7 +78,7 @@ async def validate_user_has_pair(
             message_key=error_message_key,
             message=get_message(error_message_key),
         )
-    
+
     return pair
 
 
@@ -90,14 +90,14 @@ async def validate_pair_access(
     error_message_key: str = "SETTINGS_NO_PAIR",
 ) -> None:
     """Validate user has access to pair.
-    
+
     Args:
         session: Database session
         pair: Pair object
         user_id: User ID
         tg_id: Telegram user ID (for verification)
         error_message_key: Message key for error (default: "SETTINGS_NO_PAIR")
-        
+
     Raises:
         PairAccessDeniedError: If user doesn't have access to pair
     """
@@ -115,7 +115,7 @@ async def validate_pair_access(
             message_key=error_message_key,
             message=get_message(error_message_key),
         )
-    
+
     # Verify tg_id matches user_id
     users_repo = UsersRepository(session)
     user = await users_repo.get_by_id(user_id)
@@ -140,21 +140,21 @@ async def validate_user_has_any_pair(
     error_message_key: str = "SETTINGS_NO_PAIR",
 ) -> list:
     """Validate user has at least one pair and return all pairs.
-    
+
     Args:
         session: Database session
         tg_id: Telegram user ID
         error_message_key: Message key for error (default: "SETTINGS_NO_PAIR")
-        
+
     Returns:
         List of Pair objects
-        
+
     Raises:
         PairNotFoundError: If user has no pairs
     """
     pairs_repo = PairsRepository(session)
     all_pairs = await pairs_repo.get_all_by_user_tg_id(tg_id)
-    
+
     if not all_pairs:
         logger.warning(
             "User has no pairs",
@@ -165,6 +165,5 @@ async def validate_user_has_any_pair(
             message_key=error_message_key,
             message=get_message(error_message_key),
         )
-    
-    return all_pairs
 
+    return all_pairs
