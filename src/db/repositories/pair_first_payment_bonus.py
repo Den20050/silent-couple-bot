@@ -23,15 +23,18 @@ class PairFirstPaymentBonusRepository:
         )
         return result.scalar_one_or_none() is not None
 
-    async def mark_used(self, tg_id_a: int, tg_id_b: int) -> None:
+    async def mark_used(self, tg_id_a: int, tg_id_b: int) -> bool:
+        """Atomically claim the promo; return False when it was already used."""
         pair_hash = build_pair_demo_hash(tg_id_a, tg_id_b)
         stmt = (
             insert(PairFirstPaymentBonusHash)
             .values({"pair_hash": pair_hash})
             .on_conflict_do_nothing()
+            .returning(PairFirstPaymentBonusHash.pair_hash)
         )
-        await self.session.execute(stmt)
+        result = await self.session.execute(stmt)
         await self.session.flush()
+        return result.scalar_one_or_none() is not None
 
     async def remove(self, tg_id_a: int, tg_id_b: int) -> bool:
         """Admin-only reset (mirrors demo reset tooling if needed later)."""
