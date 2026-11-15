@@ -136,7 +136,9 @@ async def send_photo(
     )
     if pic_type is None:
         logger.warning("Mini App send denied", tg_id=tg_id, chat_id=chat_id_int)
-        raise HTTPException(status_code=403, detail="Destination or picture not allowed")
+        raise HTTPException(
+            status_code=403, detail="Destination or picture not allowed"
+        )
 
     # Send photo via bot
     try:

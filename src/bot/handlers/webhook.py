@@ -422,7 +422,9 @@ async def robokassa_webhook(
         ]
         if bonus_days > 0:
             bonus_text = get_message("PAY_FIRST_PAYMENT_BONUS_APPLIED")
-            notifications.extend([(user_a.tg_id, bonus_text), (user_b.tg_id, bonus_text)])
+            notifications.extend(
+                [(user_a.tg_id, bonus_text), (user_b.tg_id, bonus_text)]
+            )
         subscription_text = get_message(
             "PAY_SUBSCRIPTION_ACTIVE_UNTIL", period_text=period_text
         )

@@ -87,9 +87,10 @@ def normalize_timezone_name(timezone_name: str | None) -> str | None:
 
 def is_timezone_configured(user_obj: Any) -> bool:
     """True when an IANA timezone or legacy UTC offset is available."""
-    return bool(getattr(user_obj, "timezone_name", None)) or getattr(
-        user_obj, "utc_offset", None
-    ) is not None
+    return (
+        bool(getattr(user_obj, "timezone_name", None))
+        or getattr(user_obj, "utc_offset", None) is not None
+    )
 
 
 def format_timezone_label(user_obj: Any) -> str:

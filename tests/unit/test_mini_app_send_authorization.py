@@ -35,15 +35,18 @@ async def test_authorize_send_accepts_owned_pair_chat_and_pool_picture() -> None
         delivery_chat="pair_dm",
         private_chat_id=-100123,
     )
-    session = _Session([
-        _result(scalar=user),
-        _result(scalars=[pair]),
-        _result(scalar="morning"),
-    ])
+    session = _Session(
+        [
+            _result(scalar=user),
+            _result(scalars=[pair]),
+            _result(scalar="morning"),
+        ]
+    )
 
-    assert await _authorize_send(
-        session, tg_id=123, chat_id=-100123, file_id="known"
-    ) == "morning"
+    assert (
+        await _authorize_send(session, tg_id=123, chat_id=-100123, file_id="known")
+        == "morning"
+    )
 
 
 @pytest.mark.asyncio
@@ -58,7 +61,7 @@ async def test_authorize_send_rejects_outsider_chat_before_picture_lookup() -> N
     )
     session = _Session([_result(scalar=user), _result(scalars=[pair])])
 
-    assert await _authorize_send(
-        session, tg_id=123, chat_id=-999, file_id="known"
-    ) is None
+    assert (
+        await _authorize_send(session, tg_id=123, chat_id=-999, file_id="known") is None
+    )
     assert session.execute_count == 2

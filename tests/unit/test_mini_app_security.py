@@ -17,9 +17,15 @@ def _signed_init_data(*, auth_date: int, user_id: object = 123, extra=None) -> s
     }
     if extra:
         params.update(extra)
-    data_check_string = "\n".join(f"{key}={value}" for key, value in sorted(params.items()))
-    secret = hmac.new(b"WebAppData", settings.tg_bot_token.encode(), hashlib.sha256).digest()
-    params["hash"] = hmac.new(secret, data_check_string.encode(), hashlib.sha256).hexdigest()
+    data_check_string = "\n".join(
+        f"{key}={value}" for key, value in sorted(params.items())
+    )
+    secret = hmac.new(
+        b"WebAppData", settings.tg_bot_token.encode(), hashlib.sha256
+    ).digest()
+    params["hash"] = hmac.new(
+        secret, data_check_string.encode(), hashlib.sha256
+    ).hexdigest()
     return urlencode(params)
 
 
@@ -41,6 +47,14 @@ def test_verify_init_data_rejects_duplicate_keys(monkeypatch) -> None:
 
 
 def test_extract_user_id_rejects_non_positive_and_boolean_ids() -> None:
-    assert security.extract_user_id(_signed_init_data(auth_date=10_000, user_id=0)) is None
-    assert security.extract_user_id(_signed_init_data(auth_date=10_000, user_id=True)) is None
-    assert security.extract_user_id(_signed_init_data(auth_date=10_000, user_id=123)) == 123
+    assert (
+        security.extract_user_id(_signed_init_data(auth_date=10_000, user_id=0)) is None
+    )
+    assert (
+        security.extract_user_id(_signed_init_data(auth_date=10_000, user_id=True))
+        is None
+    )
+    assert (
+        security.extract_user_id(_signed_init_data(auth_date=10_000, user_id=123))
+        == 123
+    )
