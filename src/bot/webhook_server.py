@@ -2,6 +2,7 @@
 
 import asyncio
 from contextlib import asynccontextmanager
+from typing import Awaitable
 
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -30,6 +31,32 @@ bot: Bot | None = None
 container: Container | None = None
 redis_storage_client = None  # Store Redis client for RedisStorage globally
 _polling_task: asyncio.Task | None = None
+
+
+async def _close_with_timeout(
+    awaitable: Awaitable[object], step: str, timeout: float = 10.0
+) -> None:
+    """Finish one shutdown step without blocking service termination forever."""
+    task = asyncio.ensure_future(awaitable)
+    try:
+        done, _ = await asyncio.wait({task}, timeout=timeout)
+    except asyncio.CancelledError:
+        task.cancel()
+        raise
+
+    if task not in done:
+        task.cancel()
+        task.add_done_callback(
+            lambda completed: (
+                completed.exception() if not completed.cancelled() else None
+            )
+        )
+        logger.warning("Shutdown step timed out", step=step, timeout=timeout)
+    elif not task.cancelled():
+        try:
+            task.result()
+        except Exception as error:
+            logger.warning("Shutdown step failed", step=step, error=str(error))
 
 
 async def setup_bot() -> tuple[Bot, Dispatcher]:
@@ -211,21 +238,16 @@ async def lifespan(app: FastAPI):
 
     if _polling_task:
         _polling_task.cancel()
-        try:
-            await _polling_task
-        except asyncio.CancelledError:
-            pass
+        await _close_with_timeout(_polling_task, "Telegram polling")
         _polling_task = None
 
     if bot:
-        await bot.session.close()
+        await _close_with_timeout(bot.session.close(), "Telegram bot session")
     if redis_storage_client:
-        try:
-            await redis_storage_client.aclose()
-        except Exception as e:
-            logger.warning(f"Error closing Redis storage connection: {e}")
+        await _close_with_timeout(redis_storage_client.aclose(), "Redis storage")
+    await _close_with_timeout(session_factory.close(), "Mini App database")
     if container is not None:
-        await container.close()
+        await _close_with_timeout(container.close(), "application container")
     logger.info("Webhook server stopped")
 
 
