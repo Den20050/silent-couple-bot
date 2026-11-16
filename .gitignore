@@ -36,10 +36,16 @@ ENV/
 # Environment
 .env
 .env.local
+.env.bak*
+*env_backup*
 
 # Database
 *.db
 *.sqlite
+*.dump
+
+# Server snapshots
+*.tar.gz
 
 # Logs
 *.log
@@ -50,6 +56,7 @@ logs/
 .coverage
 htmlcov/
 .tox/
+.reconcile/
 
 # Alembic
 alembic/versions/*.pyc

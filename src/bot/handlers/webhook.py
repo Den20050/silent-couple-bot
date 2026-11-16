@@ -5,7 +5,7 @@ from decimal import Decimal, InvalidOperation
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -203,7 +203,9 @@ async def _notify_payment_not_confirmed(
 #     return {"status": "ok"}
 
 
-@webhook_router.api_route("/webhook/robokassa", methods=["POST", "GET"])
+@webhook_router.api_route(
+    "/webhook/robokassa", methods=["POST", "GET"], response_class=PlainTextResponse
+)
 async def robokassa_webhook(
     request: Request,
     session: AsyncSession = Depends(get_db_session),
@@ -299,7 +301,7 @@ async def robokassa_webhook(
             logger.error("Pair not found", pair_id=pair_id)
             return "ERROR"
 
-        subscription = await subs_repo.get_by_pair_id(pair_id)
+        subscription = await subs_repo.get_by_pair_id_for_update(pair_id)
         if not subscription:
             logger.error("Subscription not found", pair_id=pair_id)
             return "ERROR"
@@ -315,44 +317,12 @@ async def robokassa_webhook(
         from src.db.repositories.pair_first_payment_bonus import (
             PairFirstPaymentBonusRepository,
         )
-        from src.services.payment.first_payment_bonus import (
-            resolve_first_payment_bonus_days,
-        )
+        from src.services.payment.first_payment_bonus import FIRST_PAYMENT_BONUS_DAYS
         from src.services.payment.subscription_calculator import (
             calculate_subscription_period_end,
         )
 
         bonus_repo = PairFirstPaymentBonusRepository(session)
-        bonus_days, is_first_payment = await resolve_first_payment_bonus_days(
-            bonus_repo,
-            user_a.tg_id,
-            user_b.tg_id,
-            is_lifetime=is_lifetime,
-        )
-
-        base_period_days = payment_period_days or SUBSCRIPTION_PERIOD_DAYS
-        period_days = base_period_days + bonus_days
-        period_end = calculate_subscription_period_end(
-            subscription=subscription,
-            new_period_days=period_days,
-            is_lifetime=is_lifetime,
-            standard_month_days=30,
-        )
-
-        if is_first_payment:
-            await bonus_repo.mark_used(user_a.tg_id, user_b.tg_id)
-
-        # Update subscription (используем payment_id как yoo_id для совместимости)
-        updated_subscription = await subs_repo.update_payment(
-            subscription_id=subscription.id,
-            yoo_id=payment_id,  # Сохраняем inv_id в поле yoo_id для совместимости
-            period_end=period_end,
-            is_lifetime=is_lifetime,
-        )
-
-        # Use updated subscription if available, otherwise use original
-        if updated_subscription:
-            subscription = updated_subscription
 
         try:
             payment_amount = Decimal(str(payment_amount_raw))
@@ -369,15 +339,45 @@ async def robokassa_webhook(
             plan_id=plan_id,
             is_lifetime=is_lifetime,
         )
-        if payment_recorded:
-            logger.info(
-                "Pair payment recorded",
-                pair_id=pair.id,
-                inv_id=payment_id,
-                amount=str(payment_amount),
-                currency=payment_currency,
-                plan_id=plan_id,
-            )
+        if not payment_recorded:
+            await session.rollback()
+            logger.info("Duplicate Robokassa webhook ignored", inv_id=payment_id)
+            return f"OK{payment_id}"
+
+        is_first_payment = await bonus_repo.mark_used(user_a.tg_id, user_b.tg_id)
+        bonus_days = (
+            FIRST_PAYMENT_BONUS_DAYS if is_first_payment and not is_lifetime else 0
+        )
+
+        base_period_days = payment_period_days or SUBSCRIPTION_PERIOD_DAYS
+        period_days = base_period_days + bonus_days
+        period_end = calculate_subscription_period_end(
+            subscription=subscription,
+            new_period_days=period_days,
+            is_lifetime=is_lifetime,
+            standard_month_days=30,
+        )
+
+        # Update subscription (используем payment_id как yoo_id для совместимости)
+        updated_subscription = await subs_repo.update_payment(
+            subscription_id=subscription.id,
+            yoo_id=payment_id,  # Сохраняем inv_id в поле yoo_id для совместимости
+            period_end=period_end,
+            is_lifetime=is_lifetime,
+        )
+
+        # Use updated subscription if available, otherwise use original
+        if updated_subscription:
+            subscription = updated_subscription
+
+        logger.info(
+            "Pair payment recorded",
+            pair_id=pair.id,
+            inv_id=payment_id,
+            amount=str(payment_amount),
+            currency=payment_currency,
+            plan_id=plan_id,
+        )
 
         # Update pair status
         await pairs_repo.update_status(pair.id, PairStatus.ACTIVE)
@@ -414,32 +414,33 @@ async def robokassa_webhook(
             else period_end.strftime("%d.%m.%Y")
         )
 
-        # Send access granted notification
-        await send_message_with_retry(
-            chat_id=user_a.tg_id,
-            text=get_message("PAY_ACCESS_GRANTED"),
-        )
-        await send_message_with_retry(
-            chat_id=user_b.tg_id,
-            text=get_message("PAY_ACCESS_GRANTED"),
-        )
+        await session.commit()
 
+        notifications = [
+            (user_a.tg_id, get_message("PAY_ACCESS_GRANTED")),
+            (user_b.tg_id, get_message("PAY_ACCESS_GRANTED")),
+        ]
         if bonus_days > 0:
             bonus_text = get_message("PAY_FIRST_PAYMENT_BONUS_APPLIED")
-            await send_message_with_retry(chat_id=user_a.tg_id, text=bonus_text)
-            await send_message_with_retry(chat_id=user_b.tg_id, text=bonus_text)
-
-        # Send subscription details
-        await send_message_with_retry(
-            chat_id=user_a.tg_id,
-            text=get_message("PAY_SUBSCRIPTION_ACTIVE_UNTIL", period_text=period_text),
+            notifications.extend(
+                [(user_a.tg_id, bonus_text), (user_b.tg_id, bonus_text)]
+            )
+        subscription_text = get_message(
+            "PAY_SUBSCRIPTION_ACTIVE_UNTIL", period_text=period_text
         )
-        await send_message_with_retry(
-            chat_id=user_b.tg_id,
-            text=get_message("PAY_SUBSCRIPTION_ACTIVE_UNTIL", period_text=period_text),
+        notifications.extend(
+            [(user_a.tg_id, subscription_text), (user_b.tg_id, subscription_text)]
         )
-
-        await session.commit()
+        for chat_id, text in notifications:
+            try:
+                await send_message_with_retry(chat_id=chat_id, text=text)
+            except Exception as exc:
+                logger.warning(
+                    "Payment notification failed after commit",
+                    inv_id=payment_id,
+                    chat_id=chat_id,
+                    error=str(exc),
+                )
 
         logger.info(
             "Robokassa payment processed and access granted",

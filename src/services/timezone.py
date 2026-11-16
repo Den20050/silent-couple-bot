@@ -86,8 +86,11 @@ def normalize_timezone_name(timezone_name: str | None) -> str | None:
 
 
 def is_timezone_configured(user_obj: Any) -> bool:
-    """True when the user's timezone was synced from the phone Mini App."""
-    return bool(getattr(user_obj, "timezone_name", None))
+    """True when an IANA timezone or legacy UTC offset is available."""
+    return (
+        bool(getattr(user_obj, "timezone_name", None))
+        or getattr(user_obj, "utc_offset", None) is not None
+    )
 
 
 def format_timezone_label(user_obj: Any) -> str:
@@ -104,8 +107,6 @@ def format_timezone_label(user_obj: Any) -> str:
 
 def get_effective_utc_offset(user_obj: Any, now_utc: datetime | None = None) -> int:
     """Return the user's UTC offset, preferring stored IANA timezone when available."""
-    if not is_timezone_configured(user_obj):
-        return 0
     timezone_name = getattr(user_obj, "timezone_name", None)
     if timezone_name:
         offset = _timezone_to_offset(timezone_name, now_utc)

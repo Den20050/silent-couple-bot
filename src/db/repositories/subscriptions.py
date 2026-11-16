@@ -24,6 +24,15 @@ class SubscriptionsRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_by_pair_id_for_update(self, pair_id: int) -> Optional[Subscription]:
+        """Get and lock a subscription while applying a payment."""
+        result = await self.session.execute(
+            select(Subscription)
+            .where(Subscription.pair_id == pair_id)
+            .with_for_update()
+        )
+        return result.scalar_one_or_none()
+
     async def get_by_yoo_id(self, yoo_id: str) -> Optional[Subscription]:
         """Get subscription by payment ID (yoo_id для совместимости, хранит inv_id от Robokassa)."""
         result = await self.session.execute(

@@ -44,7 +44,8 @@ class PairPaymentsRepository:
             insert(PairPayment)
             .values(**values)
             .on_conflict_do_nothing(index_elements=["inv_id"])
+            .returning(PairPayment.inv_id)
         )
         result = await self.session.execute(stmt)
         await self.session.flush()
-        return result.rowcount > 0
+        return result.scalar_one_or_none() is not None

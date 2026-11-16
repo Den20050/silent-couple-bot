@@ -1,0 +1,27 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    env:
+      TG_BOT_TOKEN: "123456:test-token"
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost/test
+      ROBOKASSA_MERCHANT_LOGIN: test
+      ROBOKASSA_PASSWORD_1: test
+      ROBOKASSA_PASSWORD_2: test
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ACCESS_KEY: test
+      MINIO_SECRET_KEY: test
+      DEMO_PAIR_HASH_SALT: pytest-only-demo-pair-hash-salt
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: pytest -q
